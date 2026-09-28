@@ -17,6 +17,7 @@ TabReach reads the user's inbox to notice replies and bounces. A mailbox holds f
   Everything else is skipped without storing anything. Mailing lists and bulk mail (`List-*`, `Precedence`, `Auto-Submitted`) are skipped; role senders (`noreply@`, `billing@`, …) count only inside a campaign thread; out-of-office replies are stored for context but stop nothing.
 - **Consequences of a reply** (strong match, not automatic): all active or paused sequences of the contact stop (`replied`); if the contact policy's company stop is on, the company's other contacts stop too (`company_replied`). A possible reply does this only when the user confirms it.
 - **Bounces**: a permanent failure (status 5.x.x or `Action: failed`) for the contact's address marks it `bounced`, adds an email suppression (`bounce`) and stops the contact's sequences (`bounced`). Delays (4.x.x) are recorded only.
+- Only what the sender wrote is stored: the quoted earlier message (Apple Mail, Gmail EN/RU, Outlook introductions, or a trailing `>` block), a standard `-- ` signature and invisible leftovers such as image placeholders are removed (`reply-text.ts`). If nothing would remain, the whole text is kept.
 - Outgoing campaign mail is recorded as an outbound message when the send completes, so replies thread to it.
 - Rule-based classification only (reply / out-of-office / automatic / bounce); AI classification (interested, opt-out, …) comes with the AI gateway (Phase 4).
 

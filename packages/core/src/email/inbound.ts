@@ -1,5 +1,6 @@
 import { simpleParser, type AddressObject, type Attachment, type ParsedMail } from 'mailparser';
 import { normalizeEmail } from '../prospects/normalize.js';
+import { replyText } from './reply-text.js';
 
 export interface Bounce {
   /** Addresses the report says could not be delivered. */
@@ -130,7 +131,8 @@ export async function parseInbound(raw: Buffer): Promise<InboundMail> {
     from: from.address,
     fromName: from.name,
     subject: mail.subject?.trim() || null,
-    text: (mail.text ?? '').slice(0, MAX_TEXT),
+    // What the sender wrote, without the quoted earlier message (ADR 024: only what is needed is kept).
+    text: replyText(mail.text ?? '').slice(0, MAX_TEXT),
     date: mail.date ?? null,
     automatic,
     outOfOffice,
