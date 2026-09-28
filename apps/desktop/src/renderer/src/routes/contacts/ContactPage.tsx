@@ -1,0 +1,79 @@
+import { useQuery } from '@tanstack/react-query';
+import { ArrowLeft, Pencil } from 'lucide-react';
+import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Link, useParams } from 'react-router';
+import { Timeline, formatDateTime } from '../../components/Timeline';
+import { Alert, Badge, Button, DetailList, PageHeader, Tags } from '../../components/ui';
+import { call, errorMessage } from '../../lib/api';
+import { ContactForm } from './ContactForm';
+
+export function ContactPage() {
+  const { id = '' } = useParams();
+  const { t, i18n } = useTranslation();
+  const [editing, setEditing] = useState(false);
+  const query = useQuery({ queryKey: ['contact', id], queryFn: () => call('contacts.get', { id }) });
+  const c = query.data;
+
+  if (query.isError) {
+    return (
+      <div className="p-6">
+        <Alert>{errorMessage(t, query.error)}</Alert>
+      </div>
+    );
+  }
+  if (!c) return <p className="p-6 text-soft">{t('common.loading')}</p>;
+
+  const none = <span className="text-faint">{t('common.none')}</span>;
+  return (
+    <>
+      <PageHeader
+        title={c.displayName}
+        subtitle={
+          <span className="flex items-center gap-2">
+            {c.jobTitle ? <span>{c.jobTitle}</span> : null}
+            {c.companyId ? (
+              <Link to={`/companies/${c.companyId}`} className="text-accent hover:underline">
+                {c.companyName}
+              </Link>
+            ) : null}
+            {c.status === 'archived' ? <Badge tone="warn">{t('common.archived')}</Badge> : null}
+          </span>
+        }
+        actions={
+          <>
+            <Link
+              to="/contacts"
+              className="inline-flex items-center gap-1 text-[13px] text-soft hover:text-ink"
+            >
+              <ArrowLeft size={14} aria-hidden />
+              {t('contacts.title')}
+            </Link>
+            <Button onClick={() => setEditing(true)}>
+              <Pencil size={13} aria-hidden />
+              {t('common.edit')}
+            </Button>
+          </>
+        }
+      />
+      <div className="grid flex-1 grid-cols-1 content-start items-start gap-8 overflow-y-auto p-6 lg:grid-cols-[1fr_320px]">
+        <DetailList
+          items={[
+            { label: t('contacts.email'), value: c.email ?? none },
+            {
+              label: t('contacts.linkedin'),
+              value: c.linkedinUrl ? <span className="font-mono text-xs">{c.linkedinUrl}</span> : none,
+            },
+            { label: t('contacts.company'), value: c.companyName ?? none },
+            { label: t('contacts.tags'), value: c.tags.length ? <Tags tags={c.tags} /> : none },
+            ...Object.entries(c.customFields).map(([k, v]) => ({ label: k, value: String(v) })),
+            { label: t('common.created'), value: formatDateTime(c.createdAt, i18n.language) },
+            { label: t('common.updated'), value: formatDateTime(c.updatedAt, i18n.language) },
+          ]}
+        />
+        <Timeline objectType="contact" objectId={c.id} />
+      </div>
+      {editing ? <ContactForm open contact={c} onClose={() => setEditing(false)} /> : null}
+    </>
+  );
+}

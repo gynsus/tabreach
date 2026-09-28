@@ -26,7 +26,8 @@ Chrome is controlled over a pipe, not a remote-debugging port.
 ## Electron hardening
 
 - renderer: `contextIsolation`, `sandbox`, no `nodeIntegration`, strict CSP, no remote content, `will-navigate` and `setWindowOpenHandler` deny by default;
-- preload exposes a minimal typed bridge; every message validated by core;
+- preload exposes a minimal typed bridge (`invoke` for app-channel requests only, `saveTextFile`); every message validated by core or main;
+- the only renderer → main IPC is `tabreach:save-text-file`: main checks that the sender is the app's own page, validates the payload and writes only to the path the user chose in the native save dialog;
 - core and browser worker in `utilityProcess` (no renderer privileges; ADR 012);
 - Electron fuses in every packaged build: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments` disabled; cookie encryption, embedded ASAR integrity validation and `OnlyLoadAppFromAsar` enabled (ADR 012 confirmed no worker host needs `RunAsNode`). Because the inspector is disabled, packaged builds are verified with `--self-check`, not by attaching automation;
 - hardened runtime + notarization for release.
@@ -103,7 +104,7 @@ Configurable retention categories:
 - AI raw responses;
 - message bodies;
 - research evidence;
-- audit events;
+- audit events (MVP: kept — the table is append-only at the database level; pruning needs an explicit, audited mechanism);
 - logs.
 
 Defaults minimize unnecessary sensitive data while preserving debugging/audit value. Retention is enforced by a periodic core job.

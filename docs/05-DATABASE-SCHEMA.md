@@ -15,6 +15,7 @@ This document specifies the initial relational shape. Migrations are authoritati
 - Soft-delete only where recovery/audit value justifies it.
 - Append-only audit events (enforced in code; optionally with a trigger rejecting `UPDATE`/`DELETE`).
 - Unique constraints for idempotency and provider IDs.
+- **Unicode-aware keys.** SQLite's `lower()`, `LIKE` and `COLLATE NOCASE` fold ASCII only, so Cyrillic names would neither match nor be found case-insensitively. Tables that are matched or searched by text store TypeScript-computed keys: `name_key` (for dedupe and sorting) and `search_key` (lowercased, whitespace-collapsed text for `LIKE`). Keys are maintained by the repositories on every insert/update.
 - `lock_version INTEGER` on mutable workflow rows (optimistic concurrency within core).
 
 Column lists below omit types where they follow the rules above.
@@ -26,8 +27,9 @@ Column lists below omit types where they follow the rules above.
 ```text
 id pk
 name not null
-domain null
-domain_normalized null
+name_key not null             -- nameKey(name), Unicode lowercase
+search_key not null           -- name + domain
+domain_normalized null        -- punycode, no www; UNIQUE when not null
 website_url null
 country, region, city null
 timezone null
@@ -36,7 +38,7 @@ custom_fields json not null default '{}'
 created_at, updated_at not null
 ```
 
-Index on `domain_normalized`. A unique partial index may be introduced only after duplicate-merge behaviour is defined.
+Unique partial index on `domain_normalized` (the company dedupe key, FR-PROS-005); index on `name_key`.
 
 ### `contacts`
 
@@ -46,7 +48,9 @@ company_id fk -> companies
 first_name, last_name, full_name
 job_title
 email
-email_normalized
+email_normalized          -- lowercase, IDN domain in punycode; UNIQUE when not null
+name_key null             -- key of full name or first + last
+search_key not null
 email_status check in ('unknown','valid','bounced','invalid')
 timezone null
 status not null
@@ -54,7 +58,7 @@ custom_fields json not null default '{}'
 created_at, updated_at
 ```
 
-Index `email_normalized`.
+Unique partial index on `email_normalized` (the contact dedupe key); index on `(company_id, name_key)`.
 
 ### `contact_profile_urls`
 
@@ -82,14 +86,15 @@ Primary key `(contact_id, channel)`.
 
 ### `tags`, `company_tags`, `contact_tags`
 
-Normal many-to-many tag schema.
+`tags (id, name, name_key UNIQUE)`; link tables `(entity_id, tag_id)` primary key, `WITHOUT ROWID`. Tags match case-insensitively through `name_key`.
 
 ### `suppressions`
 
 ```text
 id pk
 kind check in ('email','domain','company','profile_url')
-value_normalized not null
+value_original not null   -- as entered (company: its name)
+value_normalized not null -- email/domain normalized; profile_url as `<channel>:<normalized>`; company: company id
 reason check in ('opt_out','bounce','manual','imported')
 source_ref json null
 created_at
@@ -433,6 +438,8 @@ created_at
 ```
 
 Index `(correlation_id, created_at)` and `(object_type, object_id, created_at)`.
+
+Append-only is enforced by `BEFORE UPDATE` / `BEFORE DELETE` triggers that abort. Retention of audit events therefore needs an explicit, audited maintenance path; until one is designed, audit events are kept (see `18-SECURITY-PRIVACY-COMPLIANCE.md`).
 
 ### `jobs`
 

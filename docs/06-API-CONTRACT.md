@@ -44,18 +44,30 @@ query   companies.list / companies.get
 command companies.create / companies.update
 query   contacts.list / contacts.get
 command contacts.create / contacts.update
-command imports.prospects.preview      # payload: file handle from main's open dialog + mapping
-command imports.prospects.commit
-command exports.prospects              # main shows the save dialog
+command imports.prospects.preview      # { csv } -> headers, sample rows, row count, suggested mapping
+command imports.prospects.commit       # { csv, mapping[], onMatch: skip | fill_empty | overwrite }
+command exports.prospects              # -> { filename, csv }; the renderer then calls saveTextFile
 ```
+
+The renderer reads a user-chosen file with the File API (`<input type="file">`) and sends its text
+(max 20 MB). Exports go the other way through the preload's `saveTextFile({ suggestedName, content })`,
+which asks main to show the native save dialog (`tabreach:save-text-file`, sender-checked,
+schema-validated). The renderer never gets filesystem access.
+
+Import semantics (FR-PROS-003..005): the whole file is one transaction. Companies match by domain,
+then by name among companies without a domain; contacts by email, then LinkedIn profile, then name
+within the same company. Row errors carry a translatable reason key (`email.invalid`, `row.empty`, …)
+and the spreadsheet row number; blank rows are skipped. Exports use column names the importer maps
+back automatically, prefix custom fields with `company:` / `contact:`, guard against formula injection
+and start with a UTF-8 BOM.
 
 ## Contact policy
 
 ```text
 query   suppressions.list
-command suppressions.add / suppressions.remove / suppressions.import
-query   policy.settings.get
-command policy.settings.update
+command suppressions.add / suppressions.remove / suppressions.import   # add is idempotent
+query   policy.settings.get                                            # Phase 2
+command policy.settings.update                                         # Phase 2
 ```
 
 ## Research
@@ -109,6 +121,19 @@ query   interventions.open
 command interventions.resolve          # { interventionId, outcome, notes }
                                        # outcome e.g. 'action_completed_by_user' | 'not_done' | 'unknown'
 ```
+
+## Activity and UI settings
+
+```text
+query   activity.list                  # { objectType?, objectId?, limit } -> newest first
+query   settings.ui.get                # -> { language: 'en' | 'ru' }
+command settings.ui.update
+```
+
+## Validation errors
+
+`VALIDATION_FAILED` results carry `fields`: field name -> message key (e.g. `{ "email": "email.duplicate" }`).
+Keys, not sentences: the renderer translates them (`errors.*` in the i18n catalogs, ADR 019).
 
 ## Channel accounts
 

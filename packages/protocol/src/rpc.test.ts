@@ -19,6 +19,12 @@ function peers(opts: ConstructorParameters<typeof RpcPeer>[1] = {}) {
 }
 
 describe('uuidv7', () => {
+  it('keeps creation order within one millisecond', () => {
+    const ids = Array.from({ length: 50 }, () => uuidv7(1_800_000_000_000));
+    expect([...ids].sort()).toEqual(ids);
+    expect(new Set(ids).size).toBe(50);
+  });
+
   it('produces RFC 9562 version 7 ids ordered by time', () => {
     const first = uuidv7(1_700_000_000_000);
     const second = uuidv7(1_700_000_000_001);

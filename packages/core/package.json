@@ -11,6 +11,10 @@
   },
   "dependencies": {
     "@tabreach/protocol": "workspace:*",
+    "papaparse": "5.7.0",
     "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/papaparse": "5.5.2"
   }
 }
