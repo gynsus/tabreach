@@ -69,6 +69,7 @@ export class CoreService {
       .handle('power.resume', () => {
         this.dispatcher.resume();
         this.services.engine.resync();
+        this.services.inbox.resync();
         options.logger.info({ event: 'power.resume' }, 'system woke up; jobs resumed');
         return { ok: true as const };
       });
@@ -86,9 +87,12 @@ export class CoreService {
     if (pruned > 0)
       options.logger.info({ event: 'commands.pruned', count: pruned }, 'old command results pruned');
     await core.checkSecretStorage();
-    for (const type of core.services.engine.jobTypes()) core.dispatcher.register(type);
+    for (const type of [...core.services.engine.jobTypes(), ...core.services.inbox.jobTypes()]) {
+      core.dispatcher.register(type);
+    }
     core.dispatcher.start();
     core.services.engine.resync();
+    core.services.inbox.resync();
     return core;
   }
 

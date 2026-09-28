@@ -80,6 +80,18 @@ export class SuppressionService {
     return transaction(this.db, () => this.insert(kind, n, 'manual', ctx).row);
   }
 
+  /** Added by TabReach itself (a hard bounce, an opt-out); returns null for a value that is not valid. */
+  addAutomatic(
+    kind: SuppressionKind,
+    value: string,
+    reason: 'bounce' | 'opt_out',
+    ctx: CommandContext,
+  ): Suppression | null {
+    const n = this.normalize(kind, value);
+    if (!n) return null;
+    return transaction(this.db, () => this.insert(kind, n, reason, ctx, 'system').row);
+  }
+
   remove(id: string, ctx: CommandContext): boolean {
     return transaction(this.db, () => {
       const row = this.db.prepare('SELECT * FROM suppressions WHERE id = ?').get(id) as Row | undefined;
@@ -128,6 +140,7 @@ export class SuppressionService {
     n: { normalized: string; original: string },
     reason: Suppression['reason'],
     ctx: CommandContext,
+    actorType: 'user' | 'system' = 'user',
   ): { row: Suppression; created: boolean } {
     const existing = this.db
       .prepare('SELECT * FROM suppressions WHERE kind = ? AND value_normalized = ?')
@@ -156,7 +169,7 @@ export class SuppressionService {
         searchKey([row.value_original, row.value_normalized]),
       );
     this.audit.record({
-      actorType: 'user',
+      actorType,
       actionType: 'suppression.added',
       objectType: 'suppression',
       objectId: row.id,

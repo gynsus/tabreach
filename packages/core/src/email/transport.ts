@@ -26,6 +26,16 @@ export interface MailboxClient {
   /** Whether a message with this Message-ID is in the folder. */
   hasMessage(folder: string, messageId: string, signal: AbortSignal): Promise<boolean>;
   append(folder: string, raw: Buffer, signal: AbortSignal): Promise<void>;
+  /**
+   * Messages after \`cursor.lastUid\`, oldest first, at most \`limit\`. When the cursor is empty or
+   * UIDVALIDITY changed, returns no messages and the current position (polling starts from now).
+   */
+  fetchNew(
+    folder: string,
+    cursor: { uidValidity: number | null; lastUid: number | null },
+    limit: number,
+    signal: AbortSignal,
+  ): Promise<{ uidValidity: number; lastUid: number; messages: { uid: number; raw: Buffer }[] }>;
   close(): Promise<void>;
 }
 

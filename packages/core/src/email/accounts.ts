@@ -70,6 +70,8 @@ export class AccountService {
     private readonly clients: MailClients,
     private readonly now: () => Date,
     private readonly logger: Logger,
+    /** Told when an account starts working (connected, new password) so its inbox is polled. */
+    private readonly onActivated: (accountId: string) => void = () => {},
   ) {}
 
   list(): EmailAccount[] {
@@ -141,6 +143,7 @@ export class AccountService {
         provider: 'imap_smtp',
         sentFolder: check.imap.sentFolder !== null,
       });
+      this.onActivated(id);
       return this.get(id);
     });
   }
@@ -193,6 +196,7 @@ export class AccountService {
         );
       if (secretId && current.secret_id) this.secrets.delete(current.secret_id);
       this.record('account.updated', current.id, ctx, { fields });
+      if (secretId) this.onActivated(current.id);
       return this.get(current.id);
     });
   }
@@ -241,6 +245,17 @@ export class AccountService {
     );
     this.channels.set(row.id, { updatedAt: row.updated_at, channel });
     return channel;
+  }
+
+  /** Credentials for polling the inbox (password decrypted by main). */
+  async mailSettings(id: string): Promise<MailSettings> {
+    return this.settingsOf(this.row(id), true);
+  }
+
+  addressOf(id: string): string | null {
+    const row = this.db.prepare('SELECT external_account_id FROM channel_accounts WHERE id = ?').get(id) as
+      { external_account_id: string } | undefined;
+    return row?.external_account_id ?? null;
   }
 
   /** The server refused the stored password: stop using the account until the user fixes it. */

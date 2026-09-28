@@ -78,10 +78,13 @@ class Harness {
       now: this.clock.now,
       logger: capturingLogger(this.logs),
     });
-    for (const type of this.services.engine.jobTypes()) this.dispatcher.register(type);
+    for (const type of [...this.services.engine.jobTypes(), ...this.services.inbox.jobTypes()]) {
+      this.dispatcher.register(type);
+    }
     this.dispatcher.start();
     this.dispatcher.pause();
     this.services.engine.resync();
+    this.services.inbox.resync();
   }
 
   run = () => this.dispatcher.runDue();
@@ -347,5 +350,229 @@ describe('campaigns over email', () => {
         problem: expect.objectContaining({ fields: { emailAccountId: 'account.required' } }),
       }),
     );
+  });
+});
+
+/** A raw inbound message; `inReplyTo` threads it to one of ours. */
+function inbound(o: {
+  from: string;
+  subject?: string;
+  body?: string;
+  inReplyTo?: string;
+  headers?: string;
+  id?: string;
+}): string {
+  return [
+    `From: ${o.from}`,
+    'To: me@acme.test',
+    `Subject: ${o.subject ?? 'Re: Hi'}`,
+    `Message-ID: <${o.id ?? uuidv7()}@remote.test>`,
+    o.inReplyTo ? `In-Reply-To: ${o.inReplyTo}\nReferences: ${o.inReplyTo}` : null,
+    o.headers ?? null,
+    'Date: Mon, 28 Sep 2026 12:00:00 +0000',
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    o.body ?? 'Thanks, interested.',
+    '',
+  ]
+    .filter((l) => l !== null)
+    .join('\n');
+}
+
+describe('replies', () => {
+  let h: Harness;
+  const DAY = 24 * 60 * 60 * 1000;
+  beforeEach(async () => {
+    h = await new Harness().open();
+  });
+  afterEach(() => h.close());
+
+  /** Acme with Bob and Carol; a two-step campaign (second step after 4 days) sent to both. */
+  async function sentToAcme() {
+    const { accounts, prospects, campaigns } = h.services;
+    const accountId = (await accounts.connectImap(imapInput(), ctx())).id;
+    const acme = prospects.createCompany({ name: 'Beta Co', website: 'beta.test' }, ctx()).id;
+    const bob = prospects.createContact(
+      { firstName: 'Bob', email: 'bob@beta.test', companyId: acme },
+      ctx(),
+    ).id;
+    const carol = prospects.createContact(
+      { firstName: 'Carol', email: 'carol@beta.test', companyId: acme },
+      ctx(),
+    ).id;
+    const message = (subject: string, delaySeconds: number) =>
+      ({
+        type: 'send_message',
+        channel: 'email',
+        executionMode: 'auto',
+        delaySeconds,
+        subject,
+        body: 'Hi {{firstName}}',
+      }) as const;
+    const campaign = campaigns.create(
+      {
+        name: 'Two steps',
+        config: {
+          steps: [message('First', 0), message('Follow-up', 4 * 24 * 60 * 60)],
+          timezone: 'UTC',
+          window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
+          approvalMode: 'approve_each',
+          emailAccountId: accountId,
+        },
+      },
+      ctx(),
+    ).id;
+    campaigns.launch(campaign, ctx());
+    campaigns.enroll(campaign, [bob, carol], ctx());
+    await h.run();
+    h.approve();
+    await h.run();
+    const idOf = (to: string) => h.mail.delivered.find((d) => d.to === to)!.messageId;
+    return { accountId, campaign, acme, bob, carol, bobMessageId: idOf('bob@beta.test') };
+  }
+
+  const enrollment = (campaign: string, contactId: string) =>
+    h.services.campaigns
+      .listEnrollments(campaign, { limit: 10, offset: 0 })
+      .items.find((e) => e.contactId === contactId);
+
+  async function deliver(raw: string) {
+    h.mail.receive(raw);
+    h.clock.advance(2 * 60_000);
+    await h.run();
+  }
+
+  it('a reply in the thread lands in the inbox and stops the sequence, and the company’s', async () => {
+    const s = await sentToAcme();
+    await deliver(inbound({ from: 'Bob <bob@beta.test>', inReplyTo: s.bobMessageId, body: 'Sounds good.' }));
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+    expect(enrollment(s.campaign, s.carol)).toMatchObject({
+      status: 'stopped',
+      stopReason: 'company_replied',
+    });
+
+    const { items, unread } = h.services.inbox.list('all', { limit: 10, offset: 0 });
+    expect(unread).toBe(1);
+    expect(items).toMatchObject([
+      { title: 'Bob', unread: true, lastClassification: 'reply', lastSnippet: 'Sounds good.' },
+    ]);
+    const thread = h.services.inbox.get(items[0]!.id);
+    expect(thread.messages.map((m) => [m.direction, m.matchStrength])).toEqual([
+      ['outbound', null],
+      ['inbound', 'thread'],
+    ]);
+    // The follow-up never goes out.
+    h.clock.advance(5 * DAY);
+    await h.run();
+    expect(h.services.approvals.pending()).toEqual([]);
+  });
+
+  it('without the company stop in the policy, only the contact’s sequence stops', async () => {
+    h.services.policy.update({ ...h.services.policy.current(), companyStopOnReply: false });
+    const s = await sentToAcme();
+    await deliver(inbound({ from: 'bob@beta.test', subject: 'A new question' })); // new message, no thread
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+    expect(enrollment(s.campaign, s.carol)?.status).toBe('active');
+  });
+
+  it('a sender that only matches the company domain is a possible reply, for the user to decide', async () => {
+    const s = await sentToAcme();
+    await deliver(inbound({ from: 'dave@mail.beta.test', subject: 'Who are you?' }));
+    expect(enrollment(s.campaign, s.bob)?.status).toBe('active');
+    const [review] = h.services.inbox.list('review', { limit: 10, offset: 0 }).items;
+    expect(review).toMatchObject({ title: 'Beta Co', needsReview: true });
+    const message = h.services.inbox.get(review!.id).messages[0]!;
+    expect(message).toMatchObject({ matchStrength: 'domain_only', reviewStatus: 'pending' });
+    h.services.inbox.review(message.id, 'confirm', ctx());
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'company_replied' });
+    expect(() => h.services.inbox.review(message.id, 'dismiss', ctx())).toThrow(RpcError);
+  });
+
+  it('out-of-office is kept without stopping; newsletters and unrelated mail are not stored', async () => {
+    const s = await sentToAcme();
+    await deliver(
+      inbound({
+        from: 'bob@beta.test',
+        subject: 'Automatic reply: First',
+        inReplyTo: s.bobMessageId,
+        headers: 'Auto-Submitted: auto-replied',
+      }),
+    );
+    await deliver(
+      inbound({ from: 'bob@beta.test', subject: 'Beta news', headers: 'List-Id: <news.beta.test>' }),
+    );
+    await deliver(inbound({ from: 'friend@elsewhere.test', subject: 'Dinner?' }));
+    await deliver(inbound({ from: 'noreply@beta.test', subject: 'Your invoice' }));
+    expect(enrollment(s.campaign, s.bob)?.status).toBe('active');
+    const stored = h.db.prepare(`SELECT classification FROM messages WHERE direction = 'inbound'`).all();
+    expect(stored).toEqual([{ classification: 'out_of_office' }]);
+  });
+
+  it('a hard bounce marks the address, suppresses it and stops the sequence; a delay does not', async () => {
+    const s = await sentToAcme();
+    const dsn = (recipient: string, status: string, original: string) =>
+      [
+        'From: MAILER-DAEMON@mx.acme.test',
+        'To: me@acme.test',
+        'Subject: Undelivered Mail',
+        `Message-ID: <${uuidv7()}@mx.acme.test>`,
+        'Content-Type: multipart/report; report-type=delivery-status; boundary="B"',
+        '',
+        '--B',
+        'Content-Type: message/delivery-status',
+        '',
+        `Final-Recipient: rfc822; ${recipient}`,
+        `Action: ${status.startsWith('5') ? 'failed' : 'delayed'}`,
+        `Status: ${status}`,
+        '',
+        '--B',
+        'Content-Type: text/rfc822-headers',
+        '',
+        `Message-ID: ${original}`,
+        '',
+        '--B--',
+        '',
+      ].join('\n');
+    const carolMessageId = h.mail.delivered.find((d) => d.to === 'carol@beta.test')!.messageId;
+    await deliver(dsn('carol@beta.test', '4.4.1', carolMessageId));
+    expect(enrollment(s.campaign, s.carol)?.status).toBe('active');
+    await deliver(dsn('bob@beta.test', '5.1.1', s.bobMessageId));
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'bounced' });
+    expect(h.services.prospects.getContact(s.bob).emailStatus).toBe('bounced');
+    expect(h.services.suppressions.list({ limit: 10, offset: 0 }).items).toMatchObject([
+      { kind: 'email', value: 'bob@beta.test', reason: 'bounce' },
+    ]);
+    expect(enrollment(s.campaign, s.carol)?.status).toBe('active'); // a bounce is not a reply
+  });
+
+  it('starts from now, ingests each message once, and survives a UIDVALIDITY change', async () => {
+    h.mail.receive(inbound({ from: 'bob@beta.test', subject: 'Old mail before connecting' }));
+    const s = await sentToAcme();
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE direction = 'inbound'`).get()).toEqual({
+      n: 0,
+    });
+    const reply = inbound({ from: 'carol@beta.test', inReplyTo: s.bobMessageId, id: 'same' });
+    await deliver(reply);
+    // The same message again (e.g. copied back into the inbox): stored once.
+    await deliver(reply);
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE direction = 'inbound'`).get()).toEqual({
+      n: 1,
+    });
+    h.mail.uidValidity = 2;
+    await deliver(inbound({ from: 'bob@beta.test', subject: 'After the mailbox was rebuilt' }));
+    // A new UIDVALIDITY restarts from the current position instead of re-reading the mailbox.
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE direction = 'inbound'`).get()).toEqual({
+      n: 1,
+    });
+  });
+
+  it('an inbox that refuses the password puts the account on hold and stops polling', async () => {
+    const accountId = (await h.services.accounts.connectImap(imapInput(), ctx())).id;
+    await h.run();
+    h.mail.password = 'changed';
+    h.clock.advance(2 * 60_000);
+    await h.run();
+    expect(h.services.accounts.get(accountId).status).toBe('auth_required');
+    expect(h.services.jobs.byDedupeKey(`poll:${accountId}`)).toBeUndefined();
   });
 });

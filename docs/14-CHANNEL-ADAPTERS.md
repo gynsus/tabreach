@@ -95,6 +95,9 @@ Responsibilities:
 
 ### Common email behaviour
 
+Implemented in Phase 3c for IMAP accounts (ADR 024): polling every 2 minutes from the moment of connecting, thread / contact-address / domain-only matching, rule-based classification, bounces, stop on reply. AI classification follows in Phase 4.
+
+
 - **Reply matching** with explicit strength:
   - `thread` — provider thread ID or `In-Reply-To`/`References` → strong;
   - `contact_address` — exact address of a known contact → strong;

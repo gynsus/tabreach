@@ -416,14 +416,17 @@ Ciphertext is only decryptable on this Mac user account. Core never logs this ta
 id pk
 channel
 channel_account_id fk
-contact_id fk
+contact_id null fk          -- null for a possible reply matched only by company domain
+company_id null fk
 campaign_enrollment_id null
 provider_thread_id null
-status
+status check in ('open','archived')
+unread 0/1
+last_message_at
 created_at, updated_at
 ```
 
-Unique `(channel_account_id, provider_thread_id)` when provider thread ID exists.
+Check contact or company present. Unique `(channel_account_id, contact_id)`; unique `(channel_account_id, company_id)` where contact is null.
 
 ### `messages`
 
@@ -432,17 +435,24 @@ id pk
 conversation_id fk
 direction check in ('inbound','outbound')
 rfc_message_id null
-provider_message_id null
+provider_message_id null    -- IMAP: '<uidvalidity>:<uid>'
 in_reply_to null
+from_address null
 subject
-body null                 -- subject to retention
-classification null
+body null                   -- plain text, at most 20 000 characters; subject to retention
+classification null check in ('reply','out_of_office','auto','bounce')
+match_strength null check in ('thread','contact_address','domain_only')
+review_status check in ('none','pending','confirmed','dismissed')
 metadata json
 occurred_at
 created_at
 ```
 
-Unique `(conversation_id, provider_message_id)`; index `rfc_message_id`.
+Unique `(conversation_id, provider_message_id)`; index `rfc_message_id`. Only prospect mail is stored (ADR 024).
+
+### `mailbox_cursors`
+
+`(channel_account_id pk, folder, uid_validity, last_uid, last_polled_at, last_error)` — where polling left off.
 
 ### `action_events`
 

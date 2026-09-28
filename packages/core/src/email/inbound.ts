@@ -1,0 +1,139 @@
+import { simpleParser, type AddressObject, type Attachment, type ParsedMail } from 'mailparser';
+import { normalizeEmail } from '../prospects/normalize.js';
+
+export interface Bounce {
+  /** Addresses the report says could not be delivered. */
+  recipients: string[];
+  /** 5.x.x (or "failed" without a status): the address does not work. 4.x.x is only a delay. */
+  permanent: boolean;
+  /** Message-ID of the message that bounced, when the report includes its headers. */
+  originalMessageId: string | null;
+}
+
+/** What TabReach needs from an incoming message; the raw message is not kept. */
+export interface InboundMail {
+  rfcMessageId: string | null;
+  inReplyTo: string | null;
+  /** In-Reply-To and References, the ids this message answers. */
+  references: string[];
+  from: string | null;
+  fromName: string | null;
+  subject: string | null;
+  text: string;
+  date: Date | null;
+  /** Machine-sent: auto-replies, mailing lists, bulk mail (docs/14: not replies). */
+  automatic: boolean;
+  outOfOffice: boolean;
+  bounce: Bounce | null;
+}
+
+const MAX_TEXT = 20_000;
+const OOO_SUBJECT =
+  /(out of (the )?office|automatic reply|auto[- ]?reply|autoreply|abwesenheit|вне офиса|автоответ|в отпуске|отсутств)/i;
+const DAEMON = /^(mailer-daemon|postmaster|mail-daemon)@/i;
+
+function header(mail: ParsedMail, name: string): string | null {
+  const value = mail.headers.get(name);
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && 'value' in value && typeof value.value === 'string') return value.value;
+  return String(value as unknown);
+}
+
+function firstAddress(field: AddressObject | AddressObject[] | undefined): {
+  address: string | null;
+  name: string | null;
+} {
+  const list = Array.isArray(field) ? field : field ? [field] : [];
+  const first = list.flatMap((a) => a.value)[0];
+  return { address: normalizeEmail(first?.address ?? null), name: first?.name?.trim() || null };
+}
+
+function ids(value: string | string[] | undefined): string[] {
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  return list.flatMap((v) => v.match(/<[^<>\s]+>/g) ?? []);
+}
+
+function attachmentText(a: Attachment): string {
+  return a.content.toString('utf8');
+}
+
+/** Delivery status notifications (RFC 3464) and the common non-standard variants. */
+function parseBounce(mail: ParsedMail, from: string | null): Bounce | null {
+  const ct = mail.headers.get('content-type') as
+    { value?: string; params?: Record<string, string> } | undefined;
+  const isReport =
+    /multipart\/report/i.test(ct?.value ?? '') && /delivery-status/i.test(ct?.params?.['report-type'] ?? '');
+  const failedHeader = header(mail, 'x-failed-recipients');
+  if (!isReport && !(from && DAEMON.test(from)) && !failedHeader) return null;
+
+  // mailparser keeps delivery-status parts as attachments or folds them into the text.
+  const status = [
+    ...mail.attachments.filter((a) => /delivery-status/i.test(a.contentType)).map(attachmentText),
+    mail.text ?? '',
+  ].join('\n');
+  const original = mail.attachments
+    .filter((a) => /message\/rfc822|text\/rfc822-headers|message\/global/i.test(a.contentType))
+    .map(attachmentText)
+    .join('\n');
+
+  const recipients = new Set<string>();
+  for (const [, addr] of status.matchAll(
+    /^(?:Final|Original)-Recipient:\s*(?:rfc822;)?\s*<?([^\s>]+)>?/gim,
+  )) {
+    const n = normalizeEmail(addr ?? null);
+    if (n) recipients.add(n);
+  }
+  for (const addr of (failedHeader ?? '').split(',')) {
+    const n = normalizeEmail(addr.trim());
+    if (n) recipients.add(n);
+  }
+  const codes = [...status.matchAll(/^Status:\s*([245])\.\d{1,3}\.\d{1,3}/gim)].map((m) => m[1]);
+  const actionFailed = /^Action:\s*failed/im.test(status);
+  const permanent = codes.length > 0 ? codes.includes('5') : actionFailed || failedHeader !== null;
+  // Without a structured report, the body usually quotes the original headers.
+  const originalMessageId =
+    /^Message-ID:\s*(<[^>\s]+>)/im.exec(original)?.[1] ??
+    /^Message-ID:\s*(<[^>\s]+>)/im.exec(mail.text ?? '')?.[1] ??
+    null;
+  if (recipients.size === 0 && !originalMessageId) return null;
+  return { recipients: [...recipients], permanent, originalMessageId };
+}
+
+export async function parseInbound(raw: Buffer): Promise<InboundMail> {
+  const mail = await simpleParser(raw, { skipHtmlToText: false, skipTextLinks: true, skipImageLinks: true });
+  const from = firstAddress(mail.from);
+  const autoSubmitted = header(mail, 'auto-submitted');
+  const precedence = header(mail, 'precedence');
+  // mailparser folds List-Id, List-Unsubscribe, … into one \`list\` header.
+  const listMail =
+    mail.headers.has('list') || mail.headers.has('list-id') || mail.headers.has('list-unsubscribe');
+  const autoReplyHeader =
+    mail.headers.has('x-autoreply') ||
+    mail.headers.has('x-autorespond') ||
+    mail.headers.has('x-auto-response-suppress');
+  const outOfOffice =
+    (autoSubmitted !== null && /auto-replied/i.test(autoSubmitted)) ||
+    mail.headers.has('x-autoreply') ||
+    OOO_SUBJECT.test(mail.subject ?? '');
+  const automatic =
+    (autoSubmitted !== null && !/^no\b/i.test(autoSubmitted)) ||
+    (precedence !== null && /^(bulk|list|junk|auto_reply)/i.test(precedence)) ||
+    listMail ||
+    autoReplyHeader ||
+    outOfOffice;
+  const inReplyTo = ids(mail.inReplyTo)[0] ?? null;
+  return {
+    rfcMessageId: ids(mail.messageId)[0] ?? null,
+    inReplyTo,
+    references: [...new Set([...(inReplyTo ? [inReplyTo] : []), ...ids(mail.references)])],
+    from: from.address,
+    fromName: from.name,
+    subject: mail.subject?.trim() || null,
+    text: (mail.text ?? '').slice(0, MAX_TEXT),
+    date: mail.date ?? null,
+    automatic,
+    outOfOffice,
+    bounce: parseBounce(mail, from.address),
+  };
+}

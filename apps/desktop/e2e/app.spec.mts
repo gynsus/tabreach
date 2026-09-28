@@ -261,6 +261,13 @@ test('connecting an email account fills in known servers and reports a wrong ser
   await expect(page.getByText('No email account connected yet.')).toBeVisible();
 });
 
+test('the inbox opens with its filters and says when there are no replies', async () => {
+  await page.getByRole('link', { name: 'Inbox' }).click();
+  await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'To review' })).toBeVisible();
+  await expect(page.getByText('No replies yet.')).toBeVisible();
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

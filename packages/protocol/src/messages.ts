@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import {
+  conversationListRequestSchema,
+  conversationSchema,
+  conversationSummarySchema,
+  reviewRequestSchema,
+} from './inbox.js';
+import {
   accountUpdateSchema,
   connectionCheckSchema,
   emailAccountSchema,
@@ -282,6 +288,19 @@ export const requests = {
     request: z.object({}),
     response: z.object({ items: z.array(jobSchema) }),
   },
+  'conversations.list': {
+    channel: 'app',
+    kind: 'query',
+    request: conversationListRequestSchema,
+    response: z.object({
+      items: z.array(conversationSummarySchema),
+      total: z.number().int().nonnegative(),
+      unread: z.number().int().nonnegative(),
+    }),
+  },
+  'conversations.get': { channel: 'app', kind: 'query', request: byId, response: conversationSchema },
+  'conversations.markRead': { channel: 'app', kind: 'command', request: byId, response: ok },
+  'conversations.review': { channel: 'app', kind: 'command', request: reviewRequestSchema, response: ok },
   'accounts.list': {
     channel: 'app',
     kind: 'query',

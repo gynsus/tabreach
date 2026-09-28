@@ -3,6 +3,7 @@ import {
   Building2,
   CheckCheck,
   Gauge,
+  Inbox,
   Megaphone,
   Settings,
   ShieldBan,
@@ -14,6 +15,7 @@ import { NavLink, Outlet } from 'react-router';
 import { useLiveUpdates } from '../lib/live';
 import { cn } from '../lib/cn';
 import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
+import { useInboxCounts } from '../routes/inbox/InboxPage';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
   const Icon = props.icon;
@@ -72,6 +74,7 @@ function CoreBanner() {
 export function AppShell() {
   const { t } = useTranslation();
   const pending = usePendingApprovals();
+  const inbox = useInboxCounts();
   return (
     <div className="flex h-full">
       <nav
@@ -88,6 +91,7 @@ export function AppShell() {
         </NavGroup>
         <NavGroup label={t('nav.outreach')}>
           <NavItem to="/campaigns" icon={Megaphone} label={t('nav.campaigns')} />
+          <NavItem to="/inbox" icon={Inbox} label={t('nav.inbox')} count={inbox.data?.unread ?? 0} />
           <NavItem
             to="/approvals"
             icon={CheckCheck}

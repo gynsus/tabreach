@@ -416,4 +416,63 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX side_effects_account ON side_effects (channel_account_id, status, updated_at);
     `,
   },
+  {
+    version: 10,
+    name: 'conversations',
+    sql: `
+      -- Email conversations (docs/05, docs/14): one per account and contact, or per account and
+      -- company for a possible reply that only matched the company domain.
+      CREATE TABLE conversations (
+        id                     TEXT PRIMARY KEY,
+        channel                TEXT NOT NULL CHECK (channel IN ('email', 'linkedin')),
+        channel_account_id     TEXT NOT NULL REFERENCES channel_accounts (id),
+        contact_id             TEXT REFERENCES contacts (id),
+        company_id             TEXT REFERENCES companies (id) ON DELETE SET NULL,
+        campaign_enrollment_id TEXT REFERENCES campaign_enrollments (id),
+        provider_thread_id     TEXT,
+        status                 TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'archived')),
+        unread                 INTEGER NOT NULL DEFAULT 0 CHECK (unread IN (0, 1)),
+        last_message_at        TEXT NOT NULL,
+        created_at             TEXT NOT NULL,
+        updated_at             TEXT NOT NULL,
+        CHECK (contact_id IS NOT NULL OR company_id IS NOT NULL)
+      ) STRICT;
+      CREATE UNIQUE INDEX conversations_contact ON conversations (channel_account_id, contact_id)
+        WHERE contact_id IS NOT NULL;
+      CREATE UNIQUE INDEX conversations_company ON conversations (channel_account_id, company_id)
+        WHERE contact_id IS NULL;
+      CREATE INDEX conversations_recent ON conversations (last_message_at);
+
+      CREATE TABLE messages (
+        id                  TEXT PRIMARY KEY,
+        conversation_id     TEXT NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+        direction           TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+        rfc_message_id      TEXT,
+        provider_message_id TEXT,
+        in_reply_to         TEXT,
+        from_address        TEXT,
+        subject             TEXT,
+        body                TEXT,
+        classification      TEXT CHECK (classification IN ('reply', 'out_of_office', 'auto', 'bounce')),
+        match_strength      TEXT CHECK (match_strength IN ('thread', 'contact_address', 'domain_only')),
+        review_status       TEXT NOT NULL DEFAULT 'none' CHECK (review_status IN ('none', 'pending', 'confirmed', 'dismissed')),
+        metadata            TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),
+        occurred_at         TEXT NOT NULL,
+        created_at          TEXT NOT NULL,
+        UNIQUE (conversation_id, provider_message_id)
+      ) STRICT;
+      CREATE INDEX messages_rfc ON messages (rfc_message_id);
+      CREATE INDEX messages_conversation ON messages (conversation_id, occurred_at);
+
+      -- Where polling left off in each account's inbox (IMAP UIDVALIDITY + last seen UID).
+      CREATE TABLE mailbox_cursors (
+        channel_account_id TEXT PRIMARY KEY REFERENCES channel_accounts (id),
+        folder             TEXT NOT NULL,
+        uid_validity       INTEGER,
+        last_uid           INTEGER,
+        last_polled_at     TEXT,
+        last_error         TEXT
+      ) STRICT;
+    `,
+  },
 ];

@@ -175,6 +175,9 @@ export const stopReasonSchema = z.enum([
   'condition_not_met',
   'rejected',
   'send_failed',
+  'replied',
+  'company_replied',
+  'bounced',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
