@@ -102,7 +102,8 @@ packages/protocol       IPC envelope, request and event registries (Zod), RpcPee
                         shared secret redaction, logger contract
 packages/core           SQLite (node:sqlite), migrations, transactions, CoreService, command log (idempotency),
                         prospects (companies, contacts, tags, normalization, CSV import/export),
-                        suppressions, audit log, settings, secrets
+                        suppressions, audit log, settings, secrets, job queue and dispatcher,
+                        side-effect ledger, channel contract and test channel
 packages/browser-worker Chrome detection, Playwright launch check, BrowserWorker
 packages/adapter-packs  Adapter pack schema (ADR 017)
 fixtures/sites          Local pages for browser tests
@@ -120,6 +121,19 @@ Import boundaries between these are enforced by ESLint (`eslint.config.js`); see
 
 To add a migration, append `{ version: n + 1, name, sql }` to the list and cover it in
 `migrate.test.ts` if it contains logic beyond plain DDL.
+
+## Jobs and external actions
+
+- Background work is a row in `jobs` (`packages/core/src/jobs`). Enqueue inside the same transaction
+  as the state change that needs it; the dispatcher wakes on enqueue and on the earliest `run_at`.
+- A job type declares a Zod payload, concurrency, attempts and whether it is side-effecting. Throw
+  `RetryableError` (backoff or explicit `retryAt`) or `PermanentError`; anything else retries as
+  `unexpected`. Exhausted or too old → `dead` (shown under “Needs attention”).
+- Anything that leaves TabReach goes through `executeSideEffect` (`packages/core/src/ledger`): it
+  reserves the intent, marks `executing` before the call and reconciles instead of re-sending after a
+  crash (ADR 018, ADR 021). Never call a channel's `send` directly.
+- `TestChannel` stands in for the outside world in tests and can simulate rejection, an unconfirmed
+  send and a crash before or after delivery.
 
 ## User interface
 

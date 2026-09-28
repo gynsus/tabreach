@@ -54,6 +54,28 @@ async function startCore() {
 }
 
 describe('CoreService', () => {
+  it('runs enqueued jobs right away and tells windows about failures', async () => {
+    const core = await startCore();
+    const [rendererSide, coreSide] = createEndpointPair();
+    core.attachApp(coreSide);
+    const changed: string[][] = [];
+    new RpcPeer(rendererSide).on('data.changed', ({ entities }) => void changed.push(entities));
+    const ran = new Promise<string>((resolve) => {
+      core.dispatcher.register({
+        type: 'test.echo',
+        payload: z.object({ text: z.string() }),
+        sideEffecting: false,
+        handler: ({ text }) => resolve(text),
+      });
+    });
+    core.services.jobs.enqueue('test.echo', { text: 'hello' });
+    expect(await ran).toBe('hello');
+
+    core.services.jobs.enqueue('test.unregistered', {});
+    await expect.poll(() => changed).toContainEqual(['job']);
+    core.close();
+  });
+
   it('reports healthy database and secret storage, and a missing worker as down', async () => {
     const core = await startCore();
     const [rendererSide, coreSide] = createEndpointPair();
