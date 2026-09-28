@@ -18,7 +18,7 @@ The only listener is the OAuth loopback redirect:
 
 - bound to `127.0.0.1` on an ephemeral port;
 - opened only during an authorization the user started;
-- accepts one request, validates `state`, uses PKCE;
+- accepts one request carrying the expected `state` (others get 400 and are ignored), uses PKCE; core checks `state` again before exchanging the code;
 - closes after the redirect or a short timeout.
 
 Chrome is controlled over a pipe, not a remote-debugging port.

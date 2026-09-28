@@ -242,9 +242,14 @@ function serveHost(proc: UtilityProcess, logger: Logger): RpcPeer {
       requireEncryption();
       return { ciphertext: safeStorage.encryptString(plaintext).toString('base64') };
     })
-    .handle('oauth.loopback', async ({ authorizeUrl, timeoutMs }) => {
+    .handle('oauth.loopback', async ({ authorizeUrl, timeoutMs, state }) => {
       log.info({ event: 'oauth.started' }, 'opening the consent page in the browser');
-      const result = await runLoopback({ authorizeUrl, timeoutMs, open: (url) => shell.openExternal(url) });
+      const result = await runLoopback({
+        authorizeUrl,
+        timeoutMs,
+        expectedState: state,
+        open: (url) => shell.openExternal(url),
+      });
       log.info(
         { event: 'oauth.redirect_received', ok: Boolean(result.params.code) },
         'OAuth redirect received',

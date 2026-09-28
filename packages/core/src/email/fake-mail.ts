@@ -25,6 +25,8 @@ export class FakeMail implements MailClients {
   /** The inbox as the server has it: UIDs are assigned on arrival. */
   readonly inbox: { uid: number; raw: Buffer }[] = [];
   uidValidity = 1;
+  /** What was downloaded, and how much of it. */
+  readonly downloads: { uid: number; maxBytes: number }[] = [];
   private nextUid = 1;
 
   /** A message arrives in the inbox. */
@@ -80,7 +82,17 @@ export class FakeMail implements MailClients {
         }
         const lastUid = cursor.lastUid;
         const messages = this.inbox.filter((m) => m.uid > lastUid).slice(0, limit);
-        return { uidValidity: this.uidValidity, lastUid: messages.at(-1)?.uid ?? lastUid, messages };
+        return {
+          uidValidity: this.uidValidity,
+          lastUid: messages.at(-1)?.uid ?? lastUid,
+          messages: messages.map((m) => ({ uid: m.uid, size: m.raw.length })),
+        };
+      },
+      download: async (_folder, uid, maxBytes) => {
+        this.downloads.push({ uid, maxBytes });
+        const m = this.inbox.find((x) => x.uid === uid);
+        if (!m) throw new Error('gone');
+        return m.raw.subarray(0, maxBytes);
       },
       close: async () => {},
     };

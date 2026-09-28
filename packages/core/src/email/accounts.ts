@@ -21,6 +21,7 @@ import type { MessageChannel } from '../channels/channel.js';
 import { EmailChannel } from './email-channel.js';
 import { GmailChannel } from './gmail-channel.js';
 import {
+  revokeToken,
   authorizeUrl,
   exchangeCode,
   GMAIL_SCOPES,
@@ -31,7 +32,14 @@ import {
   refreshAccessToken,
   type Http,
 } from './gmail.js';
-import { InboxAuthError, type InboxSource, type MailClients, type MailSettings } from './transport.js';
+import {
+  InboxAuthError,
+  MAX_WHOLE_MESSAGE_BYTES,
+  PARTIAL_MESSAGE_BYTES,
+  type InboxSource,
+  type MailClients,
+  type MailSettings,
+} from './transport.js';
 
 /** What Gmail accounts need from the outside: HTTPS, and main's OAuth loopback (ADR 016). */
 export interface GmailDeps {
@@ -39,6 +47,7 @@ export interface GmailDeps {
   loopback: (
     authorizeUrl: string,
     timeoutMs: number,
+    state: string,
   ) => Promise<{ redirectUri: string; params: Record<string, string> }>;
 }
 
@@ -151,43 +160,44 @@ export class AccountService {
       throw RpcError.validation(fields, 'account.connectionFailed');
     }
     const secretId = await this.secrets.put('imap_password', input.password);
-    return transaction(this.db, () => {
-      if (this.findActive(address)) {
-        this.secrets.delete(secretId);
-        throw RpcError.validation({ address: 'account.duplicate' });
-      }
-      const id = uuidv7();
-      const ts = this.now().toISOString();
-      const metadata: Metadata = {
-        fromName: input.fromName?.trim() || null,
-        smtp: input.smtp,
-        imap: input.imap,
-        username: input.username,
-        appendToSent: input.appendToSent ?? !serverSavesSent(input.smtp.host),
-      };
-      this.db
-        .prepare(
-          `INSERT INTO channel_accounts (id, channel, provider, display_name, external_account_id, secret_id, limits,
+    return this.orDropSecrets([secretId], () =>
+      transaction(this.db, () => {
+        if (this.findActive(address)) {
+          throw RpcError.validation({ address: 'account.duplicate' });
+        }
+        const id = uuidv7();
+        const ts = this.now().toISOString();
+        const metadata: Metadata = {
+          fromName: input.fromName?.trim() || null,
+          smtp: input.smtp,
+          imap: input.imap,
+          username: input.username,
+          appendToSent: input.appendToSent ?? !serverSavesSent(input.smtp.host),
+        };
+        this.db
+          .prepare(
+            `INSERT INTO channel_accounts (id, channel, provider, display_name, external_account_id, secret_id, limits,
                                          status, metadata, created_at, updated_at)
            VALUES (?, 'email', 'imap_smtp', ?, ?, ?, ?, 'active', ?, ?, ?)`,
-        )
-        .run(
-          id,
-          input.displayName?.trim() || address,
-          address,
-          secretId,
-          JSON.stringify(input.limits ?? DEFAULT_EMAIL_LIMITS),
-          JSON.stringify(metadata),
-          ts,
-          ts,
-        );
-      this.record('account.connected', id, ctx, {
-        provider: 'imap_smtp',
-        sentFolder: check.imap.sentFolder !== null,
-      });
-      this.onActivated(id);
-      return this.get(id);
-    });
+          )
+          .run(
+            id,
+            input.displayName?.trim() || address,
+            address,
+            secretId,
+            JSON.stringify(input.limits ?? DEFAULT_EMAIL_LIMITS),
+            JSON.stringify(metadata),
+            ts,
+            ts,
+          );
+        this.record('account.connected', id, ctx, {
+          provider: 'imap_smtp',
+          sentFolder: check.imap.sentFolder !== null,
+        });
+        this.onActivated(id);
+        return this.get(id);
+      }),
+    );
   }
 
   /**
@@ -200,7 +210,11 @@ export class AccountService {
     const clientSecret = input.clientSecret?.trim() || null;
     let redirect: { redirectUri: string; params: Record<string, string> };
     try {
-      redirect = await this.gmail.loopback(authorizeUrl(input.clientId, challenge, state), OAUTH_TIMEOUT_MS);
+      redirect = await this.gmail.loopback(
+        authorizeUrl(input.clientId, challenge, state),
+        OAUTH_TIMEOUT_MS,
+        state,
+      );
     } catch (error) {
       this.logger.warn({ event: 'gmail.oauth_aborted', err: error }, 'OAuth did not complete');
       throw new RpcError('CONFLICT', 'Authorization was not completed', 'oauth.notCompleted');
@@ -246,47 +260,52 @@ export class AccountService {
     }
     const refreshId = await this.secrets.put('oauth_refresh_token', tokens.refreshToken);
     const secretId = clientSecret ? await this.secrets.put('oauth_client_secret', clientSecret) : null;
-    if (existing)
-      return this.renewGmail(existing, { clientId: input.clientId, refreshId, secretId, tokens }, ctx);
-    return transaction(this.db, () => {
-      const id = uuidv7();
-      const ts = this.now().toISOString();
-      const metadata: Metadata = {
-        fromName: input.fromName?.trim() || null,
-        smtp: null,
-        imap: null,
-        username: null,
-        appendToSent: false,
-        clientId: input.clientId,
-        clientSecretId: secretId,
-      };
-      this.db
-        .prepare(
-          `INSERT INTO channel_accounts (id, channel, provider, display_name, external_account_id, secret_id, limits,
+    if (existing) {
+      return this.orDropSecrets([refreshId, secretId], () =>
+        this.renewGmail(existing, { clientId: input.clientId, refreshId, secretId, tokens }, ctx),
+      );
+    }
+    return this.orDropSecrets([refreshId, secretId], () =>
+      transaction(this.db, () => {
+        const id = uuidv7();
+        const ts = this.now().toISOString();
+        const metadata: Metadata = {
+          fromName: input.fromName?.trim() || null,
+          smtp: null,
+          imap: null,
+          username: null,
+          appendToSent: false,
+          clientId: input.clientId,
+          clientSecretId: secretId,
+        };
+        this.db
+          .prepare(
+            `INSERT INTO channel_accounts (id, channel, provider, display_name, external_account_id, secret_id, limits,
                                          status, metadata, created_at, updated_at)
            VALUES (?, 'email', 'gmail_api', ?, ?, ?, ?, 'active', ?, ?, ?)`,
-        )
-        .run(
-          id,
-          address,
-          address,
-          refreshId,
-          JSON.stringify(input.limits ?? DEFAULT_EMAIL_LIMITS),
-          JSON.stringify(metadata),
-          ts,
-          ts,
-        );
-      // Replies are read from now on: start the history cursor at the current position.
-      this.db
-        .prepare(
-          `INSERT INTO mailbox_cursors (channel_account_id, folder, uid_validity, last_uid) VALUES (?, 'INBOX', 0, ?)`,
-        )
-        .run(id, Number(profile.historyId));
-      this.tokens.set(id, { token: tokens.accessToken, expiresAt: tokens.expiresAt });
-      this.record('account.connected', id, ctx, { provider: 'gmail_api' });
-      this.onActivated(id);
-      return this.get(id);
-    });
+          )
+          .run(
+            id,
+            address,
+            address,
+            refreshId,
+            JSON.stringify(input.limits ?? DEFAULT_EMAIL_LIMITS),
+            JSON.stringify(metadata),
+            ts,
+            ts,
+          );
+        // Replies are read from now on: start the history cursor at the current position.
+        this.db
+          .prepare(
+            `INSERT INTO mailbox_cursors (channel_account_id, folder, uid_validity, last_uid) VALUES (?, 'INBOX', 0, ?)`,
+          )
+          .run(id, Number(profile.historyId));
+        this.tokens.set(id, { token: tokens.accessToken, expiresAt: tokens.expiresAt });
+        this.record('account.connected', id, ctx, { provider: 'gmail_api' });
+        this.onActivated(id);
+        return this.get(id);
+      }),
+    );
   }
 
   /** Signing in again to a connected Gmail account (e.g. after the token was revoked): new tokens, same account. */
@@ -346,34 +365,36 @@ export class AccountService {
       }
       secretId = await this.secrets.put('imap_password', input.password);
     }
-    return transaction(this.db, () => {
-      const current = this.row(input.id);
-      const metadata = JSON.parse(current.metadata) as Metadata;
-      if (input.fromName !== undefined) metadata.fromName = input.fromName?.trim() || null;
-      const fields: string[] = [];
-      if (input.displayName !== undefined) fields.push('displayName');
-      if (input.fromName !== undefined) fields.push('fromName');
-      if (input.limits !== undefined) fields.push('limits');
-      if (secretId) fields.push('password');
-      this.db
-        .prepare(
-          `UPDATE channel_accounts SET display_name = ?, limits = ?, metadata = ?, secret_id = ?, status = ?, updated_at = ?
+    return this.orDropSecrets([secretId], () =>
+      transaction(this.db, () => {
+        const current = this.row(input.id);
+        const metadata = JSON.parse(current.metadata) as Metadata;
+        if (input.fromName !== undefined) metadata.fromName = input.fromName?.trim() || null;
+        const fields: string[] = [];
+        if (input.displayName !== undefined) fields.push('displayName');
+        if (input.fromName !== undefined) fields.push('fromName');
+        if (input.limits !== undefined) fields.push('limits');
+        if (secretId) fields.push('password');
+        this.db
+          .prepare(
+            `UPDATE channel_accounts SET display_name = ?, limits = ?, metadata = ?, secret_id = ?, status = ?, updated_at = ?
            WHERE id = ?`,
-        )
-        .run(
-          input.displayName ?? current.display_name,
-          input.limits ? JSON.stringify(input.limits) : current.limits,
-          JSON.stringify(metadata),
-          secretId ?? current.secret_id,
-          secretId ? 'active' : current.status,
-          this.now().toISOString(),
-          current.id,
-        );
-      if (secretId && current.secret_id) this.secrets.delete(current.secret_id);
-      this.record('account.updated', current.id, ctx, { fields });
-      if (secretId) this.onActivated(current.id);
-      return this.get(current.id);
-    });
+          )
+          .run(
+            input.displayName ?? current.display_name,
+            input.limits ? JSON.stringify(input.limits) : current.limits,
+            JSON.stringify(metadata),
+            secretId ?? current.secret_id,
+            secretId ? 'active' : current.status,
+            this.now().toISOString(),
+            current.id,
+          );
+        if (secretId && current.secret_id) this.secrets.delete(current.secret_id);
+        this.record('account.updated', current.id, ctx, { fields });
+        if (secretId) this.onActivated(current.id);
+        return this.get(current.id);
+      }),
+    );
   }
 
   async test(id: string): Promise<ConnectionCheck> {
@@ -383,9 +404,7 @@ export class AccountService {
         await (await this.gmailApi(row)).profile(AbortSignal.timeout(CHECK_TIMEOUT_MS));
         return { smtp: { ok: true }, imap: { ok: true, sentFolder: 'SENT' } };
       } catch (error) {
-        const auth =
-          error instanceof OAuthError ||
-          (error instanceof GmailError && (error.status === 401 || error.status === 403));
+        const auth = error instanceof OAuthError || (error instanceof GmailError && error.isAuth);
         if (auth) this.markAuthRequired(id);
         const reason = auth ? 'authFailed' : 'connectionFailed';
         return { smtp: { ok: false, error: reason }, imap: { ok: false, error: reason, sentFolder: null } };
@@ -394,7 +413,19 @@ export class AccountService {
     return this.check(await this.settingsOf(row, true));
   }
 
-  disconnect(id: string, ctx: CommandContext): void {
+  async disconnect(id: string, ctx: CommandContext): Promise<void> {
+    const before = this.row(id);
+    // Gmail: read the refresh token before its secret is deleted, to revoke the grant at Google.
+    const refreshToken =
+      before.provider === 'gmail_api' && before.secret_id
+        ? await this.secrets.reveal(before.secret_id).catch((error: unknown) => {
+            this.logger.warn(
+              { event: 'gmail.revoke_skipped', accountId: id, err: error },
+              'could not read the token to revoke',
+            );
+            return null;
+          })
+        : null;
     transaction(this.db, () => {
       const row = this.row(id);
       this.db
@@ -409,6 +440,14 @@ export class AccountService {
       this.tokens.delete(id);
       this.record('account.disconnected', id, ctx);
     });
+    if (refreshToken) {
+      // Best effort: the account is disconnected locally either way (audit 3.5).
+      const revoked = await revokeToken(this.gmail.http, refreshToken);
+      this.logger.info(
+        { event: 'gmail.token_revoked', accountId: id, revoked },
+        'Google grant revoked on disconnect',
+      );
+    }
   }
 
   /** The sending channel of an active account, or undefined (unknown, disconnected, needs a new password). */
@@ -496,6 +535,19 @@ export class AccountService {
       )
       .run(this.now().toISOString(), id);
     this.logger.warn({ event: 'account.auth_required', accountId: id }, 'email account needs a new password');
+  }
+
+  /**
+   * Runs the transaction that stores references to freshly written secrets; if it fails, the
+   * secrets are deleted (outside it: a delete inside would roll back too) instead of lingering.
+   */
+  private orDropSecrets<T>(ids: (string | null)[], fn: () => T): T {
+    try {
+      return fn();
+    } catch (error) {
+      for (const id of ids) if (id) this.secrets.delete(id);
+      throw error;
+    }
   }
 
   /** A Gmail client with a cached access token, refreshed from the stored refresh token. */
@@ -628,7 +680,14 @@ function imapInbox(box: Awaited<ReturnType<MailClients['mailbox']>>): InboxSourc
         cursor: { a: batch.uidValidity, b: batch.lastUid },
         messages: batch.messages.map((m) => ({
           providerId: `${batch.uidValidity}:${m.uid}`,
-          load: () => Promise.resolve(m.raw),
+          // A large message is read only in part: enough to match it, not to fill the memory.
+          load: () =>
+            box.download(
+              'INBOX',
+              m.uid,
+              m.size <= MAX_WHOLE_MESSAGE_BYTES ? MAX_WHOLE_MESSAGE_BYTES : PARTIAL_MESSAGE_BYTES,
+              signal,
+            ),
           cursor: { a: batch.uidValidity, b: m.uid },
         })),
         more: batch.messages.length >= limit,
@@ -650,10 +709,7 @@ function gmailInbox(api: GmailApi): InboxSource {
       try {
         since = await api.inboxSince(String(cursor.b), signal);
       } catch (error) {
-        if (
-          error instanceof OAuthError ||
-          (error instanceof GmailError && (error.status === 401 || error.status === 403))
-        ) {
+        if (error instanceof OAuthError || (error instanceof GmailError && error.isAuth)) {
           throw new InboxAuthError('Gmail refused the credentials');
         }
         throw error;
@@ -665,7 +721,7 @@ function gmailInbox(api: GmailApi): InboxSource {
         cursor: { a: 0, b: more ? Number(batch.at(-1)?.historyId ?? cursor.b) : Number(since.historyId) },
         messages: batch.map((m) => ({
           providerId: `gmail:${m.messageId}`,
-          load: () => api.raw(m.messageId, signal),
+          load: () => api.load(m.messageId, MAX_WHOLE_MESSAGE_BYTES, signal),
           cursor: { a: 0, b: Number(m.historyId) },
         })),
         more,

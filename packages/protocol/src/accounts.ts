@@ -99,6 +99,8 @@ export const oauthLoopbackRequestSchema = z.object({
     .int()
     .min(10_000)
     .max(15 * 60_000),
+  /** Requests carrying another `state` are ignored: a stray request must not end the authorization. */
+  state: z.string().min(16).max(200),
 });
 export const oauthLoopbackResultSchema = z.object({
   redirectUri: z.string(),
