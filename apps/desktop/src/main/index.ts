@@ -1,5 +1,13 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, MessageChannelMain, safeStorage, session, type UtilityProcess } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  MessageChannelMain,
+  powerMonitor,
+  safeStorage,
+  session,
+  type UtilityProcess,
+} from 'electron';
 import { RpcError, RpcPeer, type CoreState, type Logger } from '@tabreach/protocol';
 import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
@@ -51,8 +59,12 @@ function main(): void {
   const core = new Supervised('core', join(__dirname, 'core.js'), childEnv, logger, isDev);
   const worker = new Supervised('worker', join(__dirname, 'worker.js'), childEnv, logger, isDev);
 
+  /** Host channel to the current core process; replaced when core restarts. */
+  let hostPeer: RpcPeer | null = null;
+
   core.onSpawn = (proc) => {
-    serveHost(proc, logger);
+    hostPeer?.close();
+    hostPeer = serveHost(proc, logger);
     connectRenderer();
     connectWorker();
     startSelfCheck();
@@ -173,6 +185,18 @@ function main(): void {
       session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
       session.defaultSession.setPermissionCheckHandler(() => false);
       registerSaveFile(isAppUrl, logger);
+      // Sleep and wake: core stops claiming jobs, then re-plans overdue work (docs/17, "Sleep").
+      const power = (type: 'power.suspend' | 'power.resume') => {
+        logger.info({ event: type }, 'power state changed');
+        hostPeer?.request(type, {}).catch((error: unknown) => {
+          logger.warn(
+            { event: 'power.notify_failed', type, err: error },
+            'could not tell core about power state',
+          );
+        });
+      };
+      powerMonitor.on('suspend', () => power('power.suspend'));
+      powerMonitor.on('resume', () => power('power.resume'));
       core.start();
       worker.start();
       if (selfCheck.enabled) {
@@ -201,14 +225,14 @@ function main(): void {
 }
 
 /** Answers core's host-channel requests: Electron-only capabilities (safeStorage). */
-function serveHost(proc: UtilityProcess, logger: Logger): void {
+function serveHost(proc: UtilityProcess, logger: Logger): RpcPeer {
   const log = logger.child({ channel: 'host' });
   const requireEncryption = () => {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new RpcError('UNAVAILABLE', 'Encryption is not available');
     }
   };
-  new RpcPeer(utilityProcessEndpoint(proc), {
+  return new RpcPeer(utilityProcessEndpoint(proc), {
     onInvalid: (reason) => log.warn({ event: 'ipc.invalid_message', reason }, 'dropped message'),
     onHandlerError: (type, err) => log.error({ event: 'ipc.handler_failed', type, err }, 'handler failed'),
   })

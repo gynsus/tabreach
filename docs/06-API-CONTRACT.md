@@ -181,7 +181,7 @@ query   app.versions                   # app, Electron, Chrome, adapter packs
 command app.backupDatabase
 ```
 
-These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel, which becomes bidirectional in Phase 2: main also sends core `power.suspend` / `power.resume`.
+These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel. The host channel is bidirectional: main sends core `power.suspend` / `power.resume` from `powerMonitor` (implemented): core stops claiming jobs while the Mac sleeps and, on wake, resumes and re-plans overdue work into the active windows.
 
 ## Events
 

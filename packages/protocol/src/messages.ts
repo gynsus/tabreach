@@ -296,6 +296,10 @@ export const requests = {
     request: launchCheckRequestSchema,
     response: launchCheckResultSchema,
   },
+  /** Main → core: the Mac is going to sleep; stop claiming jobs (docs/17, "Sleep"). */
+  'power.suspend': { channel: 'host', kind: 'command', request: z.object({}), response: ok },
+  /** Main → core: the Mac woke up; re-plan overdue work into the active windows. */
+  'power.resume': { channel: 'host', kind: 'command', request: z.object({}), response: ok },
   'secret.encrypt': {
     channel: 'host',
     kind: 'command',
