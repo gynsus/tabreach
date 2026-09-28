@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # macOS only (docs/01-MVP-SCOPE.md). GitHub's macOS runners ship Google Chrome, which the
+    # browser tests and the Electron E2E use against local fixtures — never live sites.
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Format
+        run: pnpm format:check
+
+      - name: Unit and integration tests
+        run: pnpm test
+
+      - name: Browser tests (installed Chrome, local fixtures)
+        run: pnpm test:browser
+
+      - name: Electron E2E
+        run: pnpm test:e2e
+
+      - name: Package (unsigned smoke build)
+        run: pnpm package
+
+      - name: Packaged self-check (components only, no network)
+        run: apps/desktop/release/mac-arm64/TabReach.app/Contents/MacOS/TabReach --self-check

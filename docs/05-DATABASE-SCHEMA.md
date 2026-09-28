@@ -4,9 +4,9 @@ This document specifies the initial relational shape. Migrations are authoritati
 
 ## General rules
 
-- SQLite 3 (via `better-sqlite3`), one file, opened only by core.
+- SQLite 3 via Node's built-in `node:sqlite` (ADR 011), one file, opened only by core.
 - Pragmas on open: `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`.
-- Tables declared `STRICT` where the ORM allows it.
+- Tables declared `STRICT`.
 - Primary keys: `id TEXT` holding a UUIDv7 string generated in application code.
 - Timestamps: `TEXT` in ISO-8601 UTC with milliseconds and `Z` (`2026-09-28T10:00:00.000Z`) — lexicographically sortable.
 - Booleans: `INTEGER` 0/1 with `CHECK`.

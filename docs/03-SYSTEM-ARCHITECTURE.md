@@ -24,7 +24,7 @@ The MVP is a single Electron application on the user's Mac. It runs as four OS p
 |                       | MessagePort (browser protocol)              |
 |                       v                                             |
 |  +------------------------------------------+                       |
-|  | Browser worker (isolated process*)       |                       |
+|  | Browser worker (utilityProcess)          |                       |
 |  | Playwright | profiles | sessions |       |                       |
 |  | browser adapters + adapter packs |       |                       |
 |  | overlay injection | takeover | resolver  |                       |
@@ -40,9 +40,6 @@ The MVP is a single Electron application on the user's Mac. It runs as four OS p
 
  Outbound only: AI provider API (user key), Gmail API / IMAP / SMTP,
  websites being researched or contacted.
-
- * utilityProcess preferred; final host type decided by the Phase 0
-   packaged-app validation (ADR 012).
 ```
 
 ## Processes
@@ -52,7 +49,7 @@ The MVP is a single Electron application on the user's Mac. It runs as four OS p
 Responsibilities:
 
 - application lifecycle, single-instance lock;
-- spawning, health-checking and restarting `core` (`utilityProcess.fork`) and `browser-worker` (host per ADR 012) with bounded restart backoff;
+- spawning, health-checking and restarting `core` and `browser-worker` (`utilityProcess.fork`) with bounded restart backoff;
 - creating `MessageChannelMain` pairs and handing ports to renderer, core and worker;
 - windows, tray/menu, native notifications, focusing Chrome windows on request;
 - `powerMonitor` (suspend/resume/lock) events forwarded to core; optional `powerSaveBlocker` while campaigns are active;
@@ -91,9 +88,9 @@ Responsibilities:
 
 Core is written as plain Node code with no Electron imports so that it can be tested and run in plain Node. Electron-specific capabilities (secrets, power events) arrive through the main-process port.
 
-### Browser worker (`packages/browser-worker`, isolated process)
+### Browser worker (`packages/browser-worker`, utilityProcess)
 
-Host process type: Electron `utilityProcess` is preferred but **not yet an invariant**. A known Electron issue (electron/electron#48145, packaged app on Windows, closed as not planned) showed Chrome launched by Playwright from a `utilityProcess` without Internet connectivity. Phase 0 validates the packaged `.app` on Apple Silicon macOS with real navigation; ADR 012 records the result and the chosen host. Worker code must not depend on `utilityProcess`-specific APIs beyond a thin host adapter (message channel + lifecycle), so the host can be swapped.
+Host process type: Electron `utilityProcess`, validated in Phase 0 in the packaged, fused app on Apple Silicon (ADR 012; electron/electron#48145 did not reproduce on macOS). Worker code does not depend on `utilityProcess`-specific APIs beyond a thin host adapter (message channel + lifecycle), so the host can be swapped if a future release regresses.
 
 Responsibilities:
 
@@ -149,7 +146,7 @@ Because all processes ship in the same app bundle, protocol versions always matc
 - One SQLite database file in `~/Library/Application Support/TabReach/data/app.db`.
 - WAL mode, `foreign_keys=ON`, `busy_timeout` set, `synchronous=NORMAL`.
 - Only core opens the file.
-- Schema in `05-DATABASE-SCHEMA.md`; migrations via drizzle-kit, applied by core on startup after an automatic local recovery backup.
+- Driver: Node's built-in `node:sqlite` (ADR 011). Schema in `05-DATABASE-SCHEMA.md`; plain-SQL migrations applied by core on startup after an automatic local recovery backup.
 - Never copy `app.db` as a plain file while it is open (WAL would be ignored). All backups use the SQLite online backup API or `VACUUM INTO`.
 
 ### Two kinds of backup

@@ -1,0 +1,31 @@
+# Packaging for macOS (docs/22-IMPLEMENTATION-PLAN.md, Phase 0). Signing and notarization come in Phase 8.
+appId: dev.tabreach.app
+productName: TabReach
+copyright: Copyright © 2026 TabReach
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+asar: true
+npmRebuild: false
+mac:
+  category: public.app-category.productivity
+  target:
+    - target: dir
+      arch: [arm64]
+  # Ad-hoc signature (required on Apple Silicon after fuses are flipped) until Phase 8 adds
+  # Developer ID signing and notarization.
+  identity: '-'
+  hardenedRuntime: true
+# Electron fuses (docs/18-SECURITY-PRIVACY-COMPLIANCE.md). RunAsNode stays disabled: the Phase 0
+# validation showed utilityProcess works for the browser worker (ADR 012).
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  grantFileProtocolExtraPrivileges: false

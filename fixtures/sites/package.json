@@ -1,0 +1,13 @@
+{
+  "name": "@tabreach/fixture-sites",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "serve": "node src/serve.ts"
+  }
+}

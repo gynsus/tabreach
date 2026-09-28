@@ -1,0 +1,37 @@
+{
+  "name": "@tabreach/desktop",
+  "productName": "TabReach",
+  "version": "0.0.1",
+  "description": "Local-only outreach browser",
+  "author": "TabReach",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "package": "electron-vite build && electron-builder --mac dir --arm64",
+    "typecheck": "tsc -p tsconfig.node.json && tsc -p tsconfig.web.json",
+    "test:e2e": "electron-vite build && playwright test"
+  },
+  "dependencies": {
+    "pino": "10.3.1",
+    "playwright-core": "1.63.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@tabreach/browser-worker": "workspace:*",
+    "@tabreach/core": "workspace:*",
+    "@tabreach/fixture-sites": "workspace:*",
+    "@tabreach/protocol": "workspace:*",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "5.2.0",
+    "electron": "44.4.5",
+    "electron-builder": "26.15.3",
+    "electron-vite": "5.0.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "vite": "7.3.6",
+    "zod": "4.6.5"
+  }
+}

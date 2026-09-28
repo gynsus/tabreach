@@ -28,7 +28,7 @@ Do not implement business features yet.
 
 4. Core:
    - opens SQLite at the Application Support path (configurable for dev/tests) with the documented pragmas;
-   - drizzle-kit migrations with an automatic pre-migration local recovery backup via the SQLite backup API (never a plain file copy);
+   - plain-SQL migrations with an automatic pre-migration local recovery backup via the SQLite backup API (never a plain file copy);
    - one trivial table (`settings`) and its migration;
    - reports DB health.
 
@@ -50,7 +50,7 @@ Do not implement business features yet.
 
 10. Spikes, each with a short written result appended to the relevant ADR:
     - `pnpm package` builds an unsigned `.app` with electron-builder that starts and runs migrations (ADR 011/012); list what signing/notarization will require;
-    - `better-sqlite3` works under Electron and under plain Node in tests, or `node:sqlite` is adopted instead (ADR 011);
+    - SQLite driver: `better-sqlite3` under Electron and plain Node vs built-in `node:sqlite` (ADR 011);
     - **do first**: packaged browser-worker validation (ADR 012) — in the packaged `.app` on Apple Silicon macOS, the worker launches installed Chrome with a persistent profile, runs `page.goto('https://example.com')`, waits for load, reads the title, closes, and repeats after an app restart. If the `utilityProcess` host fails, try the fallback hosts from ADR 012 in order and record the choice (including the `RunAsNode` fuse consequence).
 
 11. `docs/DEVELOPMENT.md` with exact setup/run/test/package commands based on the implemented repository.
