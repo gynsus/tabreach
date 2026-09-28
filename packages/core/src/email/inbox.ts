@@ -22,13 +22,12 @@ import type { SuppressionService } from '../suppressions/suppression-service.js'
 import type { AccountService } from './accounts.js';
 import { parseInbound, type InboundMail } from './inbound.js';
 import { messageIdFor } from './mime.js';
-import type { MailClients } from './transport.js';
+import { InboxAuthError, type InboxSource } from './transport.js';
 
 export const JOB_POLL = 'mailbox.poll';
 const POLL_EVERY_MS = 2 * 60_000;
 const POLL_AFTER_ERROR_MS = 5 * 60_000;
 const BATCH = 50;
-const INBOX = 'INBOX';
 
 /** Senders that are never a person answering (docs/14), unless they write in a campaign thread. */
 const ROLE_SENDER =
@@ -70,7 +69,6 @@ export interface InboxDeps {
   policy: ContactPolicy;
   suppressions: SuppressionService;
   accounts: AccountService;
-  clients: MailClients;
   jobs: JobQueue;
   logger: Logger;
   changed: (entities: ChangedEntity[]) => void;
@@ -104,74 +102,68 @@ export class InboxService {
   /** Every active IMAP account keeps one polling job (core start). */
   resync(): void {
     for (const account of this.d.accounts.list()) {
-      if (account.status === 'active' && account.provider === 'imap_smtp') this.schedulePoll(account.id);
+      if (account.status === 'active') this.schedulePoll(account.id);
     }
   }
 
   // Polling -----------------------------------------------------------------------------------
 
   async poll(accountId: string, signal: AbortSignal, correlationId: string): Promise<JobOutcome> {
-    let settings;
     try {
-      const account = this.d.accounts.get(accountId);
-      if (account.status !== 'active' || account.provider !== 'imap_smtp') return;
-      settings = await this.d.accounts.mailSettings(accountId);
+      if (this.d.accounts.get(accountId).status !== 'active') return;
     } catch (error) {
       if (error instanceof RpcError && error.problem.code === 'NOT_FOUND') return; // disconnected
       throw error;
     }
     const cursor = this.cursor(accountId);
-    let box;
-    try {
-      box = await this.d.clients.mailbox(settings, signal);
-    } catch (error) {
-      const reason = (error as { authenticationFailed?: boolean }).authenticationFailed
-        ? 'authFailed'
-        : 'connectionFailed';
-      if (reason === 'authFailed') this.d.accounts.markAuthRequired(accountId);
-      this.saveCursor(accountId, { error: reason });
-      this.d.logger.warn({ event: 'inbox.poll_failed', accountId, reason }, 'could not open the inbox');
-      this.d.changed(['account']);
-      return reason === 'authFailed'
-        ? undefined
-        : { continueAt: new Date(this.d.now().getTime() + POLL_AFTER_ERROR_MS) };
-    }
     let received = 0;
-    let full: boolean;
+    let more: boolean;
+    let source: InboxSource | undefined;
     try {
-      const batch = await box.fetchNew(
-        INBOX,
-        { uidValidity: cursor?.uid_validity ?? null, lastUid: cursor?.last_uid ?? null },
+      source = await this.d.accounts.openInbox(accountId, signal);
+      const batch = await source.fetchNew(
+        { a: cursor?.uid_validity ?? null, b: cursor?.last_uid ?? null },
         BATCH,
         signal,
       );
-      full = batch.messages.length >= BATCH;
+      more = batch.more;
       for (const message of batch.messages) {
         let mail: InboundMail | null = null;
         try {
           mail = await parseInbound(message.raw);
         } catch (error) {
           this.d.logger.warn(
-            { event: 'inbox.unparseable', accountId, uid: message.uid, err: error },
+            { event: 'inbox.unparseable', accountId, err: error },
             'skipped a message that could not be parsed',
           );
         }
         // One transaction per message: the result and the cursor move together.
         transaction(this.d.db, () => {
           if (mail) {
-            const result = this.ingest(accountId, mail, `${batch.uidValidity}:${message.uid}`, correlationId);
+            const result = this.ingest(accountId, mail, message.providerId, correlationId);
             if (result.stored) received++;
           }
-          this.saveCursor(accountId, { uidValidity: batch.uidValidity, lastUid: message.uid });
+          if (message.cursor)
+            this.saveCursor(accountId, { uidValidity: message.cursor.a, lastUid: message.cursor.b });
         });
       }
-      this.saveCursor(accountId, { uidValidity: batch.uidValidity, lastUid: batch.lastUid, polled: true });
+      this.saveCursor(accountId, { uidValidity: batch.cursor.a, lastUid: batch.cursor.b, polled: true });
+    } catch (error) {
+      const auth = error instanceof InboxAuthError;
+      if (auth) this.d.accounts.markAuthRequired(accountId);
+      this.saveCursor(accountId, { error: auth ? 'authFailed' : 'connectionFailed' });
+      this.d.logger.warn(
+        { event: 'inbox.poll_failed', accountId, auth, err: auth ? undefined : error },
+        'could not read the inbox',
+      );
+      this.d.changed(['account']);
+      return auth ? undefined : { continueAt: new Date(this.d.now().getTime() + POLL_AFTER_ERROR_MS) };
     } finally {
-      await box.close();
+      await source?.close();
     }
     if (received > 0) this.d.changed(['conversation', 'enrollment', 'campaign', 'activity']);
     else this.d.changed(['account']);
-    return { continueAt: new Date(this.d.now().getTime() + (full ? 1_000 : POLL_EVERY_MS)) };
+    return { continueAt: new Date(this.d.now().getTime() + (more ? 1_000 : POLL_EVERY_MS)) };
   }
 
   // Outgoing --------------------------------------------------------------------------------
@@ -556,7 +548,14 @@ export class InboxService {
            last_polled_at = COALESCE(excluded.last_polled_at, last_polled_at),
            last_error = excluded.last_error`,
       )
-      .run(accountId, INBOX, v.uidValidity ?? null, v.lastUid ?? null, v.polled ? ts : null, v.error ?? null);
+      .run(
+        accountId,
+        'INBOX',
+        v.uidValidity ?? null,
+        v.lastUid ?? null,
+        v.polled ? ts : null,
+        v.error ?? null,
+      );
   }
 
   private row(id: string): ConversationRow {

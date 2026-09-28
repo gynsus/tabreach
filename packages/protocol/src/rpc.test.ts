@@ -64,6 +64,20 @@ describe('RpcPeer', () => {
     expect((error as RpcError).problem.code).toBe('VALIDATION_FAILED');
   });
 
+  it('returns schema messages that are translation keys as field errors', async () => {
+    const { client, server } = peers();
+    server.handle('accounts.connectGmail', () => {
+      throw new Error('handler must not run');
+    });
+    const error = (await client
+      .request('accounts.connectGmail', { clientId: 'not-a-client-id' })
+      .catch((e: unknown) => e)) as RpcError;
+    expect(error.problem).toMatchObject({
+      code: 'VALIDATION_FAILED',
+      fields: { clientId: 'oauth.clientIdInvalid' },
+    });
+  });
+
   it('answers requests without a handler with UNKNOWN_MESSAGE_TYPE', async () => {
     const { client } = peers();
     const error = await client.request('worker.health', {}).catch((e: unknown) => e);

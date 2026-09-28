@@ -71,7 +71,7 @@ export function Field(props: {
   const messageId = `${id}-message`;
   const error = props.errorKey ? translateKey(t, `errors.${props.errorKey}`, t('errors.generic')) : null;
   return (
-    <div className={cn('grid gap-1', props.className)}>
+    <div className={cn('grid content-start gap-1', props.className)}>
       <label htmlFor={id} className="text-xs font-medium text-soft">
         {props.label}
       </label>

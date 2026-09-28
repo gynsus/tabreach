@@ -141,6 +141,8 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
   behind `MailClients` (`packages/core/src/email/transport.ts`); tests use `FakeMail`, and the SMTP
   outcome rules are also tested against a local `smtp-server` (plaintext on 127.0.0.1 only through
   `createImapSmtpClients({ plaintextLoopback: true })` — the product always requires TLS).
+- Gmail: `packages/core/src/email/gmail.ts` (OAuth + API over `fetch`), tested against `FakeGoogle`, which
+  checks PKCE and bearer tokens. Main's loopback listener is `apps/desktop/src/main/oauth-loopback.ts`.
 - Passwords are stored with `SecretStore` (encrypted by main); account DTOs and logs never contain them.
 
 ## User interface

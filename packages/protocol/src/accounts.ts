@@ -76,3 +76,31 @@ export const connectionCheckSchema = z.object({
   imap: z.object({ ok: z.boolean(), error: z.string().optional(), sentFolder: z.string().nullable() }),
 });
 export type ConnectionCheck = z.infer<typeof connectionCheckSchema>;
+
+/** A Gmail account through the user's own OAuth client (ADR 016, options A and B). */
+export const gmailAccountInputSchema = z.object({
+  /** Client ID of a "Desktop app" OAuth client in the user's Google Cloud project. */
+  clientId: z
+    .string()
+    .trim()
+    .regex(/^[\w.-]+\.apps\.googleusercontent\.com$/, 'oauth.clientIdInvalid'),
+  /** Desktop client secrets are not confidential, but are still stored encrypted. */
+  clientSecret: z.string().trim().max(200).nullish(),
+  fromName: z.string().trim().max(200).nullish(),
+  limits: accountLimitsSchema.optional(),
+});
+export type GmailAccountInput = z.infer<typeof gmailAccountInputSchema>;
+
+/** Main opens the consent page and waits for the loopback redirect (core -> main). */
+export const oauthLoopbackRequestSchema = z.object({
+  authorizeUrl: z.url({ protocol: /^https$/ }),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(10_000)
+    .max(15 * 60_000),
+});
+export const oauthLoopbackResultSchema = z.object({
+  redirectUri: z.string(),
+  params: z.record(z.string(), z.string()),
+});

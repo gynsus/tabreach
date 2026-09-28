@@ -227,7 +227,10 @@ export class RpcPeer {
     }
     const payload = requests[type].request.safeParse(envelope.payload);
     if (!payload.success) {
-      return failure('VALIDATION_FAILED', 'Validation failed', z.prettifyError(payload.error));
+      const result = failure('VALIDATION_FAILED', 'Validation failed', z.prettifyError(payload.error));
+      const fields = fieldKeys(payload.error);
+      if (!result.ok && Object.keys(fields).length > 0) result.error.fields = fields;
+      return result;
     }
     try {
       const data = await handler(payload.data, {
@@ -292,6 +295,17 @@ export class RpcPeer {
     }
     pending.resolve(data.data);
   }
+}
+
+/** Schema messages written as translation keys (`oauth.clientIdInvalid`) become per-field errors. */
+function fieldKeys(error: z.ZodError): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const issue of error.issues) {
+    if (/^[a-z][\w]*(\.[a-zA-Z]\w*)+$/.test(issue.message) && issue.path.length > 0) {
+      fields[issue.path.join('.')] ??= issue.message;
+    }
+  }
+  return fields;
 }
 
 function failure(code: ErrorCode, title: string, detail?: string): ResultPayload {

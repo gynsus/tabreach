@@ -58,6 +58,7 @@ function serversFor(address: string): { smtp: MailServer; imap: MailServer } {
 export function EmailAccounts() {
   const { t } = useTranslation();
   const [connecting, setConnecting] = useState(false);
+  const [gmail, setGmail] = useState(false);
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: () => call('accounts.list', {}) });
   const items = accounts.data?.items ?? [];
   return (
@@ -69,10 +70,16 @@ export function EmailAccounts() {
           </h2>
           <p className="text-[13px] text-soft">{t('accounts.subtitle')}</p>
         </div>
-        <Button onClick={() => setConnecting(true)}>
-          <Plus size={14} aria-hidden />
-          {t('accounts.connect')}
-        </Button>
+        <span className="flex gap-2">
+          <Button onClick={() => setGmail(true)}>
+            <Plus size={14} aria-hidden />
+            {t('accounts.connectGmail')}
+          </Button>
+          <Button onClick={() => setConnecting(true)}>
+            <Plus size={14} aria-hidden />
+            {t('accounts.connect')}
+          </Button>
+        </span>
       </div>
       {accounts.isError ? <Alert>{errorMessage(t, accounts.error)}</Alert> : null}
       {accounts.isSuccess && items.length === 0 ? (
@@ -89,6 +96,7 @@ export function EmailAccounts() {
         </ul>
       ) : null}
       {connecting ? <ConnectAccount onClose={() => setConnecting(false)} /> : null}
+      {gmail ? <ConnectGmail onClose={() => setGmail(false)} /> : null}
     </section>
   );
 }
@@ -118,6 +126,7 @@ function AccountRow({ account: a }: { account: EmailAccount }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [confirm, setConfirm] = useState(false);
+  const [reauth, setReauth] = useState(false);
   const [password, setPassword] = useState('');
   const refresh = () => invalidateEntities(qc, ['account', 'activity']);
   const test = useMutation({ mutationFn: () => call('accounts.test', { id: a.id }) });
@@ -141,7 +150,7 @@ function AccountRow({ account: a }: { account: EmailAccount }) {
         <span className="grid gap-0.5">
           <span className="font-medium">{a.fromName ? `${a.fromName} <${a.address}>` : a.address}</span>
           <span className="text-xs text-faint">
-            {a.smtp ? `${a.smtp.host}:${a.smtp.port}` : null} ·{' '}
+            {a.smtp ? `${a.smtp.host}:${a.smtp.port}` : 'Gmail API'} ·{' '}
             {t('accounts.perDay', { count: a.limits.dailyLimit })} ·{' '}
             {a.appendToSent ? t('accounts.appendToSent') : t('accounts.serverSaves')}
           </span>
@@ -169,7 +178,15 @@ function AccountRow({ account: a }: { account: EmailAccount }) {
       </div>
       {check ? <Alert tone={check.ok ? 'ok' : 'bad'}>{check.text}</Alert> : null}
       {test.isError ? <Alert>{errorMessage(t, test.error)}</Alert> : null}
-      {a.status === 'auth_required' ? (
+      {a.status === 'auth_required' && a.provider === 'gmail_api' ? (
+        <>
+          <Button size="sm" variant="primary" className="justify-self-start" onClick={() => setReauth(true)}>
+            {t('accounts.gmail.signIn')}
+          </Button>
+          {reauth ? <ConnectGmail onClose={() => setReauth(false)} /> : null}
+        </>
+      ) : null}
+      {a.status === 'auth_required' && a.provider === 'imap_smtp' ? (
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
@@ -425,6 +442,96 @@ function ConnectAccount(props: { onClose: () => void }) {
                     minSpacingSeconds: Math.max(0, Math.min(86400, Number(e.target.value) || 0)),
                   })
                 }
+              />
+            )}
+          </Field>
+        </div>
+        {alert ? <Alert>{alert}</Alert> : null}
+      </form>
+    </Modal>
+  );
+}
+
+const GMAIL_STEPS = ['project', 'api', 'consent', 'production', 'client', 'paste'] as const;
+
+/** Wizard for a Gmail account through the user's own OAuth client (ADR 016, options A and B). */
+export function ConnectGmail(props: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const connect = useMutation({
+    mutationFn: () =>
+      call('accounts.connectGmail', { clientId: clientId.trim(), clientSecret: clientSecret.trim() || null }),
+    onSuccess: async () => {
+      toast(t('accounts.gmail.connected'));
+      await invalidateEntities(qc, ['account', 'activity']);
+      props.onClose();
+    },
+  });
+  const errors = fieldErrors(connect.error);
+  const busy = connect.isPending;
+  const alert = formAlert(t, connect.error, ['clientId', 'clientSecret']);
+  return (
+    <Modal
+      open
+      wide
+      onClose={props.onClose}
+      title={t('accounts.gmail.title')}
+      busy={busy}
+      footer={
+        <>
+          <Button variant="ghost" onClick={props.onClose} disabled={busy}>
+            {t('common.cancel')}
+          </Button>
+          <Button variant="primary" type="submit" form="connect-gmail" disabled={busy || !clientId.trim()}>
+            {busy ? t('accounts.gmail.waiting') : t('accounts.gmail.signIn')}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="connect-gmail"
+        className="grid gap-4 text-[13px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          connect.mutate();
+        }}
+      >
+        <p className="text-soft">{t('accounts.gmail.intro')}</p>
+        <ol className="grid list-decimal gap-1.5 pl-5">
+          {GMAIL_STEPS.map((step) => (
+            <li key={step}>{t(`accounts.gmail.steps.${step}`)}</li>
+          ))}
+        </ol>
+        <p className="rounded-md bg-sunken px-3 py-2 text-soft">{t('accounts.gmail.scopes')}</p>
+        <p className="rounded-md bg-warn-bg px-3 py-2 text-warn">{t('accounts.gmail.unverified')}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('accounts.gmail.clientId')} errorKey={errors.clientId}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                value={clientId}
+                disabled={busy}
+                placeholder="…apps.googleusercontent.com"
+                aria-describedby={describedBy}
+                aria-invalid={errors.clientId ? true : undefined}
+                onChange={(e) => setClientId(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('accounts.gmail.clientSecret')} errorKey={errors.clientSecret}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                type="password"
+                autoComplete="off"
+                value={clientSecret}
+                disabled={busy}
+                aria-describedby={describedBy}
+                aria-invalid={errors.clientSecret ? true : undefined}
+                onChange={(e) => setClientSecret(e.target.value)}
               />
             )}
           </Field>

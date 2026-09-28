@@ -57,6 +57,9 @@ Scope classes (the wizard states this explicitly): `gmail.send` is **sensitive**
 
 #### A/B — wizard steps
 
+Implemented in Phase 3b (Settings → Email accounts → Connect Gmail); see ADR 016 "Implementation".
+
+
 1. create a Google Cloud project;
 2. enable the Gmail API;
 3. configure the OAuth consent screen — **Internal** if the account belongs to a Google Workspace org and the user may create Internal apps (option B), otherwise **External** (option A);

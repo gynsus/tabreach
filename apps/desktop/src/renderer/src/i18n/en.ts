@@ -384,6 +384,32 @@ export const en = {
     subtitle: 'Accounts campaigns send from. Passwords are stored encrypted in the macOS Keychain.',
     empty: 'No email account connected yet.',
     connect: 'Connect an account',
+    connectGmail: 'Connect Gmail',
+    gmail: {
+      title: 'Connect Gmail through your own Google Cloud project',
+      intro:
+        'TabReach has no server. Gmail is connected through an OAuth client that you create in your own Google Cloud project — Google checks the client, not where TabReach runs. It takes about 10–15 minutes, once.',
+      steps: {
+        project: 'Open console.cloud.google.com and create a project (any name).',
+        api: 'APIs & Services → Library: enable the Gmail API.',
+        consent:
+          'APIs & Services → OAuth consent screen. With a Google Workspace account choose Internal: no review, no warning. Otherwise choose External.',
+        production:
+          'External only: set the publishing status to In production. In Testing, Google ends the connection after 7 days.',
+        client:
+          'APIs & Services → Credentials → Create credentials → OAuth client ID → Application type: Desktop app.',
+        paste: 'Paste the client ID and client secret below and sign in.',
+      },
+      scopes:
+        'TabReach asks for two permissions: sending mail (gmail.send, “sensitive”) and reading mail (gmail.readonly, “restricted”) — reading is needed to notice replies and to check whether an interrupted message was sent.',
+      unverified:
+        'Google will show “Google hasn’t verified this app”: that is your own project. Choose Advanced → Go to … (unsafe) to continue. A project used only by you may fall under Google’s personal-use exception; it stays subject to Google’s policies and your Workspace administrator’s settings.',
+      clientId: 'Client ID',
+      clientSecret: 'Client secret',
+      signIn: 'Sign in with Google',
+      waiting: 'Finish signing in in your browser… (up to 10 minutes)',
+      connected: 'Gmail connected',
+    },
     connectTitle: 'Connect an email account',
     connecting: 'Checking the connection…',
     address: 'Email address',
@@ -517,6 +543,17 @@ export const en = {
     },
   },
   errors: {
+    oauth: {
+      notCompleted: 'Signing in was not completed. Try again.',
+      denied: 'Access was not granted in Google.',
+      stateMismatch: 'The answer from the browser did not match this request. Try again.',
+      scopesMissing: 'Both permissions are needed: keep both boxes ticked on Google’s page.',
+      noRefreshToken:
+        'Google did not issue a long-term token. Remove TabReach in your Google account’s third-party access and try again.',
+      invalidClient: 'Google did not accept the client ID or secret.',
+      exchangeFailed: 'Google did not complete the sign-in. Check the client ID and secret.',
+      clientIdInvalid: 'A client ID ends with .apps.googleusercontent.com.',
+    },
     conversation: { notFound: 'This conversation no longer exists.' },
     message: { notFound: 'This message no longer exists.', reviewed: 'This message was already reviewed.' },
     account: {

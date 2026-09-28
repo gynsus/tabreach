@@ -34,6 +34,13 @@ Every outbound message carries an app-generated `Message-ID`, persisted before s
 
 Bounce detection, reply matching (with match strength) and classification are transport-independent.
 
+## Implementation (Phase 3b, 2026-09-28)
+
+- Core builds the consent URL (PKCE S256, `state`, `access_type=offline`, `prompt=consent`, scopes `gmail.send` + `gmail.readonly`) and asks main over the host channel (`oauth.loopback`). Main opens it with `shell.openExternal`, listens once on `127.0.0.1:<random port>` (Google hosts only, 10-minute limit) and returns the redirect parameters. Core checks `state`, exchanges the code with the verifier, requires both scopes and a refresh token, reads the address from the Gmail profile.
+- Stored: the refresh token (`oauth_refresh_token`) and, if given, the client secret (`oauth_client_secret`), both encrypted via main; the client ID in account metadata. Access tokens live only in memory. `invalid_grant` puts the account in `auth_required`; signing in again renews the same account.
+- Sending uses `users.messages.send` with the same Message-ID rule as SMTP (ADR 023); reconciliation searches `rfc822msgid:`. Replies come from `users.history.list` (INBOX, messageAdded) starting at the profile's history id at connection time; an expired history id restarts from the current one (ADR 024).
+- Microsoft and XOAUTH2 for IMAP/SMTP are not implemented yet.
+
 ## Alternatives
 
 - Only option C from day one: best UX, but verification cost and time before the product is even validated.

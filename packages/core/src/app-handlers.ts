@@ -16,7 +16,7 @@ import { ContactPolicy } from './campaigns/policy.js';
 import type { ChannelResolver, MessageChannel } from './channels/channel.js';
 import { TestChannel } from './channels/test-channel.js';
 import { CommandLog } from './commands/command-log.js';
-import { AccountService } from './email/accounts.js';
+import { AccountService, type GmailDeps } from './email/accounts.js';
 import { InboxService } from './email/inbox.js';
 import { imapSmtpClients } from './email/imap-smtp.js';
 import type { MailClients } from './email/transport.js';
@@ -45,6 +45,8 @@ export interface AppServicesOptions {
   cipher?: SecretCipher;
   /** SMTP/IMAP clients; tests replace the real ones. */
   mailClients?: MailClients;
+  /** HTTPS for Google APIs and main's OAuth loopback; tests replace them. */
+  gmail?: GmailDeps;
 }
 
 const noCipher: SecretCipher = {
@@ -98,6 +100,7 @@ export class AppServices {
       now,
       logger.child({ component: 'email' }),
       (accountId) => this.inbox.schedulePoll(accountId),
+      options.gmail,
     );
     const named = new Map(
       (options.channels ?? [new TestChannel(db, now, 60_000)]).map((c) => [c.channel, c] as const),
@@ -125,7 +128,6 @@ export class AppServices {
       policy: this.policy,
       suppressions: this.suppressions,
       accounts: this.accounts,
-      clients: options.mailClients ?? imapSmtpClients,
       jobs: this.jobs,
       logger: logger.child({ component: 'inbox' }),
       changed: (entities) => this.changed(entities),
@@ -299,6 +301,11 @@ export class AppServices {
       .handle('accounts.list', () => ({ items: this.accounts.list() }))
       .handle('accounts.connectImap', async (p, c) => {
         const account = await this.accounts.connectImap(p, ctx(c));
+        this.changed(['account', 'activity']);
+        return account;
+      })
+      .handle('accounts.connectGmail', async (p, c) => {
+        const account = await this.accounts.connectGmail(p, ctx(c));
         this.changed(['account', 'activity']);
         return account;
       })
