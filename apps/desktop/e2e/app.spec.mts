@@ -198,6 +198,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
 
   await page.getByRole('button', { name: 'Add message' }).click();
   const step = page.getByRole('region', { name: 'Message 1' });
+  await step.getByLabel('Channel').selectOption('test');
   await step.getByLabel('Subject', { exact: true }).fill('Hello {{firstName|there}}');
   await step.getByLabel('Message', { exact: true }).fill('Hi {{firstName|there}}, this is a test.');
   // Any day and hour, so the test does not depend on when CI runs.
@@ -231,6 +232,33 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
     timeout: 15_000,
   });
+});
+
+test('connecting an email account fills in known servers and reports a wrong server', async () => {
+  await go('#/settings');
+  await page.getByRole('button', { name: 'Connect an account' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect an email account' });
+  await dialog.getByLabel('Email address').fill('someone@gmail.com');
+  await expect(dialog.getByRole('group', { name: 'Outgoing mail (SMTP)' }).getByLabel('Server')).toHaveValue(
+    'smtp.gmail.com',
+  );
+  await expect(dialog.getByRole('group', { name: 'Incoming mail (IMAP)' }).getByLabel('Server')).toHaveValue(
+    'imap.gmail.com',
+  );
+  // A server that does not exist: nothing is saved, the fields say why.
+  await dialog.getByRole('group', { name: 'Outgoing mail (SMTP)' }).getByLabel('Server').fill('127.0.0.1');
+  await dialog.getByRole('group', { name: 'Outgoing mail (SMTP)' }).getByLabel('Port').fill('1');
+  await dialog.getByRole('group', { name: 'Incoming mail (IMAP)' }).getByLabel('Server').fill('127.0.0.1');
+  await dialog.getByRole('group', { name: 'Incoming mail (IMAP)' }).getByLabel('Port').fill('1');
+  await dialog.getByLabel('Password', { exact: true }).fill('not-a-real-password');
+  await dialog.getByRole('button', { name: 'Connect an account' }).click();
+  await expect(
+    dialog.getByText('The server cannot be reached. Check the server name and port.').first(),
+  ).toBeVisible({
+    timeout: 20_000,
+  });
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByText('No email account connected yet.')).toBeVisible();
 });
 
 test('switches the interface to Russian and keeps it after a reload', async () => {

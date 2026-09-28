@@ -78,6 +78,7 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 020 | Events, core state and command idempotency | Accepted |
 | 021 | Workflow engine data model decisions | Accepted |
 | 022 | The audit trail stores identifiers, not personal data | Accepted |
+| 023 | Email send outcomes: Message-ID from the intent, staged SMTP, Sent reconciliation | Accepted |
 
 ## Recommended first command to Claude Code
 

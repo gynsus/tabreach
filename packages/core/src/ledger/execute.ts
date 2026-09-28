@@ -3,8 +3,10 @@ import { intentKey, type IntentParts, type SideEffectLedger } from './side-effec
 
 export type ExecutionOutcome =
   | { outcome: 'completed'; sideEffectId: string; alreadyDone: boolean }
-  | { outcome: 'not_sent'; sideEffectId: string; errorClass: string }
-  | { outcome: 'unknown'; sideEffectId: string; errorClass: string };
+  | { outcome: 'not_sent'; sideEffectId: string; errorClass: string; permanent: boolean }
+  | { outcome: 'unknown'; sideEffectId: string; errorClass: string }
+  /** Reconciliation cannot tell yet; come back at `retryAt` (not a failure). */
+  | { outcome: 'pending'; sideEffectId: string; retryAt: Date };
 
 /**
  * The one place that turns "send this" into a ledger-guarded external action (CLAUDE.md §3.5,
@@ -29,26 +31,31 @@ export async function executeSideEffect(opts: {
 }): Promise<ExecutionOutcome> {
   const { ledger, channel, signal } = opts;
   const key = intentKey(opts.intent);
-  let reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard);
+  const reserve = () =>
+    ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard, channel.accountId);
+  let reservation = reserve();
 
   if (reservation.action === 'already_done') {
     return { outcome: 'completed', sideEffectId: reservation.effect.id, alreadyDone: true };
   }
 
   if (reservation.action === 'reconcile') {
-    const found = await channel.reconcile(key, signal);
     const id = reservation.effect.id;
-    if (found === 'completed') {
-      ledger.markCompleted(id, {}, 'provider_lookup');
+    const found = await channel.reconcile(key, signal, new Date(reservation.effect.updated_at));
+    if (found.status === 'completed') {
+      ledger.markCompleted(id, found.externalRefs ?? {}, 'provider_lookup');
       return { outcome: 'completed', sideEffectId: id, alreadyDone: true };
     }
-    if (found === 'unknown') {
+    if (found.status === 'pending') {
+      return { outcome: 'pending', sideEffectId: id, retryAt: found.retryAt };
+    }
+    if (found.status === 'unknown') {
       if (reservation.effect.status === 'executing') ledger.markUnknown(id, 'reconcile_inconclusive');
       return { outcome: 'unknown', sideEffectId: id, errorClass: 'reconcile_inconclusive' };
     }
     // Verified: the earlier attempt never reached the recipient. It is safe to send now.
     ledger.markNotSent(id, 'reconciled_absent', 'provider_lookup');
-    reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard);
+    reservation = reserve();
     if (reservation.action !== 'execute') {
       throw new Error(`Unexpected ledger state after reconciliation: ${reservation.action}`);
     }
@@ -70,7 +77,12 @@ export async function executeSideEffect(opts: {
       return { outcome: 'completed', sideEffectId: id, alreadyDone: false };
     case 'not_sent':
       ledger.markNotSent(id, result.errorClass);
-      return { outcome: 'not_sent', sideEffectId: id, errorClass: result.errorClass };
+      return {
+        outcome: 'not_sent',
+        sideEffectId: id,
+        errorClass: result.errorClass,
+        permanent: result.permanent ?? false,
+      };
     case 'unknown':
       ledger.markUnknown(id, result.errorClass);
       return { outcome: 'unknown', sideEffectId: id, errorClass: result.errorClass };

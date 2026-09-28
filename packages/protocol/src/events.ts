@@ -11,6 +11,7 @@ export const changedEntitySchema = z.enum([
   'campaign',
   'enrollment',
   'approval',
+  'account',
 ]);
 export type ChangedEntity = z.infer<typeof changedEntitySchema>;
 

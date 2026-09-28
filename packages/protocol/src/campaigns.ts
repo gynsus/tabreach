@@ -55,8 +55,8 @@ export const templateFields = [
 ] as const;
 export type TemplateField = (typeof templateFields)[number];
 
-/** Channels a message step can use. Phase 2 has only the local test channel. */
-export const messageChannelSchema = z.enum(['test']);
+/** Channels a message step can use: email (through the campaign's email account) or the local test channel. */
+export const messageChannelSchema = z.enum(['email', 'test']);
 
 /** Fields a condition step can test (ADR 021 §7). */
 export const conditionFieldSchema = z.enum([
@@ -110,6 +110,8 @@ export const campaignConfigSchema = z.object({
   /** Overrides the policy's default active window. */
   window: activeWindowSchema.nullable(),
   approvalMode: z.literal('approve_each'),
+  /** The email account email steps send from (required when the campaign has email steps). */
+  emailAccountId: z.uuid().nullable().default(null),
 });
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 
@@ -118,6 +120,7 @@ export const EMPTY_CAMPAIGN_CONFIG: CampaignConfig = {
   timezone: null,
   window: null,
   approvalMode: 'approve_each',
+  emailAccountId: null,
 };
 
 // Campaigns ---------------------------------------------------------------------------------
@@ -171,6 +174,7 @@ export const stopReasonSchema = z.enum([
   'missing_data',
   'condition_not_met',
   'rejected',
+  'send_failed',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
@@ -239,6 +243,8 @@ export const jobSchema = z.object({
   attempts: z.number().int(),
   lastErrorClass: z.string().nullable(),
   lastError: z.string().nullable(),
+  /** A send whose outcome could not be verified: a person can settle it (sideEffects.resolve). */
+  unknownSideEffectId: z.uuid().nullable(),
   updatedAt: z.iso.datetime(),
 });
 export type Job = z.infer<typeof jobSchema>;

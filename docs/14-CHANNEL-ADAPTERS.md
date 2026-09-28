@@ -86,6 +86,7 @@ Responsibilities:
 
 ### IMAP/SMTP — any provider
 
+- Implemented in Phase 3a (ADR 023): the `Message-ID` is derived from the side-effect ledger key; SMTP runs in explicit stages so that only failures while connecting/logging in or explicit refusals count as `not_sent`; reconciliation searches the IMAP `\Sent` folder, waits up to 10 minutes for index lag on servers that keep sent mail, and leaves `unknown` for a person where absence proves nothing. Server presets in the UI: Gmail, Outlook, iCloud, Yandex, Mail.ru.
 - SMTP send with app-generated `Message-ID`; append to Sent via IMAP if the server doesn't do it. Submission and `APPEND` are separate operations, so a crash between them (or a lost SMTP response after `DATA`) leaves the outcome `unknown` — this is expected and handled by the ledger, never by re-sending;
 - IMAP polling (or IDLE) for replies;
 - reconciliation: IMAP `SEARCH HEADER Message-ID`;

@@ -13,14 +13,18 @@ import { ApprovalService } from './campaigns/approval-service.js';
 import { CampaignService } from './campaigns/campaign-service.js';
 import { CampaignEngine } from './campaigns/engine.js';
 import { ContactPolicy } from './campaigns/policy.js';
-import type { MessageChannel } from './channels/channel.js';
+import type { ChannelResolver, MessageChannel } from './channels/channel.js';
 import { TestChannel } from './channels/test-channel.js';
 import { CommandLog } from './commands/command-log.js';
+import { AccountService } from './email/accounts.js';
+import { imapSmtpClients } from './email/imap-smtp.js';
+import type { MailClients } from './email/transport.js';
 import { JobQueue } from './jobs/queue.js';
 import { SideEffectLedger } from './ledger/side-effects.js';
 import { ExportService } from './prospects/export-service.js';
 import { ImportService } from './prospects/import-service.js';
 import { ProspectService } from './prospects/prospect-service.js';
+import { SecretStore, type SecretCipher } from './secrets/secrets.js';
 import { SettingsRepository } from './settings/settings.js';
 import { SuppressionService } from './suppressions/suppression-service.js';
 
@@ -34,9 +38,18 @@ export interface AppServicesOptions {
   onChanged?: (entities: ChangedEntity[]) => void;
   /** Called after a job is enqueued so the dispatcher wakes up instead of polling. */
   onJobEnqueued?: () => void;
-  /** Sending channels; defaults to the local test channel (the only one before Phase 3). */
+  /** Channels available by name; defaults to the local test channel. Email channels come from accounts. */
   channels?: MessageChannel[];
+  /** Encrypts secrets through main's safeStorage; without it, storing a secret fails. */
+  cipher?: SecretCipher;
+  /** SMTP/IMAP clients; tests replace the real ones. */
+  mailClients?: MailClients;
 }
+
+const noCipher: SecretCipher = {
+  encrypt: () => Promise.reject(new RpcError('UNAVAILABLE', 'Secret storage is not available')),
+  decrypt: () => Promise.reject(new RpcError('UNAVAILABLE', 'Secret storage is not available')),
+};
 
 const jobNotFound = () => new RpcError('NOT_FOUND', 'Job not found', 'job.notFound');
 
@@ -55,6 +68,8 @@ export class AppServices {
   readonly engine: CampaignEngine;
   readonly campaigns: CampaignService;
   readonly approvals: ApprovalService;
+  readonly secrets: SecretStore;
+  readonly accounts: AccountService;
   private readonly changed: (entities: ChangedEntity[]) => void;
 
   constructor(db: DatabaseSync, options: AppServicesOptions = {}) {
@@ -72,9 +87,20 @@ export class AppServices {
     this.settings = new SettingsRepository(db, now, (key) =>
       logger.warn({ event: 'settings.invalid', key }, 'stored setting failed validation; using defaults'),
     );
-    const channels = new Map(
+    this.secrets = new SecretStore(db, options.cipher ?? noCipher, now);
+    this.accounts = new AccountService(
+      db,
+      this.audit,
+      this.secrets,
+      options.mailClients ?? imapSmtpClients,
+      now,
+      logger.child({ component: 'email' }),
+    );
+    const named = new Map(
       (options.channels ?? [new TestChannel(db, now, 60_000)]).map((c) => [c.channel, c] as const),
     );
+    const channels: ChannelResolver = (channel, config) =>
+      named.get(channel) ?? (channel === 'email' ? this.accounts.channel(config.emailAccountId) : undefined);
     this.policy = new ContactPolicy(db, this.settings, now);
     this.engine = new CampaignEngine({
       db,
@@ -235,9 +261,31 @@ export class AppServices {
           attempts: j.attempts,
           lastErrorClass: j.last_error_class,
           lastError: j.last_error_redacted,
+          unknownSideEffectId: this.unknownSideEffectOf(j.type, j.payload),
           updatedAt: j.updated_at,
         })),
       }))
+      .handle('accounts.list', () => ({ items: this.accounts.list() }))
+      .handle('accounts.connectImap', async (p, c) => {
+        const account = await this.accounts.connectImap(p, ctx(c));
+        this.changed(['account', 'activity']);
+        return account;
+      })
+      .handle('accounts.update', async (p, c) => {
+        const account = await this.accounts.update(p, ctx(c));
+        this.changed(['account', 'activity']);
+        return account;
+      })
+      .handle('accounts.test', ({ id }) => this.accounts.test(id))
+      .handle('accounts.disconnect', ({ id }, c) =>
+        mutate(['account'], () => {
+          this.accounts.disconnect(id, ctx(c));
+          return { ok: true as const };
+        }),
+      )
+      .handle('sideEffects.resolve', ({ id, outcome }, c) =>
+        mutate(['job', 'enrollment'], () => this.resolveSideEffect(id, outcome, c.correlationId)),
+      )
       .handle('jobs.retry', ({ id }, c) =>
         mutate(['job', 'enrollment'], () => this.jobAction(id, 'retry', c.correlationId)),
       )
@@ -258,5 +306,45 @@ export class AppServices {
       correlationId,
     });
     return { ok: true };
+  }
+
+  /**
+   * A person settles a send TabReach could not verify (ADR 018 \`user_confirmation\`). The run's
+   * job is requeued: it then finds the ledger decided and either moves on or sends.
+   */
+  private resolveSideEffect(
+    id: string,
+    outcome: 'completed' | 'not_sent',
+    correlationId: string,
+  ): { ok: true } {
+    const effect = this.ledger.get(id);
+    if (!effect || (effect.status !== 'unknown' && effect.status !== 'executing')) {
+      throw new RpcError('CONFLICT', 'Nothing to decide', 'sideEffect.notUnknown');
+    }
+    if (outcome === 'completed') this.ledger.markCompleted(id, {}, 'user_confirmation');
+    else this.ledger.markNotSent(id, 'user_confirmed_not_sent', 'user_confirmation');
+    this.audit.record({
+      actorType: 'user',
+      actionType: 'side_effect.resolved',
+      objectType: 'side_effect',
+      objectId: id,
+      payload: { outcome },
+      correlationId,
+    });
+    if (effect.workflow_run_id) {
+      const job = this.jobs.latestFor('workflow.run', 'runId', effect.workflow_run_id);
+      if (job && (job.status === 'dead' || job.status === 'failed')) this.jobs.requeue(job.id);
+      else if (!job) this.engine.wakeRun(effect.workflow_run_id);
+    }
+    return { ok: true };
+  }
+
+  /** For a dead send job: the ledger entry whose outcome only a person can settle. */
+  private unknownSideEffectOf(type: string, payload: string): string | null {
+    if (type !== 'workflow.run') return null;
+    const runId = (JSON.parse(payload) as { runId?: string }).runId;
+    if (!runId) return null;
+    const row = this.ledger.unknownForRun(runId);
+    return row?.id ?? null;
   }
 }

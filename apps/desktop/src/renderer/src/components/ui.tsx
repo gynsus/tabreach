@@ -61,7 +61,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
 /** Label + control + translated error key. `children` receives the generated id. */
 export function Field(props: {
   label: string;
-  hint?: string;
+  hint?: string | undefined;
   errorKey?: string | undefined;
   className?: string;
   children: (id: string, describedBy: string | undefined) => ReactNode;

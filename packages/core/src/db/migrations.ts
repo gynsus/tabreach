@@ -388,4 +388,32 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX approvals_run ON approvals (workflow_run_id);
     `,
   },
+  {
+    version: 9,
+    name: 'channel_accounts',
+    sql: `
+      -- Sending accounts (docs/05, docs/14). Secrets live in \`secrets\`; metadata holds only
+      -- non-secret settings (hosts, ports, username).
+      CREATE TABLE channel_accounts (
+        id                  TEXT PRIMARY KEY,
+        channel             TEXT NOT NULL CHECK (channel IN ('email', 'linkedin')),
+        provider            TEXT NOT NULL CHECK (provider IN ('imap_smtp', 'gmail_api', 'linkedin_browser')),
+        display_name        TEXT NOT NULL,
+        external_account_id TEXT NOT NULL,
+        browser_profile_id  TEXT,
+        secret_id           TEXT REFERENCES secrets (id) ON DELETE SET NULL,
+        limits              TEXT NOT NULL CHECK (json_valid(limits)),
+        status              TEXT NOT NULL CHECK (status IN ('active', 'auth_required', 'disabled')),
+        metadata            TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL
+      ) STRICT;
+      CREATE UNIQUE INDEX channel_accounts_identity ON channel_accounts (channel, provider, external_account_id)
+        WHERE status != 'disabled';
+
+      -- Pacing is per sending account; the account is not part of the intent key.
+      ALTER TABLE side_effects ADD COLUMN channel_account_id TEXT;
+      CREATE INDEX side_effects_account ON side_effects (channel_account_id, status, updated_at);
+    `,
+  },
 ];
