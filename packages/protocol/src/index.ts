@@ -5,3 +5,6 @@ export * from './rpc.js';
 export * from './logger.js';
 export * from './bridge.js';
 export * from './prospects.js';
+export * from './events.js';
+export * from './redact.js';
+export * from './audit.js';

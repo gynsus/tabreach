@@ -64,3 +64,20 @@ describe('suppressions', () => {
     expect(detectKind('acme.com')).toBe('domain');
   });
 });
+
+describe('suppression regressions (phase 1.5)', () => {
+  it('imports a bare site URL as a domain, not a profile', () => {
+    expect(detectKind('https://acme.com')).toBe('domain');
+    expect(detectKind('https://acme.com/')).toBe('domain');
+    expect(detectKind('https://facebook.com/profile.php?id=1')).toBe('profile_url');
+    s.suppressions.importCsv('https://Acme.com/\n', ctx());
+    expect(s.suppressions.list({ limit: 5, offset: 0 }).items).toMatchObject([
+      { kind: 'domain', value: 'acme.com' },
+    ]);
+  });
+
+  it('finds entries case-insensitively in Cyrillic', () => {
+    s.suppressions.add('domain', 'Пример.рф', ctx());
+    expect(s.suppressions.list({ search: 'ПРИМЕР', limit: 5, offset: 0 }).total).toBe(1);
+  });
+});

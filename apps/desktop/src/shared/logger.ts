@@ -1,42 +1,22 @@
 import { existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import pino from 'pino';
-import type { Logger } from '@tabreach/protocol';
-
-/**
- * Keys whose values never reach a log file (docs/20-OBSERVABILITY.md). Paths cover the top level
- * and one or two levels of nesting, which is where structured log context puts them.
- */
-const SENSITIVE_KEYS = [
-  'password',
-  'passphrase',
-  'token',
-  'accessToken',
-  'refreshToken',
-  'idToken',
-  'apiKey',
-  'clientSecret',
-  'secret',
-  'plaintext',
-  'ciphertext',
-  'cookie',
-  'cookies',
-  'authorization',
-];
-export const REDACT_PATHS = SENSITIVE_KEYS.flatMap((k) => [k, `*.${k}`, `*.*.${k}`]);
+import { redactDeep, type Logger } from '@tabreach/protocol';
 
 export const LOG_MAX_BYTES = 10 * 1024 * 1024;
 export const LOG_KEEP = 5;
+const ROTATION_CHECK_MS = 60_000;
 
-/** Size-based rotation at process start: name.log -> name.1.log ... name.<keep>.log. */
-export function rotateLog(file: string, maxBytes = LOG_MAX_BYTES, keep = LOG_KEEP): void {
-  if (!existsSync(file) || statSync(file).size < maxBytes) return;
+/** Size-based rotation: name.log -> name.1.log ... name.<keep>.log. Returns true if it rotated. */
+export function rotateLog(file: string, maxBytes = LOG_MAX_BYTES, keep = LOG_KEEP): boolean {
+  if (!existsSync(file) || statSync(file).size < maxBytes) return false;
   const base = file.replace(/\.log$/, '');
   rmSync(`${base}.${keep}.log`, { force: true });
   for (let i = keep - 1; i >= 1; i--) {
     if (existsSync(`${base}.${i}.log`)) renameSync(`${base}.${i}.log`, `${base}.${i + 1}.log`);
   }
   renameSync(file, `${base}.1.log`);
+  return true;
 }
 
 export interface LoggerOptions {
@@ -51,11 +31,20 @@ export function createLogger(opts: LoggerOptions): Logger {
   mkdirSync(opts.logDir, { recursive: true });
   const file = join(opts.logDir, `${opts.process}.log`);
   rotateLog(file);
-  const streams: pino.StreamEntry[] = [{ stream: pino.destination({ dest: file, sync: false }) }];
+  const destination = pino.destination({ dest: file, sync: false });
+  // A process can run for days: rotate while running, not only at start.
+  setInterval(() => {
+    if (rotateLog(file)) destination.reopen();
+  }, ROTATION_CHECK_MS).unref();
+  const streams: pino.StreamEntry[] = [{ stream: destination }];
   if (opts.stdout) streams.push({ stream: process.stdout });
   return createPinoLogger(opts.process, pino.multistream(streams), opts.level ?? 'info');
 }
 
+/**
+ * Every log object passes through the shared redaction (docs/20-OBSERVABILITY.md): credential keys
+ * in any casing/separator style at any depth, token-looking strings, and error messages/stacks.
+ */
 export function createPinoLogger(
   processName: string,
   stream: pino.DestinationStream,
@@ -66,8 +55,8 @@ export function createPinoLogger(
       level,
       base: { process: processName, pid: process.pid },
       timestamp: pino.stdTimeFunctions.isoTime,
-      redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
-      serializers: { err: pino.stdSerializers.err },
+      serializers: { err: (err: unknown) => redactDeep(pino.stdSerializers.err(err as Error)) },
+      formatters: { log: (obj) => redactDeep(obj) as Record<string, unknown> },
     },
     stream,
   );

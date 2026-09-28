@@ -190,9 +190,11 @@ Domain code depends on interfaces, never on implementation packages for Playwrig
 
 ## Process supervision and failure
 
-- Main restarts a crashed core or worker with exponential backoff (bounded); repeated crashes surface a blocking error in the UI.
+- Main restarts a crashed core or worker with exponential backoff (1 s … 30 s; more than 5 crashes in 2 minutes stops retrying). Main tells the window the core state (`starting | running | restarting | failed`); the UI shows a banner while core is not running, requests fail fast instead of waiting for timeouts, and everything is refetched when core returns (ADR 020).
+- Quit: main sends SIGTERM to core and worker and waits (bounded, 3 s) so core closes the database cleanly; only then does the app exit.
 - Core crash: in-flight jobs keep their lease; on restart, expired leases are reclaimed and recovery runs per job type.
-- Worker crash: core marks running browser tasks `interrupted`; Chrome processes launched by the worker are terminated by main if orphaned; recovery per `19-ERROR-RECOVERY.md`.
+- Worker crash: core marks running browser tasks `interrupted`; Chrome processes launched by the worker are terminated by main if orphaned (Phase 5); a restarted worker removes leftover temporary profiles; recovery per `19-ERROR-RECOVERY.md`.
+- Renderer crash: main reloads the window, which reconnects to core. A new core port is handed over only on a real document load of the app page, never on in-app (hash) navigation.
 - Sleep: on `suspend`, core stops dispatching new jobs; on `resume`, the scheduler re-evaluates due jobs against campaign windows.
 
 ## Why this shape

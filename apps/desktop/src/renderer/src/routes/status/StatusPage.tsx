@@ -3,6 +3,7 @@ import type { ComponentStatus, HealthReport } from '@tabreach/protocol';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Alert, Badge, Button, PageHeader } from '../../components/ui';
+import { translateKey } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 
 /** IANA-reserved example domain: a real Internet page that is safe to load. */
@@ -10,6 +11,11 @@ const LAUNCH_CHECK_URL = 'https://example.com';
 const REFRESH_MS = 5_000;
 
 const tone = { ok: 'ok', degraded: 'warn', down: 'bad', unknown: 'neutral' } as const;
+
+/** Core reports component problems as keys (`worker.notRunning`); show them in the UI language. */
+function detailText(t: TFunction, key: string | undefined): string {
+  return key ? translateKey(t, `status.detailKeys.${key}`, key) : '';
+}
 
 function rows(t: TFunction, h: HealthReport): { id: string; status: ComponentStatus; detail: string }[] {
   const worker = h.worker;
@@ -29,12 +35,12 @@ function rows(t: TFunction, h: HealthReport): { id: string; status: ComponentSta
       status: h.database.status,
       detail: h.database.sqliteVersion
         ? t('status.details.sqlite', { version: h.database.sqliteVersion, schema: h.database.schemaVersion })
-        : (h.database.detail ?? ''),
+        : detailText(t, h.database.detail),
     },
     {
       id: 'secrets',
       status: h.secrets.status,
-      detail: h.secrets.status === 'ok' ? t('status.details.secretsOk') : (h.secrets.detail ?? ''),
+      detail: h.secrets.status === 'ok' ? t('status.details.secretsOk') : detailText(t, h.secrets.detail),
     },
     {
       id: 'worker',
@@ -42,7 +48,7 @@ function rows(t: TFunction, h: HealthReport): { id: string; status: ComponentSta
       detail:
         'chrome' in worker
           ? t('status.details.worker', { node: worker.node, playwright: worker.playwright })
-          : worker.detail,
+          : detailText(t, worker.detail),
     },
     {
       id: 'chrome',

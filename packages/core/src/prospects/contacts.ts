@@ -1,7 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { customFieldsSchema, uuidv7, type Contact, type CustomFields } from '@tabreach/protocol';
+import { uuidv7, type Contact, type CustomFields } from '@tabreach/protocol';
 import { likePattern } from './companies.js';
-import { nameKey, searchKey, type NormalizedProfileUrl } from './normalize.js';
+import { nameKey, readCustomFields, searchKey, type NormalizedProfileUrl } from './normalize.js';
 import { contactTags, tagsOf } from './tags.js';
 
 export interface ContactRow {
@@ -162,6 +162,14 @@ export class ContactRepository {
     this.db.prepare('UPDATE contacts SET updated_at = ? WHERE id = ?').run(this.now().toISOString(), id);
   }
 
+  /** Normalized profile URL stored for a channel, or null. */
+  profileOf(id: string, channel: 'linkedin' | 'other'): string | null {
+    const row = this.db
+      .prepare('SELECT url_normalized FROM contact_profile_urls WHERE contact_id = ? AND channel = ?')
+      .get(id, channel) as { url_normalized: string } | undefined;
+    return row?.url_normalized ?? null;
+  }
+
   linkedinUrl(id: string): string | null {
     const row = this.db
       .prepare(`SELECT url_original FROM contact_profile_urls WHERE contact_id = ? AND channel = 'linkedin'`)
@@ -263,7 +271,7 @@ export class ContactRepository {
       linkedinUrl: linkedin.get(r.id) ?? null,
       status: r.status,
       tags: tags.get(r.id) ?? [],
-      customFields: customFieldsSchema.parse(JSON.parse(r.custom_fields)),
+      customFields: readCustomFields(r.custom_fields),
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     }));

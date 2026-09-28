@@ -1,42 +1,29 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { uuidv7, type ActionEvent } from '@tabreach/protocol';
+import {
+  redactDeep,
+  uuidv7,
+  type ActionEvent,
+  type AuditActionType,
+  type AuditObjectType,
+} from '@tabreach/protocol';
 
 export type ActorType = ActionEvent['actorType'];
-export type AuditObjectType = 'company' | 'contact' | 'suppression' | 'import' | 'export';
+export type { AuditObjectType };
 
+/**
+ * One audit record. Payloads carry identifiers, field names, counts and enums only — never names,
+ * emails, domains, URLs or message text (ADR 022). The trail is append-only, so personal data
+ * written here could never be erased; the object id points at the record that holds it.
+ */
 export interface AuditEntry {
   actorType: ActorType;
-  actionType: string;
+  actionType: AuditActionType;
   objectType?: AuditObjectType;
   objectId?: string;
   status?: 'completed' | 'failed' | 'planned' | 'started' | 'unknown';
   payload?: Record<string, unknown>;
   correlationId: string;
   causationId?: string;
-}
-
-/** Keys whose values never enter the audit trail (FR-AUD-004). */
-const SENSITIVE = new Set([
-  'password',
-  'token',
-  'accesstoken',
-  'refreshtoken',
-  'apikey',
-  'secret',
-  'plaintext',
-  'ciphertext',
-  'cookie',
-  'authorization',
-]);
-
-export function redactPayload(value: unknown, depth = 0): unknown {
-  if (depth > 6 || value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map((v) => redactPayload(v, depth + 1));
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) {
-    out[k] = SENSITIVE.has(k.toLowerCase()) ? '[REDACTED]' : redactPayload(v, depth + 1);
-  }
-  return out;
 }
 
 interface Row {
@@ -77,7 +64,7 @@ export class AuditLog {
         entry.objectType ?? null,
         entry.objectId ?? null,
         entry.status ?? 'completed',
-        JSON.stringify(redactPayload(entry.payload ?? {})),
+        JSON.stringify(redactDeep(entry.payload ?? {})),
         this.now().toISOString(),
       );
     return id;

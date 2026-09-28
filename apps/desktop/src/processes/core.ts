@@ -25,8 +25,8 @@ function attach(handoff: PortHandoff, port: MessagePortMain): void {
     const detach = core.attachApp(endpoint);
     port.on('close', detach);
   } else {
-    core.attachWorker(endpoint);
-    port.on('close', () => core?.detachWorker());
+    const detach = core.attachWorker(endpoint);
+    port.on('close', detach);
   }
   logger.info({ event: 'ipc.port_attached', name: handoff.name }, 'channel attached');
 }
@@ -51,6 +51,13 @@ CoreService.start({
     setTimeout(() => process.exit(1), 100);
   },
 );
+
+// main stops core with SIGTERM on quit: close the database cleanly (checkpoints the WAL).
+process.on('SIGTERM', () => {
+  logger.info({ event: 'core.stopping' }, 'core stopping');
+  core?.close();
+  process.exit(0);
+});
 
 process.on('uncaughtException', (error) => {
   logger.error({ event: 'core.uncaught_exception', err: error }, 'uncaught exception');

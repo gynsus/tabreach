@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Company } from '@tabreach/protocol';
+import { uuidv7, type Company } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Button, Field, Input, Modal } from '../../components/ui';
-import { call, errorMessage, fieldErrors } from '../../lib/api';
+import { call, fieldErrors, formAlert } from '../../lib/api';
+import { invalidateEntities } from '../../lib/live';
 
 const splitTags = (value: string) =>
   value
@@ -29,13 +30,16 @@ export function CompanyForm(props: {
   });
   const [nameMissing, setNameMissing] = useState(false);
 
+  const [idempotencyKey] = useState(() => uuidv7());
   const save = useMutation({
     mutationFn: () => {
       const payload = { ...form, tags: splitTags(form.tags) };
-      return c ? call('companies.update', { id: c.id, ...payload }) : call('companies.create', payload);
+      return c
+        ? call('companies.update', { id: c.id, ...payload })
+        : call('companies.create', payload, { idempotencyKey });
     },
     onSuccess: async (saved) => {
-      await qc.invalidateQueries();
+      await invalidateEntities(qc, ['company', 'activity']);
       props.onSaved?.(saved);
       props.onClose();
     },
@@ -44,6 +48,7 @@ export function CompanyForm(props: {
     ...fieldErrors(save.error),
     ...(nameMissing ? { name: 'name.required' } : {}),
   };
+  const alert = formAlert(t, save.error, ['name', 'website', 'country', 'city', 'tags']);
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -86,9 +91,7 @@ export function CompanyForm(props: {
       }
     >
       <form id="company-form" onSubmit={submit} className="grid gap-3">
-        {save.isError && Object.keys(fieldErrors(save.error)).length === 0 ? (
-          <Alert>{errorMessage(t, save.error)}</Alert>
-        ) : null}
+        {alert ? <Alert>{alert}</Alert> : null}
         {text('name', t('companies.name'))}
         {text('website', t('companies.website'))}
         <div className="grid grid-cols-2 gap-3">

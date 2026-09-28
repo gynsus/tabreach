@@ -327,7 +327,6 @@ Fields:
 - body (subject to retention);
 - sent/received timestamp;
 - classification;
-- metadata.
 
 ## ActionEvent
 

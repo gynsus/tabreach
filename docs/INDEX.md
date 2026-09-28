@@ -73,9 +73,12 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 015 | Execution modes: auto, assisted, manual | Accepted |
 | 016 | Email transports and staged Gmail OAuth client strategy | Accepted |
 | 017 | Data-driven adapter packs | Accepted |
-| 018 | Side-effect ledger keyed by logical intent | Accepted |
+| 018 | Side-effect ledger keyed by logical intent | Accepted (refined by 021) |
 | 019 | Renderer UI stack and localization | Accepted |
+| 020 | Events, core state and command idempotency | Accepted |
+| 021 | Workflow engine data model decisions | Accepted |
+| 022 | The audit trail stores identifiers, not personal data | Accepted |
 
 ## Recommended first command to Claude Code
 
-> Read `CLAUDE.md`, then read the documents listed in its mandatory reading order. Implement only Phase 0 from `docs/22-IMPLEMENTATION-PLAN.md` using `docs/26-FIRST-CLAUDE-CODE-TASK.md` as the concrete task. Do not start Phase 1 until Phase 0 acceptance criteria pass.
+> Read `CLAUDE.md`, then the documents in its mandatory reading order and ADRs 020–022. Phases 0, 1 and the 1.5 hardening are done. Implement Phase 2 from `docs/22-IMPLEMENTATION-PLAN.md` following ADR 021 for the data model. (`26-FIRST-CLAUDE-CODE-TASK.md` describes the completed Phase 0 and is kept for history.)

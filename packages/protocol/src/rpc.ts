@@ -8,6 +8,7 @@ import {
   type Problem,
   type ResultPayload,
 } from './envelope.js';
+import { events, isEventType, type EventPayloadOf, type EventType } from './events.js';
 import { uuidv7 } from './ids.js';
 import { isRequestType, requests, type RequestOf, type RequestType, type ResponseOf } from './messages.js';
 
@@ -40,6 +41,8 @@ export class RpcError extends Error {
 export interface HandlerContext {
   envelope: Envelope;
   correlationId: string;
+  /** Present when the caller sent one; handlers of creating commands must honour it (ADR 020). */
+  idempotencyKey: string | undefined;
 }
 
 type Handler<T extends RequestType> = (
@@ -47,13 +50,21 @@ type Handler<T extends RequestType> = (
   ctx: HandlerContext,
 ) => Promise<ResponseOf<T>> | ResponseOf<T>;
 
+type EventListener<T extends EventType> = (payload: EventPayloadOf<T>, envelope: Envelope) => void;
+
 export interface RpcPeerOptions {
   /** Default request timeout. */
   timeoutMs?: number;
-  /** Called for messages that cannot be answered (malformed envelopes, stray results). */
+  /** Called for messages that cannot be answered (malformed envelopes, stray results, bad events). */
   onInvalid?: (reason: string, raw: unknown) => void;
-  /** Called when a handler throws something other than RpcError. */
+  /** Called when a handler or event listener throws something other than RpcError. */
   onHandlerError?: (type: string, error: unknown) => void;
+}
+
+export interface RequestOptions {
+  correlationId?: string;
+  timeoutMs?: number;
+  idempotencyKey?: string;
 }
 
 interface Pending {
@@ -65,6 +76,7 @@ interface Pending {
 
 export class RpcPeer {
   private readonly handlers = new Map<RequestType, Handler<RequestType>>();
+  private readonly listeners = new Map<EventType, Set<EventListener<EventType>>>();
   private readonly pending = new Map<string, Pending>();
   private readonly unsubscribe: () => void;
   private readonly timeoutMs: number;
@@ -76,8 +88,12 @@ export class RpcPeer {
   ) {
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.unsubscribe = endpoint.onMessage((raw) => {
-      void this.receive(raw);
+      this.receive(raw).catch((error: unknown) => this.options.onHandlerError?.('receive', error));
     });
+  }
+
+  get isClosed(): boolean {
+    return this.closed;
   }
 
   handle<T extends RequestType>(type: T, handler: Handler<T>): this {
@@ -85,13 +101,39 @@ export class RpcPeer {
     return this;
   }
 
+  /** Subscribes to an event type; returns the unsubscribe function. */
+  on<T extends EventType>(type: T, listener: EventListener<T>): () => void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(listener as unknown as EventListener<EventType>);
+    this.listeners.set(type, set);
+    return () => set.delete(listener as unknown as EventListener<EventType>);
+  }
+
+  /** Fire-and-forget notification to the other side. Dropped silently once the channel is closed. */
+  emit<T extends EventType>(
+    type: T,
+    payload: EventPayloadOf<T>,
+    opts: { correlationId?: string } = {},
+  ): void {
+    if (this.closed) return;
+    this.send({
+      id: uuidv7(),
+      kind: 'event',
+      type,
+      schemaVersion: SCHEMA_VERSION,
+      correlationId: opts.correlationId ?? uuidv7(),
+      sentAt: new Date().toISOString(),
+      payload,
+    });
+  }
+
   request<T extends RequestType>(
     type: T,
     payload: RequestOf<T>,
-    opts: { correlationId?: string; timeoutMs?: number } = {},
+    opts: RequestOptions = {},
   ): Promise<ResponseOf<T>> {
     if (this.closed) {
-      return Promise.reject(new RpcError('UNAVAILABLE', 'Channel closed'));
+      return Promise.reject(new RpcError('UNAVAILABLE', 'Channel closed', type));
     }
     const envelope: Envelope = {
       id: uuidv7(),
@@ -99,6 +141,7 @@ export class RpcPeer {
       type,
       schemaVersion: SCHEMA_VERSION,
       correlationId: opts.correlationId ?? uuidv7(),
+      ...(opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : {}),
       sentAt: new Date().toISOString(),
       payload,
     };
@@ -107,17 +150,20 @@ export class RpcPeer {
         this.pending.delete(envelope.id);
         reject(new RpcError('TIMEOUT', 'Request timed out', type));
       }, opts.timeoutMs ?? this.timeoutMs);
-      this.pending.set(envelope.id, {
-        type,
-        resolve: resolve as (value: unknown) => void,
-        reject,
-        timer,
-      });
-      this.endpoint.postMessage(envelope);
+      this.pending.set(envelope.id, { type, resolve: resolve as (value: unknown) => void, reject, timer });
+      try {
+        this.endpoint.postMessage(envelope);
+      } catch {
+        // A closed port or an uncloneable payload: fail now instead of waiting for the timeout.
+        clearTimeout(timer);
+        this.pending.delete(envelope.id);
+        reject(new RpcError('UNAVAILABLE', 'Could not send request', type));
+      }
     });
   }
 
   close(): void {
+    if (this.closed) return;
     this.closed = true;
     this.unsubscribe();
     for (const [id, p] of this.pending) {
@@ -139,10 +185,31 @@ export class RpcPeer {
       return;
     }
     if (envelope.kind === 'event') {
-      this.options.onInvalid?.(`unexpected event ${envelope.type}`, raw);
+      this.deliver(envelope, raw);
       return;
     }
-    this.reply(envelope, await this.dispatch(envelope));
+    const result = await this.dispatch(envelope);
+    // The other side may have gone away while the handler ran; there is nobody to answer.
+    if (!this.closed) this.reply(envelope, result);
+  }
+
+  private deliver(envelope: Envelope, raw: unknown): void {
+    if (!isEventType(envelope.type)) {
+      this.options.onInvalid?.(`unknown event ${envelope.type}`, raw);
+      return;
+    }
+    const payload = events[envelope.type].payload.safeParse(envelope.payload);
+    if (!payload.success) {
+      this.options.onInvalid?.(`invalid ${envelope.type} payload`, raw);
+      return;
+    }
+    for (const listener of this.listeners.get(envelope.type) ?? []) {
+      try {
+        listener(payload.data, envelope);
+      } catch (error) {
+        this.options.onHandlerError?.(envelope.type, error);
+      }
+    }
   }
 
   private async dispatch(envelope: Envelope): Promise<ResultPayload> {
@@ -163,7 +230,11 @@ export class RpcPeer {
       return failure('VALIDATION_FAILED', 'Validation failed', z.prettifyError(payload.error));
     }
     try {
-      const data = await handler(payload.data, { envelope, correlationId: envelope.correlationId });
+      const data = await handler(payload.data, {
+        envelope,
+        correlationId: envelope.correlationId,
+        idempotencyKey: envelope.idempotencyKey,
+      });
       return { ok: true, data };
     } catch (error) {
       if (error instanceof RpcError) return { ok: false, error: error.problem };
@@ -173,7 +244,7 @@ export class RpcPeer {
   }
 
   private reply(request: Envelope, payload: ResultPayload): void {
-    const envelope: Envelope = {
+    this.send({
       id: uuidv7(),
       kind: 'result',
       type: request.type,
@@ -182,8 +253,15 @@ export class RpcPeer {
       causationId: request.id,
       sentAt: new Date().toISOString(),
       payload,
-    };
-    this.endpoint.postMessage(envelope);
+    });
+  }
+
+  private send(envelope: Envelope): void {
+    try {
+      this.endpoint.postMessage(envelope);
+    } catch (error) {
+      this.options.onHandlerError?.(`send ${envelope.type}`, error);
+    }
   }
 
   private settle(envelope: Envelope): void {

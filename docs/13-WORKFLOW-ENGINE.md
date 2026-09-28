@@ -27,8 +27,10 @@ Core owns a `jobs` table. There is no external broker.
 - **Wake-up**: the dispatcher sleeps until the earliest `run_at` (bounded, e.g. max 30 s) and is woken immediately on enqueue. No busy polling per enrollment.
 - **Concurrency**: per job type limits (e.g. research ×3, browser tasks ×1 per profile, email sends ×1 per account).
 - **Completion**: result and next-state persisted, job marked `succeeded`/`failed`, follow-up jobs enqueued — one transaction.
-- **Retry**: `failed` with retryable class → `pending` with `run_at` = backoff; after `max_attempts` or max age → `dead` and a `job.dead` event.
-- **Crash recovery**: on startup, `running` jobs whose lease expired are handled per job type: pure/internal jobs go back to `pending`; jobs that may have caused an external side effect go through reconciliation (see Idempotency) — never blindly re-run.
+- **Retry** (jobs own retries, ADR 021 §2): a retryable error → `pending` with `run_at` = backoff; a non-retryable error → `failed`; after `max_attempts` or max age → `dead` and a `job.dead` event.
+- **Leases**: 60 s, renewed every 20 s by long handlers; `lease_owner` is the core instance id.
+- **Crash recovery**: every job type declares `sideEffecting`. On startup, expired leases of non-side-effecting jobs go back to `pending`; side-effecting ones go through reconciliation (see Idempotency) — never blindly re-run.
+- **Transactions**: `transaction()` nests via SAVEPOINTs, so a service can enqueue a job inside the caller's state-change transaction; callbacks must be synchronous.
 - **Sleep**: on `suspend` the dispatcher stops claiming; on `resume` it re-evaluates due jobs against campaign windows (`17-CAMPAIGNS.md`).
 
 ## State machine ownership map
@@ -39,8 +41,9 @@ Several state machines exist. Exactly one owns each concern; lower levels report
 CampaignEnrollment   owns: which step a prospect is on; stopped/active/completed
    │  creates one per step
    ▼
-WorkflowRun          owns: progress of ONE step (incl. WAITING_APPROVAL, WAITING_FOR_HUMAN,
-   │                       WAITING_DELAY, retries). The only place with "waiting" states.
+WorkflowRun          owns: progress of ONE step (WAITING_APPROVAL, WAITING_FOR_HUMAN,
+   │                       WAITING_EXTERNAL). Delays BETWEEN steps belong to the enrollment
+   │                       (next_action_at); execution retries belong to jobs (ADR 021 §1–2).
    │  dispatches
    ▼
 BrowserTask          owns: execution record of one unit of browser work (dispatched..result).
@@ -68,7 +71,6 @@ Rules:
 ```text
 PENDING
 RUNNING
-WAITING_DELAY
 WAITING_APPROVAL
 WAITING_FOR_HUMAN
 WAITING_EXTERNAL
@@ -112,10 +114,10 @@ Protocol for a critical action:
 1. `reserve`: insert ledger row (`reserved`); if the key exists:
    - `completed` → skip execution, mark step done;
    - `unknown` / `executing` → reconciliation, never execution;
-   - `failed` with retryable class and verified not-sent → allowed to retry;
+   - `not_sent` (verified nothing reached the recipient) → allowed to retry;
 2. set `executing` **before** the irreversible call (for browser tasks: on the `about_to_commit` checkpoint);
 3. execute;
-4. verify → `completed` / `failed` / `unknown`.
+4. verify → `completed` / `not_sent` / `unknown`.
 
 Reconciliation sources: provider lookup (email: search Sent for the app-generated `Message-ID`), UI verification (LinkedIn thread / pending state), user confirmation.
 

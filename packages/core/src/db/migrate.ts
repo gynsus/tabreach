@@ -85,10 +85,26 @@ export async function migrate(
     'INSERT INTO schema_migrations (version, name, checksum, applied_at) VALUES (?, ?, ?, ?)',
   );
   for (const migration of pending) {
-    transaction(db, () => {
-      db.exec(migration.sql);
-      insert.run(migration.version, migration.name, checksum(migration.sql), now().toISOString());
-    });
+    // PRAGMA foreign_keys only takes effect outside a transaction. Table rebuilds (the SQLite
+    // 12-step procedure) need it off, or DROP TABLE would cascade-delete child rows.
+    if (migration.foreignKeysOff) db.exec('PRAGMA foreign_keys = OFF');
+    try {
+      transaction(db, () => {
+        db.exec(migration.sql);
+        migration.run?.(db);
+        if (migration.foreignKeysOff) {
+          const broken = db.prepare('PRAGMA foreign_key_check').all();
+          if (broken.length > 0) {
+            throw new MigrationError(
+              `Migration ${migration.version} (${migration.name}) left ${broken.length} broken foreign keys.`,
+            );
+          }
+        }
+        insert.run(migration.version, migration.name, checksum(migration.sql), now().toISOString());
+      });
+    } finally {
+      if (migration.foreignKeysOff) db.exec('PRAGMA foreign_keys = ON');
+    }
   }
 
   return {

@@ -76,7 +76,7 @@ export function ContactsPage() {
           </>
         }
       />
-      {query.isError ? (
+      {query.isError && !query.data ? (
         <div className="p-6">
           <Alert>{errorMessage(t, query.error)}</Alert>
         </div>
@@ -102,10 +102,12 @@ export function ContactsPage() {
             'minmax(100px,1fr)',
           ]}
           rows={rows}
+          total={total}
           getRowId={(c) => c.id}
           rowHref={(c) => `/contacts/${c.id}`}
           hasMore={query.hasNextPage}
           loadingMore={query.isFetchingNextPage}
+          loadMoreFailed={query.isFetchNextPageError}
           onLoadMore={() => void query.fetchNextPage()}
         />
       )}

@@ -104,7 +104,7 @@ Configurable retention categories:
 - AI raw responses;
 - message bodies;
 - research evidence;
-- audit events (MVP: kept — the table is append-only at the database level; pruning needs an explicit, audited mechanism);
+- audit events (MVP: kept — the table is append-only at the database level; pruning needs an explicit, audited mechanism). Because they cannot be erased, audit payloads never contain personal data: only ids, field names, counts and codes (ADR 022);
 - logs.
 
 Defaults minimize unnecessary sensitive data while preserving debugging/audit value. Retention is enforced by a periodic core job.

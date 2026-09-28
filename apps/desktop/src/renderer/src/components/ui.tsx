@@ -167,6 +167,8 @@ export function Modal(props: {
   wide?: boolean;
   children: ReactNode;
   footer?: ReactNode;
+  /** While true the dialog cannot be dismissed (Escape, close button): work is in progress. */
+  busy?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
@@ -184,7 +186,7 @@ export function Modal(props: {
       onClose={onClose}
       onCancel={(e) => {
         e.preventDefault();
-        onClose();
+        if (!props.busy) onClose();
       }}
       className={cn(
         'm-auto max-h-[85vh] w-[calc(100%-2rem)] rounded-xl border border-rule bg-raised p-0 text-ink shadow-2xl',
@@ -198,7 +200,13 @@ export function Modal(props: {
             <h2 id={titleId} className="text-[15px] font-semibold">
               {props.title}
             </h2>
-            <Button variant="ghost" size="sm" onClick={onClose} aria-label={t('common.close')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onClose}
+              disabled={props.busy}
+              aria-label={t('common.close')}
+            >
               <X size={16} aria-hidden />
             </Button>
           </div>

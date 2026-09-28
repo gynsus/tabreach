@@ -1,4 +1,5 @@
 import { domainToASCII } from 'node:url';
+import { customFieldValueSchema, type CustomFields } from '@tabreach/protocol';
 import { z } from 'zod';
 
 /**
@@ -84,12 +85,16 @@ export function normalizeProfileUrl(input: string | null | undefined): Normalize
     }
     return { channel: 'linkedin', normalized: `linkedin.com/in/${slug.toLowerCase()}`, original };
   }
-  return { channel: 'other', normalized: `${host}${path}`, original };
+  // Other sites often identify a profile by query (`profile.php?id=1`), so the query stays.
+  return { channel: 'other', normalized: `${host}${path}${url.search}`, original };
 }
 
-/** Case- and whitespace-insensitive key for comparing names. */
+/**
+ * Case-, whitespace- and Unicode-form-insensitive key for comparing names. NFC makes "Café" typed
+ * on a keyboard equal the decomposed "Cafe\u0301" that macOS and Excel exports often contain.
+ */
 export function nameKey(input: string | null | undefined): string | null {
-  const value = input?.trim().replace(/\s+/g, ' ').toLowerCase();
+  const value = input?.normalize('NFC').trim().replace(/\s+/g, ' ').toLowerCase();
   return value ? value : null;
 }
 
@@ -98,21 +103,53 @@ export function searchKey(parts: readonly (string | null | undefined)[]): string
   return parts
     .filter((p): p is string => !!p)
     .join(' ')
+    .normalize('NFC')
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase();
 }
 
-/** Splits a tag cell: `a; b, c` -> ['a', 'b', 'c'], trimmed, de-duplicated case-insensitively. */
+/** Splits a CSV tag cell: `a; b, c` -> ['a', 'b', 'c'] (see cleanTags). */
 export function splitTags(input: string | null | undefined): string[] {
-  if (!input) return [];
+  return input ? cleanTags(input.split(/[;,|]/)) : [];
+}
+
+/**
+ * Trims, NFC-normalizes, caps length and de-duplicates a tag list case-insensitively. Tags that
+ * arrive as a list (API, forms) are not split further: "R&D, EU" can be one tag.
+ */
+export function cleanTags(tags: readonly string[]): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const raw of input.split(/[;,|]/)) {
-    const tag = raw.trim().replace(/\s+/g, ' ');
-    if (!tag || seen.has(tag.toLowerCase())) continue;
-    seen.add(tag.toLowerCase());
-    out.push(tag.slice(0, 60));
+  for (const raw of tags) {
+    const tag = raw.normalize('NFC').trim().replace(/\s+/g, ' ').slice(0, 60);
+    const key = tag.toLowerCase();
+    if (!tag || seen.has(key)) continue;
+    seen.add(key);
+    out.push(tag);
+  }
+  return out;
+}
+
+export const CUSTOM_FIELD_KEY_MAX = 100;
+
+/**
+ * Reads stored custom fields tolerantly: entries that no longer pass validation are dropped
+ * instead of failing the whole list (one bad value must not break every page that shows it).
+ */
+export function readCustomFields(json: string): CustomFields {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: CustomFields = {};
+  for (const [k, v] of Object.entries(parsed)) {
+    if (k.length === 0 || k.length > CUSTOM_FIELD_KEY_MAX) continue;
+    const value = customFieldValueSchema.safeParse(v);
+    if (value.success) out[k] = value.data;
   }
   return out;
 }

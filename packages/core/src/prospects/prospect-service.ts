@@ -13,7 +13,12 @@ import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
 import { CompanyRepository, type CompanyFields } from './companies.js';
 import { ContactRepository, ProfileUrlConflictError, type ContactFields } from './contacts.js';
-import { normalizeDomain, normalizeEmail, normalizeProfileUrl, splitTags } from './normalize.js';
+import {
+  cleanTags as cleanTagList,
+  normalizeDomain,
+  normalizeEmail,
+  normalizeProfileUrl,
+} from './normalize.js';
 import { applyTags, companyTags, contactTags } from './tags.js';
 
 export interface CommandContext {
@@ -21,7 +26,7 @@ export interface CommandContext {
 }
 
 const empty = (v: string | null | undefined): string | null => (v?.trim() ? v.trim() : null);
-const cleanTags = (tags: readonly string[] | undefined) => (tags ? splitTags(tags.join(';')) : undefined);
+const cleanTags = (tags: readonly string[] | undefined) => (tags ? cleanTagList(tags) : undefined);
 
 /** Manual create/edit of companies and contacts (FR-PROS-001, -002, -006). */
 export class ProspectService {
@@ -61,7 +66,6 @@ export class ProspectService {
         actionType: 'company.created',
         objectType: 'company',
         objectId: id,
-        payload: { name: fields.name, domain: fields.domain },
         correlationId: ctx.correlationId,
       });
       return this.companyDto(id);

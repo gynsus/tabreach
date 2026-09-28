@@ -1,10 +1,11 @@
+import { domainToUnicode } from 'node:url';
 import type { DatabaseSync } from 'node:sqlite';
 import { RpcError, uuidv7, type Suppression, type SuppressionKind } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
 import { likePattern } from '../prospects/companies.js';
 import { parseCsv } from '../prospects/csv.js';
-import { normalizeDomain, normalizeEmail, normalizeProfileUrl } from '../prospects/normalize.js';
+import { normalizeDomain, normalizeEmail, normalizeProfileUrl, searchKey } from '../prospects/normalize.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
 
 interface Row {
@@ -44,8 +45,9 @@ export class SuppressionService {
         return n ? { normalized: n, original } : null;
       }
       case 'domain': {
+        // Matched in punycode, shown (and searched) in Unicode: `xn--e1afmkfd.xn--p1ai` reads as `пример.рф`.
         const n = normalizeDomain(original);
-        return n ? { normalized: n, original: n } : null;
+        return n ? { normalized: n, original: domainToUnicode(n) } : null;
       }
       case 'profile_url': {
         const n = normalizeProfileUrl(original);
@@ -60,10 +62,8 @@ export class SuppressionService {
   }
 
   list(page: { search?: string | undefined; limit: number; offset: number }) {
-    const where = page.search
-      ? `WHERE lower(value_original) LIKE ? ESCAPE '\\' OR value_normalized LIKE ? ESCAPE '\\'`
-      : '';
-    const params = page.search ? [likePattern(page.search), likePattern(page.search)] : [];
+    const where = page.search ? `WHERE search_key LIKE ? ESCAPE '\\'` : '';
+    const params = page.search ? [likePattern(page.search)] : [];
     const total = (
       this.db.prepare(`SELECT count(*) AS n FROM suppressions ${where}`).get(...params) as { n: number }
     ).n;
@@ -90,7 +90,7 @@ export class SuppressionService {
         actionType: 'suppression.removed',
         objectType: 'suppression',
         objectId: id,
-        payload: { kind: row.kind, value: row.value_original },
+        payload: { kind: row.kind },
         correlationId: ctx.correlationId,
       });
       return true;
@@ -143,16 +143,24 @@ export class SuppressionService {
     };
     this.db
       .prepare(
-        `INSERT INTO suppressions (id, kind, value_original, value_normalized, reason, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO suppressions (id, kind, value_original, value_normalized, reason, created_at, search_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(row.id, row.kind, row.value_original, row.value_normalized, row.reason, row.created_at);
+      .run(
+        row.id,
+        row.kind,
+        row.value_original,
+        row.value_normalized,
+        row.reason,
+        row.created_at,
+        searchKey([row.value_original, row.value_normalized]),
+      );
     this.audit.record({
       actorType: 'user',
       actionType: 'suppression.added',
       objectType: 'suppression',
       objectId: row.id,
-      payload: { kind, value: n.original, reason },
+      payload: { kind, reason },
       correlationId: ctx.correlationId,
     });
     return { row: toDto(row), created: true };
@@ -160,7 +168,16 @@ export class SuppressionService {
 }
 
 export function detectKind(value: string): SuppressionKind {
-  if (/^https?:\/\//i.test(value) || /linkedin\.com\//i.test(value)) return 'profile_url';
+  if (/linkedin\.com\//i.test(value)) return 'profile_url';
+  if (/^https?:\/\//i.test(value)) {
+    // A bare site (`https://acme.com/`) means the domain; a path or query means a profile page.
+    try {
+      const url = new URL(value);
+      return url.pathname.replace(/\/+$/, '') === '' && !url.search ? 'domain' : 'profile_url';
+    } catch {
+      return 'profile_url';
+    }
+  }
   if (value.includes('@')) return 'email';
   return 'domain';
 }

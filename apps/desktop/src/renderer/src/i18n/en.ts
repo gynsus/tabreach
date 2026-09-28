@@ -36,6 +36,31 @@ export const en = {
     created: 'Created',
     updated: 'Updated',
     history: 'History',
+    loadMore: 'Load more',
+  },
+  core: {
+    starting: 'TabReach is starting…',
+    restarting: 'TabReach hit a problem and is restarting. Your data is safe; this takes a few seconds.',
+    failed:
+      'TabReach stopped after repeated errors. Quit and reopen the app. If it happens again, create a diagnostics bundle.',
+  },
+  fieldNames: {
+    name: 'name',
+    website: 'website',
+    domain: 'domain',
+    country: 'country',
+    city: 'city',
+    status: 'status',
+    tags: 'tags',
+    customFields: 'custom fields',
+    companyId: 'company',
+    firstName: 'first name',
+    lastName: 'last name',
+    fullName: 'full name',
+    jobTitle: 'job title',
+    email: 'email',
+    linkedinUrl: 'LinkedIn profile',
+    websiteUrl: 'website',
   },
   companies: {
     title: 'Companies',
@@ -96,7 +121,8 @@ export const en = {
     },
     matchRules:
       'Companies match by domain, then by name. Contacts match by email, then LinkedIn profile, then name within the company.',
-    commit: 'Import {{count}} rows',
+    commit_one: 'Import {{count}} row',
+    commit_other: 'Import {{count}} rows',
     committing: 'Importing…',
     done: 'Import finished',
     inserted: 'New',
@@ -126,7 +152,8 @@ export const en = {
     },
   },
   export: {
-    saved: 'Exported {{count}} rows',
+    saved_one: 'Exported {{count}} row',
+    saved_other: 'Exported {{count}} rows',
   },
   suppressions: {
     title: 'Do not contact',
@@ -161,6 +188,7 @@ export const en = {
     search: 'Search the list',
     emptyTitle: 'The list is empty',
     emptyBody: 'Add emails, domains or profile URLs that must never be contacted.',
+    noResults: 'Nothing on the list matches this search.',
   },
   activity: {
     title: 'Activity',
@@ -206,6 +234,18 @@ export const en = {
       chromeUnknownVersion: 'Installed, version unknown',
       chrome: 'Version {{version}}',
     },
+    detailKeys: {
+      worker: {
+        notRunning: 'The browser process is not running. TabReach restarts it automatically.',
+        unreachable: 'The browser process is not responding.',
+      },
+      database: { queryFailed: 'The database did not answer a test query.' },
+      secrets: {
+        encryptionUnavailable: 'The macOS Keychain is not available for encryption.',
+        mismatch: 'Encrypted data could not be read back.',
+        unavailable: 'Secret storage is not available.',
+      },
+    },
     launch: {
       heading: 'Chrome launch check',
       body: 'Opens Chrome with a throwaway profile, loads a page, reads its title and closes. A Chrome window will appear for a few seconds.',
@@ -242,7 +282,11 @@ export const en = {
     csv: {
       unreadable: 'This file could not be read as CSV.',
       noHeader: 'The first row must contain column names.',
+      unclosedQuote:
+        'A quotation mark in the file is never closed, so rows would be lost. Fix the file and try again.',
     },
+    customField: { tooLong: 'A custom field value is longer than 2,000 characters.' },
+    idempotency: { reused: 'This action was already used for something else. Try again.' },
     import: {
       mappingLength: 'The column mapping does not match the file. Choose the file again.',
       nothingMapped: 'Choose at least one column to import.',

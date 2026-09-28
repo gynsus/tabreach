@@ -1,24 +1,21 @@
 import { join } from 'node:path';
-import {
-  app,
-  BrowserWindow,
-  MessageChannelMain,
-  safeStorage,
-  utilityProcess,
-  type UtilityProcess,
-} from 'electron';
-import { RpcError, RpcPeer, type Logger } from '@tabreach/protocol';
+import { app, BrowserWindow, MessageChannelMain, safeStorage, session, type UtilityProcess } from 'electron';
+import { RpcError, RpcPeer, type CoreState, type Logger } from '@tabreach/protocol';
 import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
-import { RestartPolicy } from './restart-policy';
+import { installMenu } from './menu';
 import { registerSaveFile } from './save-file';
 import { parseSelfCheck, runSelfCheck } from './self-check';
+import { Supervised } from './supervisor';
 
 const isDev = !app.isPackaged;
 if (isDev) {
   // Keep development data away from a real installation; tests point this at a temp dir.
   app.setPath('userData', process.env.TABREACH_USER_DATA_DIR ?? join(app.getPath('appData'), 'TabReach-dev'));
 }
+
+/** A self-check that cannot finish within this bound fails instead of hanging CI. */
+const SELF_CHECK_DEADLINE_MS = 120_000;
 
 function main(): void {
   const logDir = isDev ? join(app.getPath('userData'), 'logs') : app.getPath('logs');
@@ -31,20 +28,28 @@ function main(): void {
   };
 
   const rendererUrl = isDev && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null;
+  const rendererOrigin = rendererUrl ? new URL(rendererUrl).origin : null;
   const rendererFile = join(__dirname, '../renderer/index.html');
-  /** Only our own renderer page may use main-process IPC. */
-  const isAppUrl = (url: string) =>
-    rendererUrl
-      ? url.startsWith(rendererUrl)
-      : url.startsWith('file://') && decodeURI(new URL(url).pathname) === rendererFile;
+  /** Only our own renderer page may use main-process IPC or receive a core port. */
+  const isAppUrl = (url: string): boolean => {
+    try {
+      const parsed = new URL(url);
+      return rendererOrigin
+        ? parsed.origin === rendererOrigin
+        : parsed.protocol === 'file:' && decodeURI(parsed.pathname) === rendererFile;
+    } catch {
+      return false;
+    }
+  };
 
   let window: BrowserWindow | null = null;
   let windowLoaded = false;
   const selfCheck = parseSelfCheck(process.argv);
   let selfCheckStarted = false;
+  let quitting = false;
 
-  const core = new Supervised('core', join(__dirname, 'core.js'), childEnv, logger);
-  const worker = new Supervised('worker', join(__dirname, 'worker.js'), childEnv, logger);
+  const core = new Supervised('core', join(__dirname, 'core.js'), childEnv, logger, isDev);
+  const worker = new Supervised('worker', join(__dirname, 'worker.js'), childEnv, logger, isDev);
 
   core.onSpawn = (proc) => {
     serveHost(proc, logger);
@@ -52,29 +57,40 @@ function main(): void {
     connectWorker();
     startSelfCheck();
   };
+  core.onState = (state) => sendCoreState(state);
   worker.onSpawn = () => {
     connectWorker();
     startSelfCheck();
   };
+
+  const stopChildren = () => Promise.all([core.stop(), worker.stop()]);
 
   /** Headless diagnostics mode: runs once both children are up, prints JSON, exits. */
   function startSelfCheck(): void {
     const coreProc = core.process;
     if (!selfCheck.enabled || selfCheckStarted || !coreProc || !worker.process) return;
     selfCheckStarted = true;
-    void runSelfCheck(coreProc, selfCheck.url, logger).then((report) => {
+    void runSelfCheck(coreProc, selfCheck.url, logger).then(async (report) => {
       process.stdout.write(`TABREACH_SELF_CHECK ${JSON.stringify(report)}\n`);
       logger.info({ event: 'self_check.finished', ok: report.ok }, 'self-check finished');
-      core.stop();
-      worker.stop();
+      await stopChildren();
       app.exit(report.ok ? 0 : 1);
     });
+  }
+
+  /** Tells the renderer whether core can answer, so it can say so instead of waiting on timeouts. */
+  function sendCoreState(state: CoreState): void {
+    if (window && windowLoaded) window.webContents.send('tabreach:core-state', state);
   }
 
   /** renderer <-> core: a fresh channel for every page load and every core start. */
   function connectRenderer(): void {
     const coreProc = core.process;
     if (!coreProc || !window || !windowLoaded) return;
+    if (!isAppUrl(window.webContents.getURL())) {
+      logger.warn({ event: 'ipc.rejected_port_handoff' }, 'window is not showing the app page; no core port');
+      return;
+    }
     const { port1, port2 } = new MessageChannelMain();
     const handoff: PortHandoff = { __tabreach: 'port', name: 'app' };
     coreProc.postMessage(handoff, [port1]);
@@ -96,8 +112,10 @@ function main(): void {
 
   function createWindow(): void {
     window = new BrowserWindow({
-      width: 980,
-      height: 760,
+      width: 1180,
+      height: 800,
+      minWidth: 900,
+      minHeight: 600,
       show: false,
       title: 'TabReach',
       webPreferences: {
@@ -105,27 +123,36 @@ function main(): void {
         sandbox: true,
         contextIsolation: true,
         nodeIntegration: false,
+        devTools: isDev,
       },
     });
-    const allowedUrl = rendererUrl;
-    window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    window.webContents.on('will-navigate', (event, url) => {
-      if (!allowedUrl || !url.startsWith(allowedUrl)) event.preventDefault();
+    const wc = window.webContents;
+    wc.setWindowOpenHandler(() => ({ action: 'deny' }));
+    wc.on('will-navigate', (event, url) => {
+      if (!rendererOrigin || !isAppUrl(url)) event.preventDefault();
     });
-    window.webContents.on('did-start-loading', () => {
-      windowLoaded = false;
+    // Only a real document load resets the connection. In-app hash routing also emits
+    // did-start-loading, and treating that as a reload left the window without a core port
+    // after the next core restart.
+    wc.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument) windowLoaded = false;
     });
-    window.webContents.on('did-finish-load', () => {
+    wc.on('did-finish-load', () => {
       windowLoaded = true;
+      sendCoreState(core.state);
       connectRenderer();
+    });
+    wc.on('render-process-gone', (_event, details) => {
+      logger.error({ event: 'renderer.gone', reason: details.reason }, 'renderer process gone; reloading');
+      if (details.reason !== 'clean-exit') wc.reload();
     });
     window.once('ready-to-show', () => window?.show());
     window.on('closed', () => {
       window = null;
       windowLoaded = false;
     });
-    if (allowedUrl) {
-      void window.loadURL(allowedUrl);
+    if (rendererUrl) {
+      void window.loadURL(rendererUrl);
     } else {
       void window.loadFile(rendererFile);
     }
@@ -141,10 +168,22 @@ function main(): void {
   app.whenReady().then(
     () => {
       logger.info({ event: 'app.ready', version: app.getVersion(), packaged: app.isPackaged }, 'app ready');
+      installMenu(isDev);
+      // The app needs no browser permissions (camera, notifications, geolocation, …).
+      session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+      session.defaultSession.setPermissionCheckHandler(() => false);
       registerSaveFile(isAppUrl, logger);
       core.start();
       worker.start();
-      if (!selfCheck.enabled) createWindow();
+      if (selfCheck.enabled) {
+        setTimeout(() => {
+          process.stderr.write('TABREACH_SELF_CHECK timed out\n');
+          logger.error({ event: 'self_check.timeout' }, 'self-check timed out');
+          void stopChildren().finally(() => app.exit(1));
+        }, SELF_CHECK_DEADLINE_MS).unref();
+      } else {
+        createWindow();
+      }
     },
     (error: unknown) => logger.error({ event: 'app.ready_failed', err: error }, 'app failed to start'),
   );
@@ -152,9 +191,12 @@ function main(): void {
   app.on('window-all-closed', () => {
     if (!selfCheck.enabled) app.quit();
   });
-  app.on('before-quit', () => {
-    core.stop();
-    worker.stop();
+  app.on('before-quit', (event) => {
+    if (quitting) return;
+    // Let core close the database cleanly before the app exits (bounded by the supervisor).
+    event.preventDefault();
+    quitting = true;
+    void stopChildren().finally(() => app.quit());
   });
 }
 
@@ -180,54 +222,14 @@ function serveHost(proc: UtilityProcess, logger: Logger): void {
     });
 }
 
-/** A utility process restarted by main with bounded backoff (ADR 012). */
-class Supervised {
-  process: UtilityProcess | null = null;
-  onSpawn: (proc: UtilityProcess) => void = () => {};
-  private readonly policy = new RestartPolicy();
-  private stopping = false;
-  private restartTimer: ReturnType<typeof setTimeout> | null = null;
-
-  constructor(
-    private readonly name: 'core' | 'worker',
-    private readonly entry: string,
-    private readonly env: ChildEnv,
-    private readonly logger: Logger,
-  ) {}
-
-  start(): void {
-    this.restartTimer = null;
-    const proc = utilityProcess.fork(this.entry, [], {
-      serviceName: `TabReach ${this.name}`,
-      env: { ...process.env, ...this.env },
-      stdio: isDev ? 'inherit' : 'ignore',
-    });
-    proc.once('spawn', () => {
-      this.process = proc;
-      this.logger.info({ event: 'process.spawned', name: this.name, pid: proc.pid }, 'process spawned');
-      this.onSpawn(proc);
-    });
-    proc.once('exit', (code) => {
-      if (this.process === proc) this.process = null;
-      if (this.stopping) return;
-      const decision = this.policy.onCrash();
-      this.logger.error({ event: 'process.exited', name: this.name, code, ...decision }, 'process exited');
-      if (decision.restart) {
-        this.restartTimer = setTimeout(() => this.start(), decision.delayMs);
-      }
-    });
-  }
-
-  stop(): void {
-    this.stopping = true;
-    if (this.restartTimer) clearTimeout(this.restartTimer);
-    this.process?.kill();
-  }
-}
-
-// Entry point last: classes above must be initialized before main() runs.
+// Entry point last: everything above must be initialized before main() runs.
 if (!app.requestSingleInstanceLock()) {
-  app.quit();
+  if (parseSelfCheck(process.argv).enabled) {
+    process.stderr.write('TABREACH_SELF_CHECK another TabReach instance is running; quit it first\n');
+    app.exit(1);
+  } else {
+    app.quit();
+  }
 } else {
   main();
 }

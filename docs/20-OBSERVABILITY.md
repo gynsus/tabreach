@@ -12,9 +12,10 @@ Make it possible to answer:
 
 ## Structured logs
 
-- pino JSON logs, one stream per process (`main`, `core`, `worker`), written to `~/Library/Logs/TabReach/` with rotation and a size cap.
+- pino JSON logs, one stream per process (`main`, `core`, `worker`), written to `~/Library/Logs/TabReach/`; rotated at 10 MB (checked every minute while running and at start), five generations kept.
 - Every record supports: timestamp, level, process, correlation ID, workflow ID, task/action ID when relevant, event code, redacted context.
-- A redaction layer (pino `redact` paths + value scrubbers for tokens/keys/cookies/emails in debug dumps) is mandatory and unit-tested.
+- Every log object passes through the shared `redactDeep` (`packages/protocol/src/redact.ts`), also used for audit payloads: credential keys in any casing or separator style (`access_token`, `X-Api-Key`, `refreshToken`, `Set-Cookie`, …) at any depth, token-looking strings (Bearer, `sk-…`, Google OAuth tokens) inside messages and stacks; past the depth limit values are dropped, not kept. Unit-tested.
+- Logs carry no personal data where avoidable: e.g. a failed Chrome check logs the host, not the URL.
 
 Avoid free-form-only logs for important state changes.
 

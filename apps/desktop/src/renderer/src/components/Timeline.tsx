@@ -12,7 +12,8 @@ export function describeEvent(t: TFunction, event: ActionEvent): { title: string
     return { title, detail: t('activity.importSummary', p as Record<string, number>) };
   }
   if (Array.isArray(p.fields) && p.fields.length > 0) {
-    return { title, detail: t('activity.changedFields', { fields: (p.fields as string[]).join(', ') }) };
+    const fields = (p.fields as string[]).map((f) => translateKey(t, `fieldNames.${f}`, f)).join(', ');
+    return { title, detail: t('activity.changedFields', { fields }) };
   }
   if (typeof p.value === 'string') return { title, detail: p.value };
   return { title, detail: null };

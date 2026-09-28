@@ -12,10 +12,14 @@ export interface ParsedCsv {
 export function parseCsv(text: string): ParsedCsv {
   // Blank rows are dropped below rather than by the parser so reported row numbers stay correct.
   const result = Papa.parse<string[]>(text.replace(/^\uFEFF/, ''), { skipEmptyLines: false });
-  const fatal = result.errors.find((e) => e.type === 'Quotes' || e.type === 'Delimiter');
-  if (fatal && result.data.length === 0) {
-    throw RpcError.validation({ csv: 'csv.unreadable' }, fatal.message);
+  // An unclosed quote swallows every following line into one cell; importing that would silently
+  // lose rows, so it is a file error. (A single-column file only yields an undetectable-delimiter
+  // warning, which is fine.)
+  const quote = result.errors.find((e) => e.type === 'Quotes');
+  if (quote) {
+    throw RpcError.validation({ csv: 'csv.unclosedQuote' }, `row ${(quote.row ?? 0) + 1}`);
   }
+  if (result.data.length === 0) throw RpcError.validation({ csv: 'csv.unreadable' });
   const [header, ...rows] = result.data;
   if (!header || header.every((h) => !h.trim())) throw RpcError.validation({ csv: 'csv.noHeader' });
   return {
@@ -111,11 +115,17 @@ export function suggestMapping(headers: readonly string[]): ImportField[] {
 
 /** Custom field key for a mapped column: the header without an export prefix. */
 export function customKey(header: string): string {
-  const lower = header.toLowerCase();
+  const cleaned = unescapeCell(header.trim());
+  const lower = cleaned.toLowerCase();
   for (const prefix of Object.values(CUSTOM_PREFIX)) {
-    if (lower.startsWith(prefix)) return header.slice(prefix.length).trim() || header;
+    if (lower.startsWith(prefix)) return cleaned.slice(prefix.length).trim();
   }
-  return header.trim();
+  return cleaned;
+}
+
+/** Undo `safeCell` (`'=SUM` -> `=SUM`) so exported files re-import unchanged. */
+export function unescapeCell(value: string): string {
+  return /^'[=+\-@\t\r]/.test(value) ? value.slice(1) : value;
 }
 
 /** Prevents spreadsheet formula injection when exported cells are opened in Excel/Numbers. */
@@ -124,5 +134,9 @@ export function safeCell(value: string): string {
 }
 
 export function toCsv(headers: string[], rows: string[][]): string {
-  return Papa.unparse({ fields: headers, data: rows.map((r) => r.map(safeCell)) }, { newline: '\n' });
+  // Headers too: custom field names come from imported headers and could carry a formula.
+  return Papa.unparse(
+    { fields: headers.map(safeCell), data: rows.map((r) => r.map(safeCell)) },
+    { newline: '\n' },
+  );
 }

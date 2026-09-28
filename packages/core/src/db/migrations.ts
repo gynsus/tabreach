@@ -1,7 +1,18 @@
+import type { DatabaseSync } from 'node:sqlite';
+import { searchKey } from '../prospects/normalize.js';
+
 export interface Migration {
   version: number;
   name: string;
+  /** Checksummed; never edit once released. */
   sql: string;
+  /**
+   * Optional data step run after `sql` in the same transaction, for work SQL cannot do (e.g.
+   * Unicode-aware keys). Not checksummed: keep it small and never change its effect once released.
+   */
+  run?: (db: DatabaseSync) => void;
+  /** Disable foreign keys around this migration (table rebuilds); integrity is checked before commit. */
+  foreignKeysOff?: boolean;
 }
 
 /**
@@ -157,5 +168,32 @@ export const migrations: readonly Migration[] = [
       CREATE TRIGGER action_events_no_delete BEFORE DELETE ON action_events
       BEGIN SELECT RAISE(ABORT, 'action_events is append-only'); END;
     `,
+  },
+  {
+    version: 6,
+    name: 'suppression_search_and_command_log',
+    sql: `
+      -- Unicode-aware search over the do-not-contact list (SQLite lower() folds ASCII only).
+      ALTER TABLE suppressions ADD COLUMN search_key TEXT NOT NULL DEFAULT '';
+
+      -- Results of creating commands by idempotency key: a retried command returns the first
+      -- result instead of running again (ADR 020). Pruned after 7 days.
+      CREATE TABLE command_log (
+        idempotency_key TEXT PRIMARY KEY,
+        command_type    TEXT NOT NULL,
+        result          TEXT NOT NULL CHECK (json_valid(result)),
+        created_at      TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX command_log_created ON command_log (created_at);
+    `,
+    run(db) {
+      const rows = db.prepare('SELECT id, value_original, value_normalized FROM suppressions').all() as {
+        id: string;
+        value_original: string;
+        value_normalized: string;
+      }[];
+      const update = db.prepare('UPDATE suppressions SET search_key = ? WHERE id = ?');
+      for (const r of rows) update.run(searchKey([r.value_original, r.value_normalized]), r.id);
+    },
   },
 ];
