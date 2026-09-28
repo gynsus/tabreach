@@ -10,6 +10,9 @@ const KEYS: Record<ChangedEntity, string[]> = {
   activity: ['activity'],
   settings: ['settings'],
   job: ['jobs'],
+  campaign: ['campaigns', 'campaign'],
+  enrollment: ['enrollments', 'campaigns', 'campaign'],
+  approval: ['approvals', 'campaigns', 'campaign'],
 };
 
 /** Refetches only the queries that show the changed data (not every loaded page of every list). */

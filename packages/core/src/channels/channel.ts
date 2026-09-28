@@ -23,6 +23,8 @@ export interface MessageChannel {
   readonly channel: string;
   /** Minimum time between two sends through this channel account (product pacing, not evasion). */
   readonly minSpacingMs: number;
+  /** Most sends in any 24 hours through this channel account; null = no limit. */
+  readonly dailyLimit: number | null;
   send(message: OutgoingMessage, signal: AbortSignal): Promise<SendResult>;
   /** Looks up whether a send with this key reached the outside world (e.g. Sent folder by Message-ID). */
   reconcile(idempotencyKey: string, signal: AbortSignal): Promise<ReconcileResult>;

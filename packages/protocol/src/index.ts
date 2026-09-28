@@ -8,3 +8,4 @@ export * from './prospects.js';
 export * from './events.js';
 export * from './redact.js';
 export * from './audit.js';
+export * from './campaigns.js';

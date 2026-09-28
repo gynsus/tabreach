@@ -21,6 +21,7 @@ export class TestChannel implements MessageChannel {
     private readonly db: DatabaseSync,
     private readonly now: () => Date,
     readonly minSpacingMs = 0,
+    readonly dailyLimit: number | null = null,
   ) {}
 
   /** Queues outcomes for the next sends (first in, first used); afterwards sends complete. */

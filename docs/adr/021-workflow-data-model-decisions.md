@@ -55,6 +55,18 @@ The Phase 1 audit listed questions the docs left open or answered twice; Phase 2
 ### 8. Drafts
 - `message_drafts.contact_id` becomes nullable with a check that contact or company is present (web-form steps target companies).
 
+## Implementation notes (Phase 2, 2026-09-28)
+
+Decisions made while implementing, consistent with the above:
+
+- **Crash recovery of side-effecting jobs.** Every orphaned job returns to `pending`; a side-effecting handler cannot re-execute blindly because it goes through `executeSideEffect`, which finds the ledger row in `executing`/`unknown` and reconciles with the channel first. The guarantee of §2 lives in the ledger, not in the queue.
+- **Continuing is not retrying.** A handler may return `{ continueAt }` (outside the send window, cap reached, channel spacing): the job goes back to `pending` without spending an attempt, and never sooner than one second from now.
+- **Final pre-send check.** `SideEffectLedger.reserve` takes a guard that runs in the reserving transaction; the workflow passes suppression, caps, stop conditions, channel pacing and the approval-hash check through it.
+- **Caps count every touch**, including follow-ups of the same campaign: with the default 1 touch per contact per 3 days, a follow-up after 1 day waits until the cap allows it.
+- **Skip vs reject.** `skipped` means "do not send this message" and the enrollment continues with its next step; `rejected` stops the enrollment.
+- **Recipient change after approval.** The content hash covers channel, target, subject and body; if the contact's address changes after approval, the final check writes a new draft version and asks again.
+- **Columns added** to the documented shape: `campaign_enrollments.campaign_id`, `workflow_runs.step_position`, `message_drafts.workflow_run_id`. `side_effects.workflow_run_id` has no foreign key (the table predates `workflow_runs`).
+
 ## Consequences
 
 - Phase 2 migrations implement these tables and CHECK lists directly.

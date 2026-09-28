@@ -71,8 +71,8 @@ and start with a UTF-8 BOM.
 ```text
 query   suppressions.list
 command suppressions.add / suppressions.remove / suppressions.import   # add is idempotent
-query   policy.settings.get                                            # Phase 2
-command policy.settings.update                                         # Phase 2
+query   policy.settings.get                                            # caps, active window, company stop
+command policy.settings.update
 ```
 
 ## Research
@@ -87,24 +87,29 @@ query   evidence.listForTarget
 
 ```text
 query   campaigns.list / campaigns.get
-command campaigns.create / campaigns.update / campaigns.archive / campaigns.clone
-command campaigns.preview              # dry-run first planned action for one target
-command campaigns.launch               # creates immutable version, validates adapters/limits
+command campaigns.create / campaigns.update / campaigns.archive
+command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume
-command campaigns.enroll               # { campaignId, targets[] }
-command enrollments.pause / enrollments.stop
+command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
+query   enrollments.list               # { campaignId } — step, next action, what it waits for
+command enrollments.pause / enrollments.resume / enrollments.stop
+command campaigns.clone / campaigns.preview   # Phase 2c
 ```
+
+Launch validation fails with `VALIDATION_FAILED` and field keys such as `steps.0.body: template.unknownField`;
+state errors are `CONFLICT` (`campaign.notLaunched`, `enrollment.notActive`, …).
 
 ## Drafts and approvals
 
 ```text
-query   approvals.pending              # batch queue, ordered
+query   approvals.pending              # batch queue, oldest first
 command approvals.approve              # { approvalId, contentHash }  -- hash must match current draft
-command approvals.reject / approvals.skip
-command drafts.revise                  # creates new draft version, invalidates approvals
+command approvals.reject               # stops the enrollment
+command approvals.skip                 # this message is not sent; the enrollment moves to its next step
+command drafts.revise                  # new draft version, supersedes open approvals, returns the new one
 ```
 
-Approval commands re-check the exact target and content hash and fail with `APPROVAL_STALE` on mismatch.
+Approval commands re-check the exact target and content hash and fail with `APPROVAL_STALE` on mismatch; deciding an approval that is no longer pending is `CONFLICT` (`approval.notPending`). `drafts.revise` is refused (`draft.alreadySent`) once the send is `executing`, `completed` or `unknown` in the ledger: an edit must never lead to a second message.
 
 ## Browser profiles and sessions
 
@@ -185,9 +190,12 @@ Events are one-way hints validated against the event registry (`packages/protoco
 Implemented:
 
 ```text
-data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings')[] }   # after every mutation
+data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings'|
+                            'job'|'campaign'|'enrollment'|'approval')[] }   # after every mutation
 ```
 
-Planned with their phases: `approval` / `enrollment` / `workflow` entities in `data.changed` (Phase 2), `job.dead` (Phase 2), `email.reply_received` (Phase 3), `browser.intervention_required` and `browser.session_changed` (Phase 5).
+Background work announces its changes the same way: a failed or dead job sends `job`, a new approval sends `approval`, a sent message sends `enrollment`.
+
+Planned with their phases: `email.reply_received` (Phase 3), `browser.intervention_required` and `browser.session_changed` (Phase 5).
 
 Core availability is not an event: main reports it through `onCoreState` (ADR 020).

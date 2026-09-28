@@ -253,4 +253,139 @@ export const migrations: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 8,
+    name: 'campaigns_and_workflows',
+    sql: `
+      -- Campaigns (docs/17). draft_config is the mutable editing state; launching freezes a version.
+      CREATE TABLE campaigns (
+        id                TEXT PRIMARY KEY,
+        name              TEXT NOT NULL,
+        status            TEXT NOT NULL CHECK (status IN ('draft', 'active', 'paused', 'archived')),
+        draft_config      TEXT NOT NULL CHECK (json_valid(draft_config)),
+        active_version_id TEXT REFERENCES campaign_versions (id),
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL,
+        lock_version      INTEGER NOT NULL DEFAULT 0
+      ) STRICT;
+
+      CREATE TABLE campaign_versions (
+        id             TEXT PRIMARY KEY,
+        campaign_id    TEXT NOT NULL REFERENCES campaigns (id),
+        version_number INTEGER NOT NULL,
+        -- Non-step settings only; steps live in sequence_steps.
+        config         TEXT NOT NULL CHECK (json_valid(config)),
+        created_at     TEXT NOT NULL,
+        UNIQUE (campaign_id, version_number)
+      ) STRICT;
+
+      CREATE TABLE sequence_steps (
+        id                  TEXT PRIMARY KEY,
+        campaign_version_id TEXT NOT NULL REFERENCES campaign_versions (id),
+        position            INTEGER NOT NULL CHECK (position >= 1),
+        step_type           TEXT NOT NULL CHECK (step_type IN ('send_message', 'condition')),
+        execution_mode      TEXT CHECK (execution_mode IN ('auto', 'assisted', 'manual')),
+        delay_seconds       INTEGER NOT NULL CHECK (delay_seconds >= 0),
+        config              TEXT NOT NULL CHECK (json_valid(config)),
+        created_at          TEXT NOT NULL,
+        UNIQUE (campaign_version_id, position)
+      ) STRICT;
+
+      -- The enrollment owns which step a prospect is on and the gap between steps (ADR 021 section 1).
+      CREATE TABLE campaign_enrollments (
+        id                    TEXT PRIMARY KEY,
+        campaign_id           TEXT NOT NULL REFERENCES campaigns (id),
+        campaign_version_id   TEXT NOT NULL REFERENCES campaign_versions (id),
+        company_id            TEXT REFERENCES companies (id) ON DELETE SET NULL,
+        contact_id            TEXT REFERENCES contacts (id),
+        status                TEXT NOT NULL CHECK (status IN ('active', 'paused', 'completed', 'stopped')),
+        current_step_position INTEGER NOT NULL DEFAULT 1,
+        next_action_at        TEXT,
+        stop_reason           TEXT,
+        last_reply_at         TEXT,
+        created_at            TEXT NOT NULL,
+        updated_at            TEXT NOT NULL,
+        lock_version          INTEGER NOT NULL DEFAULT 0,
+        CHECK (company_id IS NOT NULL OR contact_id IS NOT NULL)
+      ) STRICT;
+      -- A contact is in a campaign at most once.
+      CREATE UNIQUE INDEX campaign_enrollments_contact ON campaign_enrollments (campaign_id, contact_id)
+        WHERE contact_id IS NOT NULL;
+      CREATE INDEX campaign_enrollments_due ON campaign_enrollments (status, next_action_at);
+      CREATE INDEX campaign_enrollments_contact_id ON campaign_enrollments (contact_id);
+
+      -- One run per enrollment step; owns waiting inside the step (ADR 021 section 1).
+      CREATE TABLE workflow_runs (
+        id                 TEXT PRIMARY KEY,
+        workflow_type      TEXT NOT NULL,
+        definition_version INTEGER NOT NULL,
+        business_type      TEXT NOT NULL,
+        business_id        TEXT NOT NULL,
+        step_position      INTEGER,
+        status             TEXT NOT NULL CHECK (status IN ('pending', 'running', 'waiting_approval',
+                             'waiting_for_human', 'waiting_external', 'paused', 'completed', 'failed', 'cancelled')),
+        current_state      TEXT NOT NULL,
+        context            TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(context)),
+        correlation_id     TEXT NOT NULL,
+        lock_version       INTEGER NOT NULL DEFAULT 0,
+        created_at         TEXT NOT NULL,
+        updated_at         TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX workflow_runs_business ON workflow_runs (business_type, business_id, step_position);
+      CREATE INDEX workflow_runs_status ON workflow_runs (status);
+
+      CREATE TABLE workflow_step_runs (
+        id                     TEXT PRIMARY KEY,
+        workflow_run_id        TEXT NOT NULL REFERENCES workflow_runs (id),
+        state                  TEXT NOT NULL,
+        attempt                INTEGER NOT NULL,
+        status                 TEXT NOT NULL CHECK (status IN ('running', 'succeeded', 'failed')),
+        input_hash             TEXT,
+        result                 TEXT CHECK (result IS NULL OR json_valid(result)),
+        started_at             TEXT NOT NULL,
+        completed_at           TEXT,
+        error_code             TEXT,
+        error_message_redacted TEXT,
+        UNIQUE (workflow_run_id, state, attempt)
+      ) STRICT;
+
+      CREATE TABLE message_drafts (
+        id                     TEXT PRIMARY KEY,
+        contact_id             TEXT REFERENCES contacts (id),
+        company_id             TEXT REFERENCES companies (id) ON DELETE SET NULL,
+        campaign_enrollment_id TEXT REFERENCES campaign_enrollments (id),
+        workflow_run_id        TEXT REFERENCES workflow_runs (id),
+        channel                TEXT NOT NULL,
+        subject                TEXT,
+        body                   TEXT NOT NULL,
+        fact_ids               TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(fact_ids)),
+        generation_meta        TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(generation_meta)),
+        content_hash           TEXT NOT NULL,
+        version                INTEGER NOT NULL,
+        created_at             TEXT NOT NULL,
+        CHECK (contact_id IS NOT NULL OR company_id IS NOT NULL),
+        UNIQUE (workflow_run_id, version)
+      ) STRICT;
+
+      -- Approvals are rows with a lifecycle (ADR 021 section 4).
+      CREATE TABLE approvals (
+        id                     TEXT PRIMARY KEY,
+        workflow_run_id        TEXT NOT NULL REFERENCES workflow_runs (id),
+        campaign_enrollment_id TEXT REFERENCES campaign_enrollments (id),
+        message_draft_id       TEXT REFERENCES message_drafts (id),
+        draft_version          INTEGER,
+        target_snapshot        TEXT NOT NULL CHECK (json_valid(target_snapshot)),
+        content_hash           TEXT NOT NULL,
+        scope                  TEXT NOT NULL CHECK (scope IN ('single_action', 'campaign')),
+        status                 TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected', 'skipped',
+                                 'superseded', 'expired')),
+        decided_by             TEXT CHECK (decided_by IN ('user', 'campaign_policy')),
+        decided_at             TEXT,
+        expires_at             TEXT,
+        created_at             TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX approvals_status ON approvals (status, created_at);
+      CREATE INDEX approvals_run ON approvals (workflow_run_id);
+    `,
+  },
 ];

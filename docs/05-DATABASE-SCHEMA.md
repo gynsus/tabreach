@@ -192,6 +192,7 @@ Unique `(campaign_version_id, position)`.
 
 ```text
 id pk
+campaign_id fk            -- denormalized for "one enrollment per contact per campaign"
 campaign_version_id fk
 company_id null fk
 contact_id null fk
@@ -204,7 +205,7 @@ created_at, updated_at
 lock_version integer
 ```
 
-Check: company or contact present. Index `(status, next_action_at)`.
+Check: company or contact present. Unique `(campaign_id, contact_id)`. Index `(status, next_action_at)`.
 
 ### `workflow_runs`
 
@@ -213,6 +214,7 @@ id pk
 workflow_type
 definition_version integer
 business_type, business_id
+step_position null        -- for enrollment steps: which step this run executes
 status check in ('pending','running','waiting_approval','waiting_for_human','waiting_external',
                  'paused','completed','failed','cancelled')
 current_state
@@ -262,6 +264,7 @@ id pk
 contact_id null fk        -- null for company-level drafts (web forms); CHECK contact or company present
 company_id null fk
 campaign_enrollment_id null fk
+workflow_run_id null fk   -- the run the draft belongs to; unique (workflow_run_id, version)
 channel
 subject
 body
