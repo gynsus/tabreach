@@ -27,15 +27,18 @@ export interface MailboxClient {
   hasMessage(folder: string, messageId: string, signal: AbortSignal): Promise<boolean>;
   append(folder: string, raw: Buffer, signal: AbortSignal): Promise<void>;
   /**
-   * Messages after \`cursor.lastUid\`, oldest first, at most \`limit\`. When the cursor is empty or
-   * UIDVALIDITY changed, returns no messages and the current position (polling starts from now).
+   * UIDs and sizes of messages after `cursor.lastUid`, oldest first, at most `limit`; nothing is
+   * downloaded yet. When the cursor is empty or UIDVALIDITY changed, returns no messages and the
+   * current position (polling starts from now).
    */
   fetchNew(
     folder: string,
     cursor: { uidValidity: number | null; lastUid: number | null },
     limit: number,
     signal: AbortSignal,
-  ): Promise<{ uidValidity: number; lastUid: number; messages: { uid: number; raw: Buffer }[] }>;
+  ): Promise<{ uidValidity: number; lastUid: number; messages: { uid: number; size: number }[] }>;
+  /** One message: whole up to `maxBytes`, else only its first `maxBytes` (headers and the start). */
+  download(folder: string, uid: number, maxBytes: number, signal: AbortSignal): Promise<Buffer>;
   close(): Promise<void>;
 }
 
@@ -73,3 +76,8 @@ export interface InboxSource {
 export class InboxAuthError extends Error {
   override name = 'InboxAuthError';
 }
+
+/** Messages up to this size are read whole; larger ones only in part, so memory stays bounded. */
+export const MAX_WHOLE_MESSAGE_BYTES = 2 * 1024 * 1024;
+/** How much of a larger message is read: its headers and the start of the text. */
+export const PARTIAL_MESSAGE_BYTES = 256 * 1024;

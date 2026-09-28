@@ -333,12 +333,11 @@ export class AppServices {
         return account;
       })
       .handle('accounts.test', ({ id }) => this.accounts.test(id))
-      .handle('accounts.disconnect', ({ id }, c) =>
-        mutate(['account'], () => {
-          this.accounts.disconnect(id, ctx(c));
-          return { ok: true as const };
-        }),
-      )
+      .handle('accounts.disconnect', async ({ id }, c) => {
+        await this.accounts.disconnect(id, ctx(c));
+        this.changed(['account', 'activity']);
+        return { ok: true as const };
+      })
       .handle('contacts.replyHold', ({ id }) => {
         const contact = this.prospects.getContact(id);
         return { hold: this.policy.replyHold(id, contact.companyId) };

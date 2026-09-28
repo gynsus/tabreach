@@ -3,6 +3,7 @@ import { createEndpointPair } from '@tabreach/protocol/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SENT_INDEX_GRACE_MS } from './email-channel.js';
 import { ctx, Harness, imapInput, inbound, PASSWORD } from './harness.js';
+import { PARTIAL_MESSAGE_BYTES } from './transport.js';
 
 describe('email accounts', () => {
   let h: Harness;
@@ -49,6 +50,15 @@ describe('email accounts', () => {
     expect(h.services.accounts.list()).toEqual([]);
   });
 
+  it('connecting the same address twice at once leaves one account and no stray secrets', async () => {
+    const results = await Promise.allSettled([
+      h.services.accounts.connectImap(imapInput(), ctx()),
+      h.services.accounts.connectImap(imapInput(), ctx()),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM secrets').get()).toEqual({ n: 1 });
+  });
+
   it('knows which providers keep sent mail, refuses duplicates, and disconnects', async () => {
     const gmail = await h.services.accounts.connectImap(
       imapInput({ address: 'me@gmail.com', smtp: { host: 'smtp.gmail.com', port: 465, security: 'tls' } }),
@@ -61,7 +71,7 @@ describe('email accounts', () => {
         ctx(),
       ),
     ).rejects.toBeInstanceOf(RpcError);
-    h.services.accounts.disconnect(gmail.id, ctx());
+    await h.services.accounts.disconnect(gmail.id, ctx());
     expect(h.services.accounts.list()).toEqual([]);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM secrets').get()).toEqual({ n: 0 });
   });
@@ -415,6 +425,16 @@ describe('replies', () => {
     expect(h.services.jobs.byDedupeKey(`poll:${accountId}`)).toBeUndefined();
   });
   // Audit 3.5 ----------------------------------------------------------------------------------
+
+  it('reads only the start of a large reply, which is still enough to stop the sequence', async () => {
+    const s = await sentToAcme();
+    const big = 'x'.repeat(3 * 1024 * 1024);
+    await deliver(
+      inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId, body: `Yes, call me.\n${big}` }),
+    );
+    expect(h.mail.downloads.at(-1)?.maxBytes).toBe(PARTIAL_MESSAGE_BYTES);
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+  });
 
   it('a contact who replied is on hold in every campaign until the user allows it', async () => {
     const s = await sentToAcme();

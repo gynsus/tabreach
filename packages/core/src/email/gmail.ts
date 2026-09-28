@@ -31,8 +31,42 @@ export class GmailError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** Google's reason code (e.g. `rateLimitExceeded`), when the response has one. */
+    readonly reason: string | null = null,
   ) {
     super(message);
+  }
+
+  /** 403 is also how Gmail reports quotas and rate limits: those are not a credentials problem. */
+  get isQuota(): boolean {
+    return this.status === 429 || (this.reason !== null && QUOTA_REASONS.has(this.reason));
+  }
+
+  get isAuth(): boolean {
+    return (this.status === 401 || this.status === 403) && !this.isQuota;
+  }
+}
+
+const QUOTA_REASONS = new Set([
+  'rateLimitExceeded',
+  'userRateLimitExceeded',
+  'dailyLimitExceeded',
+  'quotaExceeded',
+  'RATE_LIMIT_EXCEEDED',
+]);
+
+/** Revokes a refresh token at Google (on disconnect). Best effort: false when it did not work. */
+export async function revokeToken(http: Http, token: string): Promise<boolean> {
+  try {
+    const res = await http('https://oauth2.googleapis.com/revoke', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }).toString(),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -161,9 +195,8 @@ export class GmailApi {
     } catch (error) {
       if (error instanceof OAuthError) return { outcome: 'not_sent', errorClass: 'auth_failed' };
       if (error instanceof GmailError) {
-        if (error.status === 401 || error.status === 403)
-          return { outcome: 'not_sent', errorClass: 'auth_failed' };
-        if (error.status === 429) return { outcome: 'not_sent', errorClass: 'rate_limited' };
+        if (error.isQuota) return { outcome: 'not_sent', errorClass: 'rate_limited' };
+        if (error.isAuth) return { outcome: 'not_sent', errorClass: 'auth_failed' };
         if (error.status >= 400 && error.status < 500)
           return { outcome: 'not_sent', errorClass: 'gmail_rejected', permanent: error.status === 400 };
         return { outcome: 'unknown', errorClass: 'gmail_server_error' };
@@ -235,6 +268,25 @@ export class GmailApi {
     return { historyId, added, expired: false };
   }
 
+  /**
+   * A message for reply matching, within `maxBytes`: whole when it is small enough; otherwise its
+   * headers and Gmail's text snippet, built from `format=metadata` (audit 3.5: bounded memory).
+   */
+  async load(id: string, maxBytes: number, signal: AbortSignal): Promise<Buffer> {
+    const meta = await this.json<{
+      sizeEstimate?: number;
+      snippet?: string;
+      payload?: { headers?: { name: string; value: string }[] };
+    }>('GET', `/messages/${id}?format=metadata`, undefined, signal);
+    if ((meta.sizeEstimate ?? 0) <= maxBytes) return this.raw(id, signal);
+    const headers = (meta.payload?.headers ?? []).map(
+      (h) => `${h.name}: ${h.value.replace(/[\r\n]+/g, ' ')}`,
+    );
+    return Buffer.from(
+      [...headers, 'Content-Type: text/plain; charset=utf-8', '', meta.snippet ?? '', ''].join('\r\n'),
+    );
+  }
+
   async raw(id: string, signal: AbortSignal): Promise<Buffer> {
     const res = await this.json<{ raw: string }>('GET', `/messages/${id}?format=raw`, undefined, signal);
     return Buffer.from(res.raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
@@ -255,8 +307,18 @@ export class GmailApi {
       signal: AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)]),
     });
     if (res.status === 401 && !retried) return this.json(method, path, body, signal, true);
-    if (!res.ok)
-      throw new GmailError(res.status, `Gmail API ${method} ${path.split('?')[0]} failed with ${res.status}`);
+    if (!res.ok) {
+      // Only Google's reason code is kept: messages may echo request details.
+      const detail = (await res.json().catch(() => ({}))) as {
+        error?: { errors?: { reason?: string }[]; status?: string };
+      };
+      const reason = detail.error?.errors?.[0]?.reason ?? detail.error?.status ?? null;
+      throw new GmailError(
+        res.status,
+        `Gmail API ${method} ${path.split('?')[0]} failed with ${res.status}`,
+        reason,
+      );
+    }
     return (await res.json()) as T;
   }
 }

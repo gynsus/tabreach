@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import type { GmailDeps } from './accounts.js';
 
 type SendBehaviour =
-  'ok' | 'server_error_after_storing' | 'server_error' | 'unreachable' | 'bad_request' | 'hang';
+  'ok' | 'server_error_after_storing' | 'server_error' | 'unreachable' | 'bad_request' | 'quota' | 'hang';
 
 const b64url = (b: Buffer) => b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 const json = (status: number, body: unknown) =>
@@ -24,6 +24,10 @@ export class FakeGoogle {
   /** History older than this is gone (Gmail keeps about a week). */
   oldestHistory = 0;
   sendCalls = 0;
+  /** Tokens revoked through the revoke endpoint. */
+  readonly revoked: string[] = [];
+  /** Full downloads (format=raw) of inbox messages. */
+  rawDownloads = 0;
   private challenge = '';
   private accessToken = '';
   private tokenCounter = 0;
@@ -69,6 +73,10 @@ export class FakeGoogle {
   }
 
   private async handle(url: URL, init: RequestInit): Promise<Response> {
+    if (url.href === 'https://oauth2.googleapis.com/revoke') {
+      this.revoked.push(new URLSearchParams(String(init.body)).get('token') ?? '');
+      return json(200, {});
+    }
     if (url.href === 'https://oauth2.googleapis.com/token') {
       const body = new URLSearchParams(String(init.body));
       if (body.get('grant_type') === 'authorization_code') {
@@ -119,7 +127,16 @@ export class FakeGoogle {
     const raw = /^\/messages\/([^/]+)$/.exec(path);
     if (raw) {
       const m = this.inbox.find((x) => x.id === raw[1]);
-      return m ? json(200, { raw: b64url(Buffer.from(m.raw)) }) : json(404, {});
+      if (!m) return json(404, {});
+      if (url.searchParams.get('format') === 'metadata') {
+        const [head = '', body = ''] = m.raw.split('\r\n\r\n');
+        const headers = head
+          .split('\r\n')
+          .map((l) => ({ name: l.slice(0, l.indexOf(':')), value: l.slice(l.indexOf(':') + 1).trim() }));
+        return json(200, { sizeEstimate: m.raw.length, snippet: body.slice(0, 200), payload: { headers } });
+      }
+      this.rawDownloads++;
+      return json(200, { raw: b64url(Buffer.from(m.raw)) });
     }
     return json(404, {});
   }
@@ -131,6 +148,8 @@ export class FakeGoogle {
       throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNREFUSED' } });
     if (behaviour === 'bad_request') return json(400, { error: { code: 400, message: 'Invalid To header' } });
     if (behaviour === 'server_error') return json(500, {});
+    if (behaviour === 'quota')
+      return json(403, { error: { code: 403, errors: [{ reason: 'userRateLimitExceeded' }] } });
     const raw = Buffer.from(body.raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
     const messageId = /^Message-ID:\s*(<[^>]+>)/im.exec(raw)?.[1] ?? '';
     const id = `sent-${this.sent.length + 1}`;

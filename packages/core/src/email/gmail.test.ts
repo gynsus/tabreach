@@ -243,6 +243,47 @@ describe('Gmail accounts and campaigns', () => {
     void campaign;
   });
 
+  it('a quota 403 is a temporary refusal, not an authorization problem', async () => {
+    const account = await connect();
+    const campaign = await campaignTo(account.id, 'bob@beta.test');
+    h.google.queue('quota');
+    h.approve();
+    await h.run();
+    expect(h.services.accounts.get(account.id).status).toBe('active');
+    expect(h.db.prepare('SELECT status, error_class FROM side_effects').get()).toEqual({
+      status: 'not_sent',
+      error_class: 'rate_limited',
+    });
+    h.clock.advance(60_000);
+    await h.run();
+    expect(status(campaign)?.status).toBe('completed');
+  });
+
+  it('reads only headers and a snippet of a large message, and still matches the reply', async () => {
+    const account = await connect();
+    const campaign = await campaignTo(account.id, 'bob@beta.test');
+    h.approve();
+    await h.run();
+    const big = 'x'.repeat(3 * 1024 * 1024);
+    h.google.receive(
+      inbound({ from: 'bob@beta.test', inReplyTo: h.google.sent[0]!.messageId, body: `Yes!\n${big}` }),
+    );
+    h.clock.advance(2 * 60_000);
+    await h.run();
+    expect(h.google.rawDownloads).toBe(0);
+    expect(h.services.inbox.list('all', { limit: 10, offset: 0 }).items).toMatchObject([
+      { title: 'Bob', lastClassification: 'reply' },
+    ]);
+    void campaign;
+  });
+
+  it('revokes the grant at Google when the account is disconnected', async () => {
+    const account = await connect();
+    await h.services.accounts.disconnect(account.id, ctx());
+    expect(h.google.revoked).toEqual(['refresh-1']);
+    expect(h.db.prepare('SELECT COUNT(*) AS n FROM secrets').get()).toEqual({ n: 0 });
+  });
+
   it('restarts from the current position when Gmail no longer has the history', async () => {
     const account = await connect();
     await h.run();

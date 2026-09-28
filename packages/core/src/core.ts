@@ -53,10 +53,10 @@ export class CoreService {
       cipher: this.cipher(),
       gmail: {
         http: (url, init) => fetch(url, init),
-        loopback: (authorizeUrl, timeoutMs) =>
+        loopback: (authorizeUrl, timeoutMs, state) =>
           this.hostPeer.request(
             'oauth.loopback',
-            { authorizeUrl, timeoutMs },
+            { authorizeUrl, timeoutMs, state },
             { timeoutMs: timeoutMs + 30_000 },
           ),
       },

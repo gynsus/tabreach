@@ -3,7 +3,6 @@ import SMTPConnection from 'nodemailer/lib/smtp-connection';
 import type { MailClients, MailboxClient, MailSettings, SmtpClient } from './transport.js';
 
 const TIMEOUT_MS = 60_000;
-const MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
 
 function abortable<T>(signal: AbortSignal, work: Promise<T>, onAbort: () => void): Promise<T> {
   if (signal.aborted) {
@@ -150,24 +149,46 @@ async function mailboxClient(s: MailSettings, signal: AbortSignal): Promise<Mail
         if (cursor.uidValidity !== uidValidity || cursor.lastUid === null) {
           return { uidValidity, lastUid: top, messages: [] };
         }
-        const messages: { uid: number; raw: Buffer }[] = [];
+        const messages: { uid: number; size: number }[] = [];
         let lastUid = cursor.lastUid;
         if (top > cursor.lastUid) {
+          // Sizes only: nothing is downloaded until the message is processed.
           for await (const msg of client.fetch(
             `${cursor.lastUid + 1}:*`,
-            { uid: true, size: true, source: true },
+            { uid: true, size: true },
             { uid: true },
           )) {
             if (sig.aborted) break;
             if (msg.uid <= cursor.lastUid) continue;
-            // Very large messages are skipped (not kept); the cursor still moves past them.
-            if (msg.source && (msg.size ?? 0) <= MAX_MESSAGE_BYTES)
-              messages.push({ uid: msg.uid, raw: msg.source });
+            messages.push({ uid: msg.uid, size: msg.size ?? 0 });
             lastUid = Math.max(lastUid, msg.uid);
             if (messages.length >= limit) break;
           }
         }
-        return { uidValidity, lastUid, messages: messages.sort((a, b) => a.uid - b.uid) };
+        messages.sort((x, y) => x.uid - y.uid);
+        return {
+          uidValidity,
+          lastUid,
+          messages,
+        };
+      } finally {
+        lock.release();
+      }
+    },
+    async download(folder, uid, maxBytes, sig) {
+      const lock = await abortable(sig, client.getMailboxLock(folder, { readOnly: true }), drop);
+      try {
+        const msg = await abortable(
+          sig,
+          client.fetchOne(
+            String(uid),
+            { uid: true, size: true, source: { maxLength: maxBytes } },
+            { uid: true },
+          ),
+          drop,
+        );
+        if (!msg || !msg.source) throw new Error(`Message ${uid} is gone`);
+        return msg.source;
       } finally {
         lock.release();
       }

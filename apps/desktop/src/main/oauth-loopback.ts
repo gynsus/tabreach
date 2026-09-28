@@ -22,6 +22,8 @@ const PAGE = (title: string) =>
 export function runLoopback(options: {
   authorizeUrl: string;
   timeoutMs: number;
+  /** The `state` core put in the URL; other requests are answered and ignored. */
+  expectedState: string;
   open: (url: string) => Promise<void>;
 }): Promise<LoopbackResult> {
   const url = new URL(options.authorizeUrl);
@@ -37,6 +39,11 @@ export function runLoopback(options: {
       if (reqUrl.pathname !== '/' || (!params.code && !params.error)) {
         // Favicon requests and the like: not the redirect.
         res.writeHead(404).end();
+        return;
+      }
+      if (params.state !== options.expectedState) {
+        // Not our authorization (a stray or probing request): keep waiting for the real one.
+        res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Unexpected request');
         return;
       }
       const ok = Boolean(params.code);

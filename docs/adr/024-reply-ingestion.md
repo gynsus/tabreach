@@ -27,6 +27,8 @@ TabReach reads the user's inbox to notice replies and bounces. A mailbox holds f
 - Out-of-office needs auto-reply headers or a subject that starts like one; list headers alone do not drop a reply in our thread (group mailboxes add them); `X-Auto-Response-Suppress` is ignored.
 - Gmail: the cursor advances per history record, so any number of new messages is read; messages are downloaded one at a time. An expired history id is recorded in the activity log (`account.inbox_gap`).
 - The company for a company-level stop is the contact's current company.
+- Memory stays bounded (audit 3.5b): sizes are fetched first and messages are loaded one at a time; a message over 2 MB is read only in part (IMAP: its first 256 KB; Gmail: headers and snippet from `format=metadata`) — enough to match and classify it.
+- Disconnecting an account keeps its conversations (the history of what happened with prospects) and deletes its credentials; a Gmail grant is also revoked at Google.
 
 ## Consequences
 

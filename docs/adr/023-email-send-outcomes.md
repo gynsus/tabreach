@@ -28,6 +28,7 @@ ADR 016 requires an app-generated `Message-ID` "persisted before sending" and re
 
 - Only the exact submission hosts `smtp.gmail.com`, `smtp.googlemail.com`, `smtp.office365.com` and `smtp-mail.outlook.com` count as keeping a Sent copy; relays such as `smtp-relay.gmail.com` do not.
 - **Gmail API:** it is not yet verified on a live account that `users.messages.send` keeps a caller-supplied Message-ID (it does over SMTP — verified on a real account). Until it is, "not found" after the grace period is `unknown` for a person, never `not_sent`.
+- Gmail 403 responses with a quota/rate-limit reason are `not_sent` (`rate_limited`) and retried; only other 401/403 responses mean the credentials were refused.
 - Reconciliation that cannot reach the mailbox keeps waiting (`pending`) for at most 24 hours, then becomes `unknown`. A refused IMAP login during reconciliation puts the account on hold.
 
 ## Alternatives
