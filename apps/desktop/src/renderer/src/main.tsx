@@ -6,6 +6,9 @@ import { AppShell } from './components/AppShell';
 import { ToastProvider } from './components/toast';
 import { setLanguage } from './i18n';
 import { ActivityPage } from './routes/activity/ActivityPage';
+import { ApprovalsPage } from './routes/approvals/ApprovalsPage';
+import { CampaignPage } from './routes/campaigns/CampaignPage';
+import { CampaignsPage } from './routes/campaigns/CampaignsPage';
 import { CompaniesPage } from './routes/companies/CompaniesPage';
 import { CompanyPage } from './routes/companies/CompanyPage';
 import { ContactPage } from './routes/contacts/ContactPage';
@@ -27,6 +30,9 @@ const router = createHashRouter([
       { path: 'companies', element: <CompaniesPage /> },
       { path: 'companies/:id', element: <CompanyPage /> },
       { path: 'suppressions', element: <SuppressionsPage /> },
+      { path: 'campaigns', element: <CampaignsPage /> },
+      { path: 'campaigns/:id', element: <CampaignPage /> },
+      { path: 'approvals', element: <ApprovalsPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'status', element: <StatusPage /> },
       { path: 'settings', element: <SettingsPage /> },

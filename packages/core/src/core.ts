@@ -59,6 +59,18 @@ export class CoreService {
         if (status === 'failed' || status === 'dead') this.announce(['job', 'enrollment']);
       },
     });
+    this.hostPeer
+      .handle('power.suspend', () => {
+        this.dispatcher.pause();
+        options.logger.info({ event: 'power.suspend' }, 'system going to sleep; jobs paused');
+        return { ok: true as const };
+      })
+      .handle('power.resume', () => {
+        this.dispatcher.resume();
+        this.services.engine.resync();
+        options.logger.info({ event: 'power.resume' }, 'system woke up; jobs resumed');
+        return { ok: true as const };
+      });
   }
 
   static async start(options: CoreOptions): Promise<CoreService> {

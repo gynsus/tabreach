@@ -137,6 +137,10 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
 
 ## User interface
 
+Screens: Contacts, Companies, Do not contact, Campaigns (editor, schedule, people), Approvals
+(keyboard queue: A / E / S / R, J / K), Activity, Status (with "Needs attention"), Settings (language,
+contact policy).
+
 React + Tailwind CSS 4 + TanStack Query/Table/Virtual + React Router (hash) + i18next (ADR 019).
 
 - Strings: add every user-facing string to `apps/desktop/src/renderer/src/i18n/en.ts` **and** `ru.ts`.

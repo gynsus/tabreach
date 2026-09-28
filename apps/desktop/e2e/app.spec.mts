@@ -38,7 +38,8 @@ const dataRows = (table: string) =>
 
 test('status screen shows core, database, secret storage and worker working', async () => {
   await go('#/status');
-  await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
+  // Cold start on CI: the first paint waits up to 3 s for the saved language.
+  await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible({ timeout: 15_000 });
   for (const id of ['core', 'database', 'secrets', 'worker', 'chrome']) {
     await expect(page.getByTestId(`component-${id}`)).toHaveAttribute('data-status', 'ok', {
       timeout: 20_000,
@@ -180,6 +181,56 @@ test('says so when core crashes and recovers with data', async () => {
   await expect(page.getByTestId('core-banner')).toBeVisible();
   await expect(page.getByTestId('core-banner')).toBeHidden({ timeout: 20_000 });
   await expect(dataRows('Contacts')).not.toHaveCount(0);
+});
+
+test('runs a campaign on the test channel: launch, add a contact, approve with the keyboard', async () => {
+  await go('#/campaigns');
+  await page.getByRole('button', { name: 'New campaign' }).first().click();
+  const create = page.getByRole('dialog', { name: 'New campaign' });
+  await create.getByLabel('Name').fill('E2E campaign');
+  await create.getByRole('button', { name: 'Create' }).click();
+  await expect(page.getByRole('heading', { name: 'E2E campaign' })).toBeVisible();
+
+  // An empty campaign cannot be launched, and says why.
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Fix the highlighted fields before launching.');
+  await expect(page.getByText('Add at least one step.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Add message' }).click();
+  const step = page.getByRole('region', { name: 'Message 1' });
+  await step.getByLabel('Subject', { exact: true }).fill('Hello {{firstName|there}}');
+  await step.getByLabel('Message', { exact: true }).fill('Hi {{firstName|there}}, this is a test.');
+  // Any day and hour, so the test does not depend on when CI runs.
+  await page.getByLabel('Fallback time zone').fill('UTC');
+  await page.getByLabel('Use the default sending hours from Settings').uncheck();
+  await page.getByRole('button', { name: 'Sat' }).click();
+  await page.getByRole('button', { name: 'Sun' }).click();
+  await page.getByLabel('From', { exact: true }).fill('00:00');
+  await page.getByLabel('Until', { exact: true }).fill('23:59');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(page.getByTestId('toast')).toHaveText('Campaign launched: version 1');
+
+  await page.getByRole('button', { name: 'Add contacts' }).click();
+  const add = page.getByRole('dialog', { name: 'Add contacts' });
+  await add.getByRole('searchbox', { name: 'Search contacts' }).fill('jane.again');
+  await add.getByRole('checkbox').first().check();
+  await add.getByRole('button', { name: 'Add 1 contact' }).click();
+  await expect(page.getByTestId('enrollment')).toHaveCount(1);
+
+  await go('#/approvals');
+  await expect(page.getByTestId('approval-body')).toHaveText('Hi there, this is a test.', {
+    timeout: 15_000,
+  });
+  // Focus something in the queue first: on CI the window may not have OS focus, and a bare
+  // keyboard.press then reaches no element. The shortcut handler itself is what is tested.
+  await page.getByRole('button', { name: 'Approve' }).press('a');
+  await expect(page.getByText('Nothing to approve')).toBeVisible();
+
+  await page.getByRole('link', { name: 'Campaigns' }).click();
+  await page.getByRole('link', { name: /E2E campaign/ }).click();
+  await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
+    timeout: 15_000,
+  });
 });
 
 test('switches the interface to Russian and keeps it after a reload', async () => {

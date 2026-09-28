@@ -1,10 +1,21 @@
-import { Activity, Building2, Gauge, Settings, ShieldBan, Users, type LucideIcon } from 'lucide-react';
+import {
+  Activity,
+  Building2,
+  CheckCheck,
+  Gauge,
+  Megaphone,
+  Settings,
+  ShieldBan,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router';
 import { useLiveUpdates } from '../lib/live';
 import { cn } from '../lib/cn';
+import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
 
-function NavItem(props: { to: string; icon: LucideIcon; label: string }) {
+function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
   const Icon = props.icon;
   return (
     <NavLink
@@ -18,6 +29,11 @@ function NavItem(props: { to: string; icon: LucideIcon; label: string }) {
     >
       <Icon size={15} aria-hidden />
       {props.label}
+      {props.count ? (
+        <span className="ml-auto rounded bg-accent px-1.5 font-mono text-[10px] leading-4 text-accent-ink">
+          {props.count}
+        </span>
+      ) : null}
     </NavLink>
   );
 }
@@ -55,6 +71,7 @@ function CoreBanner() {
 
 export function AppShell() {
   const { t } = useTranslation();
+  const pending = usePendingApprovals();
   return (
     <div className="flex h-full">
       <nav
@@ -68,6 +85,15 @@ export function AppShell() {
           <NavItem to="/contacts" icon={Users} label={t('nav.contacts')} />
           <NavItem to="/companies" icon={Building2} label={t('nav.companies')} />
           <NavItem to="/suppressions" icon={ShieldBan} label={t('nav.suppressions')} />
+        </NavGroup>
+        <NavGroup label={t('nav.outreach')}>
+          <NavItem to="/campaigns" icon={Megaphone} label={t('nav.campaigns')} />
+          <NavItem
+            to="/approvals"
+            icon={CheckCheck}
+            label={t('nav.approvals')}
+            count={pending.data?.items.length ?? 0}
+          />
         </NavGroup>
         <NavGroup label={t('nav.activity')}>
           <NavItem to="/activity" icon={Activity} label={t('nav.activity')} />

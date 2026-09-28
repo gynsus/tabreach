@@ -26,9 +26,12 @@ const fakeCipher: SecretCipher = {
   decrypt: async (c) => Buffer.from(c, 'base64').toString().replace(/^enc:/, ''),
 };
 
+let hostPeer: RpcPeer;
+
 function fakeHost() {
   const [coreSide, hostSide] = createEndpointPair();
-  new RpcPeer(hostSide)
+  hostPeer = new RpcPeer(hostSide);
+  hostPeer
     .handle('secret.encrypt', async ({ plaintext }) => ({ ciphertext: await fakeCipher.encrypt(plaintext) }))
     .handle('secret.decrypt', async ({ ciphertext }) => ({
       plaintext: await fakeCipher.decrypt(ciphertext),
@@ -54,6 +57,24 @@ async function startCore() {
 }
 
 describe('CoreService', () => {
+  it('stops claiming jobs while the Mac sleeps and catches up on wake', async () => {
+    const core = await startCore();
+    const ran: string[] = [];
+    core.dispatcher.register({
+      type: 'test.tick',
+      payload: z.object({}),
+      sideEffecting: false,
+      handler: () => void ran.push('tick'),
+    });
+    await hostPeer.request('power.suspend', {});
+    core.services.jobs.enqueue('test.tick', {});
+    await new Promise((r) => setTimeout(r, 100));
+    expect(ran).toEqual([]);
+    await hostPeer.request('power.resume', {});
+    await expect.poll(() => ran).toEqual(['tick']);
+    core.close();
+  });
+
   it('runs a campaign end to end through the app protocol', async () => {
     const core = await startCore();
     const [rendererSide, coreSide] = createEndpointPair();
