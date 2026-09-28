@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   RpcError,
   RpcPeer,
+  type ChangedEntity,
   type ComponentStatus,
   type HealthReport,
   type LaunchCheckResult,
@@ -14,6 +15,7 @@ import { AppServices } from './app-handlers.js';
 import { openDatabase, sqliteVersion } from './db/database.js';
 import { currentSchemaVersion, migrate, type MigrationReport } from './db/migrate.js';
 import { migrations } from './db/migrations.js';
+import { Dispatcher } from './jobs/dispatcher.js';
 import { SecretStore, type SecretCipher } from './secrets/secrets.js';
 
 export interface CoreOptions {
@@ -35,6 +37,7 @@ export class CoreService {
   private workerPeer: RpcPeer | null = null;
   private secretsStatus: { status: ComponentStatus; detail?: string } = { status: 'unknown' };
   readonly services: AppServices;
+  readonly dispatcher: Dispatcher;
 
   private constructor(
     private readonly db: DatabaseSync,
@@ -44,8 +47,16 @@ export class CoreService {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
     this.services = new AppServices(db, {
       logger: options.logger,
-      onChanged: (entities) => {
-        for (const peer of this.appPeers) peer.emit('data.changed', { entities });
+      onChanged: (entities) => this.announce(entities),
+      // Deferred: the enqueuing transaction must commit before the dispatcher looks.
+      onJobEnqueued: () => queueMicrotask(() => this.dispatcher.wake()),
+    });
+    this.dispatcher = new Dispatcher({
+      queue: this.services.jobs,
+      now: () => new Date(),
+      logger: options.logger.child({ component: 'jobs' }),
+      onFinished: (_job, status) => {
+        if (status === 'failed' || status === 'dead') this.announce(['job']);
       },
     });
   }
@@ -62,6 +73,7 @@ export class CoreService {
     if (pruned > 0)
       options.logger.info({ event: 'commands.pruned', count: pruned }, 'old command results pruned');
     await core.checkSecretStorage();
+    core.dispatcher.start();
     return core;
   }
 
@@ -110,12 +122,17 @@ export class CoreService {
   }
 
   close(): void {
+    this.dispatcher.stop();
     for (const peer of this.appPeers) peer.close();
     this.appPeers.clear();
     this.workerPeer?.close();
     this.workerPeer = null;
     this.hostPeer.close();
     this.db.close();
+  }
+
+  private announce(entities: ChangedEntity[]): void {
+    for (const peer of this.appPeers) peer.emit('data.changed', { entities });
   }
 
   private async launchCheck(url: string, correlationId: string): Promise<LaunchCheckResult> {

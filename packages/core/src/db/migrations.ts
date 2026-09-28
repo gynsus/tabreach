@@ -196,4 +196,61 @@ export const migrations: readonly Migration[] = [
       for (const r of rows) update.run(searchKey([r.value_original, r.value_normalized]), r.id);
     },
   },
+  {
+    version: 7,
+    name: 'jobs_and_side_effects',
+    sql: `
+      -- Durable job queue (ADR 011, ADR 021 section 2). Jobs own execution retries.
+      CREATE TABLE jobs (
+        id                  TEXT PRIMARY KEY,
+        type                TEXT NOT NULL,
+        payload             TEXT NOT NULL CHECK (json_valid(payload)),
+        status              TEXT NOT NULL CHECK (status IN ('pending', 'running', 'succeeded', 'failed', 'dead')),
+        run_at              TEXT NOT NULL,
+        attempts            INTEGER NOT NULL DEFAULT 0,
+        max_attempts        INTEGER NOT NULL,
+        lease_owner         TEXT,
+        lease_until         TEXT,
+        last_error_class    TEXT,
+        last_error_redacted TEXT,
+        dedupe_key          TEXT UNIQUE,
+        correlation_id      TEXT NOT NULL,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX jobs_due ON jobs (status, run_at);
+
+      -- Ledger of external side effects, one row per logical intent (ADR 018, ADR 021 section 3).
+      CREATE TABLE side_effects (
+        id                TEXT PRIMARY KEY,
+        idempotency_key   TEXT NOT NULL UNIQUE,
+        scope_id          TEXT NOT NULL,
+        step_position     INTEGER NOT NULL,
+        channel           TEXT NOT NULL,
+        action_type       TEXT NOT NULL,
+        target_normalized TEXT NOT NULL,
+        workflow_run_id   TEXT,
+        status            TEXT NOT NULL CHECK (status IN ('reserved', 'executing', 'completed', 'not_sent', 'unknown')),
+        content_hash      TEXT,
+        external_refs     TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(external_refs)),
+        reconciled_by     TEXT CHECK (reconciled_by IN ('provider_lookup', 'ui_verification', 'user_confirmation')),
+        error_class       TEXT,
+        created_at        TEXT NOT NULL,
+        updated_at        TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX side_effects_target ON side_effects (channel, target_normalized, status, updated_at);
+      CREATE INDEX side_effects_status ON side_effects (status);
+
+      -- The test channel's "outside world": what it delivered, by idempotency key (ADR 021 section 7).
+      CREATE TABLE test_channel_deliveries (
+        id              TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        target          TEXT NOT NULL,
+        subject         TEXT,
+        body            TEXT NOT NULL,
+        content_hash    TEXT NOT NULL,
+        created_at      TEXT NOT NULL
+      ) STRICT;
+    `,
+  },
 ];

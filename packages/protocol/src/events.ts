@@ -1,7 +1,14 @@
 import { z } from 'zod';
 
 /** Entities whose data changed; the renderer refetches queries for these (ADR 020). */
-export const changedEntitySchema = z.enum(['company', 'contact', 'suppression', 'activity', 'settings']);
+export const changedEntitySchema = z.enum([
+  'company',
+  'contact',
+  'suppression',
+  'activity',
+  'settings',
+  'job',
+]);
 export type ChangedEntity = z.infer<typeof changedEntitySchema>;
 
 /**
