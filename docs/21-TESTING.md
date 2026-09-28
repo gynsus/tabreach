@@ -11,12 +11,13 @@
 ## Tooling
 
 - Vitest for unit and integration tests (core, worker logic, protocol).
-- Playwright Test for fixture-site browser tests and Electron E2E (`_electron.launch`).
+- Vitest (`*.browser.test.ts`) for fixture-site browser tests with the installed Chrome; Playwright Test for Electron E2E (`_electron.launch`) on the built, unfused app.
+- `TabReach --self-check[=url]` for the packaged, fused app, where automation cannot attach.
 - Real SQLite files in temporary directories for integration tests (no mocks of the database).
 - A local fake SMTP/IMAP server for email integration tests (e.g. a lightweight in-process server); fake Gmail API via recorded/stubbed HTTP.
 - A fake AI provider returning scripted structured outputs.
 
-Note: `better-sqlite3` is a native module; tests run core under plain Node while the app runs it under Electron. Phase 0 must set up rebuilds so both work (or adopt `node:sqlite` if the spike shows it is viable — ADR 011).
+SQLite uses Node's built-in `node:sqlite`, so the same code runs under plain Node in tests and under Electron in the app without native rebuilds (ADR 011).
 
 ## Test pyramid
 

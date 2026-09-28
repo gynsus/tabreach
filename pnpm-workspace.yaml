@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+  - fixtures/*
+
+# Dependencies allowed to run install scripts; everything else is denied (supply-chain hygiene).
+# esbuild installs its platform binary. Electron needs no script: it downloads its binary on first use.
+allowBuilds:
+  esbuild: true
+  electron-winstaller: false

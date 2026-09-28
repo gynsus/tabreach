@@ -1,6 +1,6 @@
 # ADR 012 — Electron process topology and in-app IPC
 
-**Status:** Accepted (2026-09-28), with the browser-worker host type **pending Phase 0 validation**. Supersedes ADR 010.
+**Status:** Accepted (2026-09-28). Browser-worker host validated in Phase 0: `utilityProcess`. Supersedes ADR 010.
 
 ## Context
 
@@ -20,7 +20,7 @@ Four processes of our own:
 1. **main** — supervisor, windows, tray, power events, `safeStorage` secret broker, OAuth loopback flow, IPC broker. No domain logic, no DB, no Playwright.
 2. **renderer** — React UI, sandboxed, context-isolated, talks through a minimal preload bridge.
 3. **core** (`utilityProcess`) — domain, SQLite, jobs, workflows, policy, approvals, email, research, AI gateway. No Electron imports.
-4. **browser worker** (isolated process) — Playwright, profiles, sessions, browser adapters, overlay. No DB, no provider keys. Talks to its host only through a thin **host adapter** (message channel + lifecycle), so the host type can be swapped without touching worker logic.
+4. **browser worker** (`utilityProcess`) — Playwright, profiles, sessions, browser adapters, overlay. No DB, no provider keys. Talks to its host only through a thin **host adapter** (message channel + lifecycle), so the host type can be swapped without touching worker logic.
 
 IPC: `MessageChannelMain` ports (or the chosen host's IPC channel) brokered by main; envelope + Zod validation in `packages/protocol`; app protocol (renderer↔core) and browser protocol (core↔worker).
 
@@ -49,8 +49,13 @@ The first host that passes is recorded below; `CLAUDE.md`, `03-SYSTEM-ARCHITECTU
 - Crash isolation and clean testability.
 - No persistent network attack surface.
 - Protocol schemas are shared TypeScript.
-- Worker host is a Phase 0 decision with a documented security trade-off for fallback (2).
+- Worker host is `utilityProcess`; fallbacks (2) and (3) are not needed, so the `RunAsNode` fuse stays disabled.
 
 ## Phase 0 validation result
 
-_To be filled in: Electron/Playwright/Chrome/macOS versions tested, host chosen, observations._
+Run 2026-09-28 on Apple Silicon, macOS 26.3, Electron 44.4.5, Playwright 1.63.0, Google Chrome 154.0.8037.57.
+
+1. Throwaway spike app (asar, ad-hoc signed, no fuses): both hosts, `utilityProcess` and `fork` + `ELECTRON_RUN_AS_NODE`, launched the installed Chrome with a persistent profile, loaded `https://example.com` (HTTP 200, title "Example Domain") and closed. Repeated after an app restart and when launched through LaunchServices (`open`). First launch took about 6.6 s, later ones about 0.9 s. electron/electron#48145 did not reproduce on macOS.
+2. The real TabReach `.app`, with fuses applied (`RunAsNode` off, Node CLI inspect off, `NODE_OPTIONS` off, ASAR integrity and only-load-from-ASAR on), passed `--self-check=https://example.com` twice from the terminal and once through LaunchServices: core, database, safeStorage round trip, worker and Chrome launch all OK.
+
+**Chosen host: `utilityProcess`.** `CLAUDE.md`, `03-SYSTEM-ARCHITECTURE.md` and `18-SECURITY-PRIVACY-COMPLIANCE.md` are updated accordingly. The worker keeps the thin host adapter so the choice stays reversible if a future Electron or Chrome release regresses; CI runs the packaged self-check on every push to catch that.

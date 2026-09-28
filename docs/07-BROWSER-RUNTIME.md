@@ -8,7 +8,7 @@ It is not a campaign engine and holds no durable state. It executes **browser ta
 
 ## Runtime stack
 
-- Node.js code running in an isolated worker process (Electron `utilityProcess` preferred; host decided by the Phase 0 packaged-app validation — ADR 012). Worker code talks to its host only through a thin host adapter (message channel + lifecycle) so the host type can be swapped;
+- Node.js code running in an Electron `utilityProcess` (validated in Phase 0, ADR 012). Worker code talks to its host only through a thin host adapter (message channel + lifecycle) so the host type can be swapped;
 - Playwright (library, not the test runner) for browser control;
 - the user's installed **Google Chrome** via `chromium.launchPersistentContext(profileDir, { channel: 'chrome', headless: false })`;
 - Playwright's bundled Chromium for tests and fixtures only;

@@ -66,8 +66,8 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 008 | Prefer APIs/protocols for email; browser for UI-only workflows | Accepted (amended by 016) |
 | 009 | No bot-evasion subsystem | Accepted (amended) |
 | 010 | Runtime protocol boundary | Superseded by 012 |
-| 011 | Single TypeScript stack with SQLite and in-DB job queue | Accepted |
-| 012 | Electron process topology and in-app IPC | Accepted (worker host pending Phase 0) |
+| 011 | Single TypeScript stack with SQLite (node:sqlite) and in-DB job queue | Accepted |
+| 012 | Electron process topology and in-app IPC | Accepted (worker host: utilityProcess, validated) |
 | 013 | Bounded semantic target resolution instead of Stagehand | Accepted |
 | 014 | No Chrome extension; runtime-injected overlay | Accepted |
 | 015 | Execution modes: auto, assisted, manual | Accepted |

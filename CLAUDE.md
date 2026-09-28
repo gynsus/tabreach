@@ -32,7 +32,7 @@ One language: TypeScript. One database: SQLite (single file, owned by one proces
 
 - `apps/desktop` — Electron main process (supervisor, windows, tray, power events, secret broker via `safeStorage`) and the React renderer. The renderer is UI only. Main is a supervisor and broker, not a backend.
 - `packages/core` — runs in an Electron `utilityProcess`. Owns domain state, SQLite persistence, job queue and scheduler, workflow orchestration, policy, approvals, campaigns, email channel, research orchestration and the AI gateway. It is the **only** writer to the database.
-- `packages/browser-worker` — runs in a separate, isolated process (Electron `utilityProcess` is preferred, but only after the Phase 0 packaged-app validation in ADR 012 passes; the host process type must stay swappable). Owns Chrome processes, profiles, sessions, Playwright, browser channel adapters (web forms, LinkedIn), the semantic resolver client, the in-page overlay and human-takeover coordination. It has **no** database access; it reports results to core.
+- `packages/browser-worker` — runs in a separate Electron `utilityProcess` (validated in Phase 0, ADR 012), behind a thin host adapter so the host type stays swappable. Owns Chrome processes, profiles, sessions, Playwright, browser channel adapters (web forms, LinkedIn), the semantic resolver client, the in-page overlay and human-takeover coordination. It has **no** database access; it reports results to core.
 - `packages/protocol` — message envelopes, Zod schemas and types for all inter-process messages. The only package shared by all processes.
 - `packages/adapter-packs` — versioned, schema-validated data definitions for browser adapters (page-state recognizers, locators, verification checks, default limits).
 
@@ -143,16 +143,16 @@ External side effects without provider idempotency cannot be guaranteed exactly-
 Unless an ADR changes it:
 
 - TypeScript, `strict: true`, pnpm workspaces
-- Electron (current stable); core in `utilityProcess`, browser-worker host per ADR 012
+- Electron (current stable); core and browser worker in `utilityProcess` (ADR 012)
 - React + TypeScript + Vite (electron-vite)
-- SQLite via `better-sqlite3`, Drizzle ORM + drizzle-kit migrations (Phase 0 spike may evaluate `node:sqlite`; record the outcome in ADR 011)
+- SQLite via Node's built-in `node:sqlite`; plain-SQL migrations with core's own runner, no ORM (ADR 011)
 - Zod for all process-boundary validation
 - Playwright (library) driving the user's installed Google Chrome (`channel: 'chrome'`); Playwright Chromium for tests/fixtures
 - pino for structured logs
 - Vitest for unit/integration tests; Playwright Test for fixture and Electron E2E tests
 - electron-builder for packaging, hardened runtime and notarization
 
-Not used: PHP, Symfony, PostgreSQL, Redis, RabbitMQ, Docker, Stagehand, Chrome extension.
+Not used: PHP, Symfony, PostgreSQL, Redis, RabbitMQ, Docker, Stagehand, Chrome extension, native Node modules.
 
 Pin exact versions in lockfiles. Do not put floating `latest` versions in manifests.
 

@@ -16,13 +16,13 @@ Deliver:
 - TypeScript strict, ESLint, Prettier, import-boundary rules;
 - Electron app with main, preload, renderer (React), core `utilityProcess`, worker in an isolated process behind a thin host adapter;
 - MessagePort wiring and the protocol envelope with Zod validation; `health` messages end to end;
-- SQLite in core: open with pragmas, drizzle migrations, pre-migration local recovery backup (backup API), one trivial table;
+- SQLite in core: open with pragmas, plain-SQL migrations, pre-migration local recovery backup (backup API), one trivial table;
 - secret broker in main (`safeStorage`) with a round-trip test;
 - worker: detect installed Chrome, launch and close a test profile (no automation yet);
 - pino logging per process with redaction;
 - Vitest + Playwright Test wired; CI on macOS (typecheck, lint, test);
 - **packaging spike**: `pnpm package` produces a `.app` via electron-builder that starts, runs migrations, launches Chrome; document what signing/notarization needs (certificate, entitlements);
-- **native module spike**: `better-sqlite3` under Electron and under plain Node for tests (or `node:sqlite`); record the result in ADR 011;
+- **SQLite driver spike**: `better-sqlite3` vs built-in `node:sqlite` under Electron and plain Node; record the result in ADR 011 (done: `node:sqlite`);
 - **packaged browser-worker spike — do this first, before building anything around it**: in the packaged, signed-or-ad-hoc-signed `.app` on Apple Silicon macOS, the worker (as `utilityProcess`) launches installed Chrome via Playwright with a persistent profile, runs `page.goto('https://example.com')`, waits for load, reads the title, closes; repeats after an app restart. If it fails, try the fallback hosts in ADR 012 in order and record the choice, including the `RunAsNode` fuse consequence;
 - `docs/DEVELOPMENT.md`.
 

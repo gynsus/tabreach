@@ -1,0 +1,9 @@
+node_modules
+out
+dist
+release
+pnpm-lock.yaml
+.feature-map
+docs
+*.md
+MANIFEST.json

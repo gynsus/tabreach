@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "lib": ["ES2023", "DOM"], "types": ["node", "electron"] },
+  "include": [
+    "src/main",
+    "src/preload",
+    "src/processes",
+    "src/shared",
+    "electron.vite.config.ts",
+    "playwright.config.ts",
+    "e2e"
+  ]
+}

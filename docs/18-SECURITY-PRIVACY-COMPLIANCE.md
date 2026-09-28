@@ -27,8 +27,8 @@ Chrome is controlled over a pipe, not a remote-debugging port.
 
 - renderer: `contextIsolation`, `sandbox`, no `nodeIntegration`, strict CSP, no remote content, `will-navigate` and `setWindowOpenHandler` deny by default;
 - preload exposes a minimal typed bridge; every message validated by core;
-- core in a `utilityProcess`; worker in an isolated process whose host type is fixed by the Phase 0 validation (ADR 012);
-- Electron fuses: disable `EnableNodeCliInspectArguments`, enable ASAR integrity and `OnlyLoadAppFromAsar` in release builds; disable `RunAsNode` **unless** ADR 012 selects the `ELECTRON_RUN_AS_NODE` worker host — that trade-off is decided and documented in ADR 012, never silently;
+- core and browser worker in `utilityProcess` (no renderer privileges; ADR 012);
+- Electron fuses in every packaged build: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments` disabled; cookie encryption, embedded ASAR integrity validation and `OnlyLoadAppFromAsar` enabled (ADR 012 confirmed no worker host needs `RunAsNode`). Because the inspector is disabled, packaged builds are verified with `--self-check`, not by attaching automation;
 - hardened runtime + notarization for release.
 
 ## Secrets

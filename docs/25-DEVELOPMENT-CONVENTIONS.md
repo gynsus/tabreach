@@ -5,7 +5,7 @@
 pnpm monorepo with clear process boundaries (`03-SYSTEM-ARCHITECTURE.md`).
 
 - `packages/protocol` is the single source of truth for inter-process messages: Zod schemas, inferred types, envelope helpers.
-- Database schema types (Drizzle) stay inside `packages/core`; they are never imported by the renderer or the worker. The renderer receives DTOs defined in `protocol`.
+- Database row types stay inside `packages/core`; they are never imported by the renderer or the worker. The renderer receives DTOs defined in `protocol`.
 - Import boundaries are enforced by lint.
 
 ## TypeScript
@@ -21,7 +21,7 @@ pnpm monorepo with clear process boundaries (`03-SYSTEM-ARCHITECTURE.md`).
 ## Core code structure
 
 - domain modules (prospects, policy, campaigns, workflows, approvals, email, research, ai) with services independent of transport;
-- repositories wrap Drizzle; domain services never build SQL directly;
+- repositories own the SQL (prepared statements via `node:sqlite`) and validate JSON columns with Zod; domain services never build SQL directly;
 - no Electron imports in `packages/core` (enforced by lint), so core runs in plain Node for tests.
 
 ## Worker code structure
