@@ -38,7 +38,8 @@ const dataRows = (table: string) =>
 
 test('status screen shows core, database, secret storage and worker working', async () => {
   await go('#/status');
-  await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible();
+  // Cold start on CI: the first paint waits up to 3 s for the saved language.
+  await expect(page.getByRole('heading', { name: 'System status' })).toBeVisible({ timeout: 15_000 });
   for (const id of ['core', 'database', 'secrets', 'worker', 'chrome']) {
     await expect(page.getByTestId(`component-${id}`)).toHaveAttribute('data-status', 'ok', {
       timeout: 20_000,
