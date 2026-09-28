@@ -1,0 +1,251 @@
+{
+  "generated_at": "2026-09-28T10:36:30.346300+00:00",
+  "file_count": 49,
+  "files": [
+    {
+      "path": "CLAUDE.md",
+      "bytes": 11416,
+      "sha256": "a4aeec210a81087d69f63de243cc741174e2dc2f5035621895e174c0828494af"
+    },
+    {
+      "path": "README.md",
+      "bytes": 4531,
+      "sha256": "e7b1e6e10d99b09970742e3b18babac6c964d32b7dc9e99eeb1b0c68fd17ab43"
+    },
+    {
+      "path": "docs/00-PRODUCT-VISION.md",
+      "bytes": 4201,
+      "sha256": "8781cef983db0cdc990f8dfbf7ab730f941f037f03c48fb906d92eba313761b9"
+    },
+    {
+      "path": "docs/01-MVP-SCOPE.md",
+      "bytes": 6892,
+      "sha256": "6fc2570688e43641afb4169b09f1f654a33a58215a70efe14405c1802bb6f876"
+    },
+    {
+      "path": "docs/02-FUNCTIONAL-REQUIREMENTS.md",
+      "bytes": 10520,
+      "sha256": "337984f043027d62b52b1cdb144fb72240a4c3da3d44934c8154b989dd27fd1c"
+    },
+    {
+      "path": "docs/03-SYSTEM-ARCHITECTURE.md",
+      "bytes": 11505,
+      "sha256": "54efa1247e02c8ada4aeef4412f9c3f067fe4c62860a353a877adfdd06d5dbdc"
+    },
+    {
+      "path": "docs/04-DOMAIN-MODEL.md",
+      "bytes": 7499,
+      "sha256": "9032b8caae7461e9731ab2b7e63502bd2555e1d2e3208987c260299af041648a"
+    },
+    {
+      "path": "docs/05-DATABASE-SCHEMA.md",
+      "bytes": 10189,
+      "sha256": "60f493c0f4f31c84ac6fa6aed7916bad1698326aafee5b5c1e2814b5da1ef888"
+    },
+    {
+      "path": "docs/06-API-CONTRACT.md",
+      "bytes": 5335,
+      "sha256": "77bbf2632f06706757d43f24355b40720ae5e4a63d887cfe0971c6c10b4bfba7"
+    },
+    {
+      "path": "docs/07-BROWSER-RUNTIME.md",
+      "bytes": 9961,
+      "sha256": "27b5d7402416942de95821327fc0e8fead002c7168ed56fbc1010d022237094e"
+    },
+    {
+      "path": "docs/08-BROWSER-PROFILES.md",
+      "bytes": 3845,
+      "sha256": "f2d2cb3221704ecc43b1a23b0ee06d45befc511e9acbcb0ade1b0b7a4f7baac4"
+    },
+    {
+      "path": "docs/09-BROWSER-INSTRUMENTATION.md",
+      "bytes": 2910,
+      "sha256": "fc6fa9b516622f93021fb952f31367302384e8a63d49212a9b991c37749c9d30"
+    },
+    {
+      "path": "docs/10-BROWSER-RECORDER.md",
+      "bytes": 1596,
+      "sha256": "bce927dbc064c1c1def148963d6cf0cee5460876fd380b3bec6754af9f9535ea"
+    },
+    {
+      "path": "docs/11-HUMAN-TAKEOVER.md",
+      "bytes": 4248,
+      "sha256": "e392b6ba080b72dd769e2eae4b3a1be64fc8a482b06e92bd0a9654f13e879f25"
+    },
+    {
+      "path": "docs/12-IN-PAGE-OVERLAY.md",
+      "bytes": 2790,
+      "sha256": "f00ac6abc26794e9283ceec7fe904183e25875b1d83c8ae13a14ef64e4f2c7aa"
+    },
+    {
+      "path": "docs/13-WORKFLOW-ENGINE.md",
+      "bytes": 7099,
+      "sha256": "8ec4284d2710ed28fd1b74ca1839e0a3024ccfa3cf35eb010a84a5fa244d09d9"
+    },
+    {
+      "path": "docs/14-CHANNEL-ADAPTERS.md",
+      "bytes": 10816,
+      "sha256": "ce376bf9bd0d6031a4ca59a1f1c8943ca3cbd576bb46e73a5080768880cb9201"
+    },
+    {
+      "path": "docs/15-AI-ARCHITECTURE.md",
+      "bytes": 5603,
+      "sha256": "ef00eba15de8aba148a0aed5e306aa8bb62269c98793157ed7b2d474ddedd898"
+    },
+    {
+      "path": "docs/16-RESEARCH-ENGINE.md",
+      "bytes": 2495,
+      "sha256": "069df206c4b03cd7f7a295699202a13252b320909b19532fb6c1e39791e75cd4"
+    },
+    {
+      "path": "docs/17-CAMPAIGNS.md",
+      "bytes": 4951,
+      "sha256": "9057fb019e0dd9fbf0cc46e1bb16734a41871f919fee0d5fc617583fc9bec5ff"
+    },
+    {
+      "path": "docs/18-SECURITY-PRIVACY-COMPLIANCE.md",
+      "bytes": 4743,
+      "sha256": "68f70eb14cb70bc234b9141a685f74f7fe6a19a831b322f5ceacede0b2c767e1"
+    },
+    {
+      "path": "docs/19-ERROR-RECOVERY.md",
+      "bytes": 4626,
+      "sha256": "b48f0f01ab5820d0b05de31909f2c4f52d2406fd4891992dbe5dfb5dd047a475"
+    },
+    {
+      "path": "docs/20-OBSERVABILITY.md",
+      "bytes": 2351,
+      "sha256": "1304a417bd818e337f6d63bf0ea1a2887d30954f45cd1b79699e93e0016222e9"
+    },
+    {
+      "path": "docs/21-TESTING.md",
+      "bytes": 4375,
+      "sha256": "8e2a7522f8492ddae685cc03421b4ad21cd4f9c2481cad7a89bc89c3af06fecf"
+    },
+    {
+      "path": "docs/22-IMPLEMENTATION-PLAN.md",
+      "bytes": 9377,
+      "sha256": "56422b0e8cae9942223bb98d61ae1563de51d021970140dcffc967ded431fb21"
+    },
+    {
+      "path": "docs/23-ACCEPTANCE-CRITERIA.md",
+      "bytes": 6546,
+      "sha256": "8c592b0b53102b62f95ef2d652bf5df9e9da988b4f79ed5a53785797aa148c9a"
+    },
+    {
+      "path": "docs/24-OUT-OF-SCOPE.md",
+      "bytes": 2370,
+      "sha256": "c6d1df2cbd8f5b7ebea98acf2ae6d5b67f217dfe18be6159b97013034d46de28"
+    },
+    {
+      "path": "docs/25-DEVELOPMENT-CONVENTIONS.md",
+      "bytes": 3729,
+      "sha256": "79b5885f8c70107e6efd5d0b5f80f795d791694349f24f1f64804687d4c87c9f"
+    },
+    {
+      "path": "docs/26-FIRST-CLAUDE-CODE-TASK.md",
+      "bytes": 4008,
+      "sha256": "f6415e3d99174033e82fb3d2b01598f55d04a585c014f3b20df9098802d1cd40"
+    },
+    {
+      "path": "docs/INDEX.md",
+      "bytes": 4045,
+      "sha256": "37a99280337bbaca26ee31f98bc9a8c168f66f94def6d6ffcbd56f24446845e7"
+    },
+    {
+      "path": "docs/REVISION-NOTES-2026-09-28.md",
+      "bytes": 41472,
+      "sha256": "461ac3bd9cd4b68e9fe58d0696fcedb91b336e915c382996e1cce99acc3896ac"
+    },
+    {
+      "path": "docs/adr/001-local-first-mvp.md",
+      "bytes": 1917,
+      "sha256": "ed89348aa3863c8c8fc82783c0ad1c4c264c9092763728b7f29bafbf4a9e96a7"
+    },
+    {
+      "path": "docs/adr/002-standard-browser-not-chromium-fork.md",
+      "bytes": 1140,
+      "sha256": "02c86432a3d9920d91747b51aa0c15462c5df248f0ff5710e7658fea08fb87ae"
+    },
+    {
+      "path": "docs/adr/003-playwright-deterministic-core.md",
+      "bytes": 502,
+      "sha256": "74455925fff0bc92c2d8b49f35bca91b263b1e5ed4aaa4bcf1c28bb9dbc0be80"
+    },
+    {
+      "path": "docs/adr/004-stagehand-semantic-fallback.md",
+      "bytes": 790,
+      "sha256": "65ecff9dc074cbc53a675536deb92db4064ea1161d26ee833c799a0f81213f49"
+    },
+    {
+      "path": "docs/adr/005-dedicated-browser-profiles.md",
+      "bytes": 573,
+      "sha256": "c1e2597a288d63a797dca830d97b81dd795f7e59da813f56f6777c3b46c1fe97"
+    },
+    {
+      "path": "docs/adr/006-human-approval-default.md",
+      "bytes": 1143,
+      "sha256": "475c47bc86c5d9acd0a39bf7597731a9df98f6459addc1441e676e42a3b05331"
+    },
+    {
+      "path": "docs/adr/007-channel-adapter-boundary.md",
+      "bytes": 896,
+      "sha256": "9aecee1a989caf95f3444ec17779b721ba6548ef1f3af391c9a3a3ba6061a2f6"
+    },
+    {
+      "path": "docs/adr/008-api-for-email-browser-for-web-ui.md",
+      "bytes": 736,
+      "sha256": "d65df6f0496fab1605955944a70f0be389b54a8fbb9c236212a700c5b4e4f527"
+    },
+    {
+      "path": "docs/adr/009-no-bot-evasion.md",
+      "bytes": 1161,
+      "sha256": "8535f0cd7d2be0a80ac75e19d981f6725d723d3b0bec5a9323e3afa3ee0853ce"
+    },
+    {
+      "path": "docs/adr/010-runtime-protocol-boundary.md",
+      "bytes": 970,
+      "sha256": "e4acaecec85ef3729a9f355d2b6b1da6fbbec08bd24da7ba36967a40e927f97d"
+    },
+    {
+      "path": "docs/adr/011-typescript-sqlite-single-stack.md",
+      "bytes": 3037,
+      "sha256": "1a29fa37c84980052f7183bd033428cfa74aac79b8b992b1b28d29b6c0e6e8b6"
+    },
+    {
+      "path": "docs/adr/012-electron-process-topology.md",
+      "bytes": 3707,
+      "sha256": "0355298bf084e34a8f19d2703cb2ab0276247d9fe5c632bd6b693ea7a039d5a4"
+    },
+    {
+      "path": "docs/adr/013-bounded-semantic-target-resolution.md",
+      "bytes": 2591,
+      "sha256": "1d23a29678c46f1b615bd0f16fbbf381220e6d85c4dc5dfeb660f6f177c2b2d5"
+    },
+    {
+      "path": "docs/adr/014-no-extension-injected-overlay.md",
+      "bytes": 1699,
+      "sha256": "86d71876199f7e154ef4563b760977a2de32db6887ffa2b725442f8b80ded0c9"
+    },
+    {
+      "path": "docs/adr/015-execution-modes.md",
+      "bytes": 1480,
+      "sha256": "34e86f01a02cf18b3fcb9598a32c185224c179f189c8d09508266c63d1b0a8de"
+    },
+    {
+      "path": "docs/adr/016-email-transports.md",
+      "bytes": 4442,
+      "sha256": "0fd8963957f6ecacd5998f43a7adafdb13b42209cb9d315eaf18b7c6b3bff51e"
+    },
+    {
+      "path": "docs/adr/017-data-driven-adapter-packs.md",
+      "bytes": 1335,
+      "sha256": "8d8944f0d7cbcd23f29d5291841f740b6f8a8c49c8c2fbb2ab39dbae89256163"
+    },
+    {
+      "path": "docs/adr/018-side-effect-ledger.md",
+      "bytes": 1608,
+      "sha256": "e4943c69bf872f2ae3574d5483fbb54a8adae64fa5de962a05a8fc0242fd36da"
+    }
+  ]
+}
