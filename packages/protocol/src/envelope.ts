@@ -35,6 +35,8 @@ export const problemSchema = z.object({
   code: errorCodeSchema,
   title: z.string(),
   detail: z.string().optional(),
+  /** Per-field message keys (e.g. `email.invalid`) that the UI translates; values are keys, not text. */
+  fields: z.record(z.string(), z.string()).optional(),
 });
 export type Problem = z.infer<typeof problemSchema>;
 

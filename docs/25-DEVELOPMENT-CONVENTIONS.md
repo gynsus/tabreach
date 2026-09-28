@@ -24,6 +24,16 @@ pnpm monorepo with clear process boundaries (`03-SYSTEM-ARCHITECTURE.md`).
 - repositories own the SQL (prepared statements via `node:sqlite`) and validate JSON columns with Zod; domain services never build SQL directly;
 - no Electron imports in `packages/core` (enforced by lint), so core runs in plain Node for tests.
 
+- text that is matched or searched is keyed in TypeScript (`nameKey`, `searchKey`, `normalizeEmail`, `normalizeDomain`, `normalizeProfileUrl` in `prospects/normalize.ts`), never with SQLite `lower()`/`LIKE`/`NOCASE`, which are ASCII-only;
+- user-facing text never comes from core: errors are keys (`fields`, import `reason`).
+
+## Renderer
+
+- all user-facing strings live in `src/renderer/src/i18n/en.ts` and `ru.ts`; `ru.ts` is typed against `en.ts`;
+- Tailwind utilities with the semantic tokens from `styles.css`; no hex colors in components;
+- native `<dialog>`/`<select>` where they suffice (CSP forbids injected `<style>`);
+- dependencies: permissive open-source licenses only (MIT, ISC, Apache-2.0, BSD).
+
 ## Worker code structure
 
 - adapters = state machines over adapter packs;

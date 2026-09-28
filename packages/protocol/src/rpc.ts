@@ -20,10 +20,20 @@ export interface MessageEndpoint {
 export class RpcError extends Error {
   readonly problem: Problem;
 
-  constructor(code: ErrorCode, title: string, detail?: string) {
+  constructor(code: ErrorCode, title: string, detail?: string, fields?: Record<string, string>) {
     super(detail ? `${title}: ${detail}` : title);
     this.name = 'RpcError';
-    this.problem = detail === undefined ? { code, title } : { code, title, detail };
+    this.problem = {
+      code,
+      title,
+      ...(detail === undefined ? {} : { detail }),
+      ...(fields === undefined ? {} : { fields }),
+    };
+  }
+
+  /** Validation failure with per-field message keys for the UI to translate. */
+  static validation(fields: Record<string, string>, detail?: string): RpcError {
+    return new RpcError('VALIDATION_FAILED', 'Validation failed', detail, fields);
   }
 }
 
@@ -191,8 +201,8 @@ export class RpcPeer {
       return;
     }
     if (!result.data.ok) {
-      const { code, title, detail } = result.data.error;
-      pending.reject(new RpcError(code, title, detail));
+      const { code, title, detail, fields } = result.data.error;
+      pending.reject(new RpcError(code, title, detail, fields));
       return;
     }
     const data = requests[pending.type].response.safeParse(result.data.data);

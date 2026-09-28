@@ -107,6 +107,17 @@ Import boundaries between these are enforced by ESLint (`eslint.config.js`); see
 To add a migration, append `{ version: n + 1, name, sql }` to the list and cover it in
 `migrate.test.ts` if it contains logic beyond plain DDL.
 
+## User interface
+
+React + Tailwind CSS 4 + TanStack Query/Table/Virtual + React Router (hash) + i18next (ADR 019).
+
+- Strings: add every user-facing string to `apps/desktop/src/renderer/src/i18n/en.ts` **and** `ru.ts`.
+  `ru.ts` is typed against the English catalog, so `pnpm typecheck` fails on a missing key.
+- Errors: core sends keys (`email.invalid`); translate them under `errors.*`.
+- Colors: use the semantic tokens (`bg-paper`, `text-soft`, `bg-accent`, `text-bad`, …) defined in
+  `styles.css`; dark mode follows macOS automatically.
+- The interface language is stored in core (`settings.ui`) and switched in Settings.
+
 ## Logs
 
 JSON lines (pino), one file per process: `main.log`, `core.log`, `worker.log`. Secret-looking keys

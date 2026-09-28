@@ -74,6 +74,7 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 016 | Email transports and staged Gmail OAuth client strategy | Accepted |
 | 017 | Data-driven adapter packs | Accepted |
 | 018 | Side-effect ledger keyed by logical intent | Accepted |
+| 019 | Renderer UI stack and localization | Accepted |
 
 ## Recommended first command to Claude Code
 

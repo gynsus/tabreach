@@ -11,6 +11,7 @@ import { RpcError, RpcPeer, type Logger } from '@tabreach/protocol';
 import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
 import { RestartPolicy } from './restart-policy';
+import { registerSaveFile } from './save-file';
 import { parseSelfCheck, runSelfCheck } from './self-check';
 
 const isDev = !app.isPackaged;
@@ -28,6 +29,14 @@ function main(): void {
     TABREACH_APP_VERSION: app.getVersion(),
     TABREACH_DEV: isDev ? '1' : '0',
   };
+
+  const rendererUrl = isDev && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null;
+  const rendererFile = join(__dirname, '../renderer/index.html');
+  /** Only our own renderer page may use main-process IPC. */
+  const isAppUrl = (url: string) =>
+    rendererUrl
+      ? url.startsWith(rendererUrl)
+      : url.startsWith('file://') && decodeURI(new URL(url).pathname) === rendererFile;
 
   let window: BrowserWindow | null = null;
   let windowLoaded = false;
@@ -98,7 +107,7 @@ function main(): void {
         nodeIntegration: false,
       },
     });
-    const allowedUrl = isDev && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null;
+    const allowedUrl = rendererUrl;
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.webContents.on('will-navigate', (event, url) => {
       if (!allowedUrl || !url.startsWith(allowedUrl)) event.preventDefault();
@@ -118,7 +127,7 @@ function main(): void {
     if (allowedUrl) {
       void window.loadURL(allowedUrl);
     } else {
-      void window.loadFile(join(__dirname, '../renderer/index.html'));
+      void window.loadFile(rendererFile);
     }
   }
 
@@ -132,6 +141,7 @@ function main(): void {
   app.whenReady().then(
     () => {
       logger.info({ event: 'app.ready', version: app.getVersion(), packaged: app.isPackaged }, 'app ready');
+      registerSaveFile(isAppUrl, logger);
       core.start();
       worker.start();
       if (!selfCheck.enabled) createWindow();

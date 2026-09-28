@@ -10,6 +10,7 @@ import {
   type Logger,
   type MessageEndpoint,
 } from '@tabreach/protocol';
+import { AppServices } from './app-handlers.js';
 import { openDatabase, sqliteVersion } from './db/database.js';
 import { currentSchemaVersion, migrate, type MigrationReport } from './db/migrate.js';
 import { migrations } from './db/migrations.js';
@@ -33,6 +34,7 @@ export class CoreService {
   private readonly appPeers = new Set<RpcPeer>();
   private workerPeer: RpcPeer | null = null;
   private secretsStatus: { status: ComponentStatus; detail?: string } = { status: 'unknown' };
+  readonly services: AppServices;
 
   private constructor(
     private readonly db: DatabaseSync,
@@ -40,6 +42,7 @@ export class CoreService {
     readonly migration: MigrationReport,
   ) {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
+    this.services = new AppServices(db);
   }
 
   static async start(options: CoreOptions): Promise<CoreService> {
@@ -57,7 +60,8 @@ export class CoreService {
   /** Attaches a renderer connection (a new one after every window reload). */
   attachApp(endpoint: MessageEndpoint): () => void {
     const peer = new RpcPeer(endpoint, this.peerOptions('app'));
-    peer
+    this.services
+      .register(peer)
       .handle('app.health', () => this.health())
       .handle('browser.launchCheck', (payload, ctx) => this.launchCheck(payload.url, ctx.correlationId));
     this.appPeers.add(peer);

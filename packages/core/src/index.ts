@@ -9,3 +9,6 @@ export {
   type SecretCipher,
   type SecretPurpose,
 } from './secrets/secrets.js';
+export { AppServices } from './app-handlers.js';
+export { AuditLog, redactPayload } from './audit/audit-log.js';
+export * from './prospects/normalize.js';

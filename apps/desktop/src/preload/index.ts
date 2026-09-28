@@ -55,6 +55,7 @@ function connected(): Promise<RpcPeer> {
 }
 
 const bridge: TabReachBridge = {
+  saveTextFile: (request) => ipcRenderer.invoke('tabreach:save-text-file', request),
   async invoke(type, payload) {
     // Renderer code may only reach the app channel; host and browser messages are not addressable.
     if (!isRequestType(type) || requests[type].channel !== 'app') {
