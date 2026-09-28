@@ -191,17 +191,23 @@ export class GmailApi {
    * Inbox messages added after `startHistoryId`. `expired`: Google no longer has that history (it
    * keeps about a week); the caller restarts from the current position.
    */
+  /**
+   * Inbox messages added after `startHistoryId`, oldest first, each with the history id of its
+   * record so the caller can advance message by message. `expired`: Google no longer has that
+   * history (it keeps about a week); the caller restarts from the current position.
+   */
   async inboxSince(
     startHistoryId: string,
     signal: AbortSignal,
-  ): Promise<{ historyId: string; messageIds: string[]; expired: boolean }> {
-    const ids: string[] = [];
+  ): Promise<{ historyId: string; added: { historyId: string; messageId: string }[]; expired: boolean }> {
+    const added: { historyId: string; messageId: string }[] = [];
+    const seen = new Set<string>();
     let pageToken: string | undefined;
     let historyId = startHistoryId;
     try {
       do {
         const res = await this.json<{
-          history?: { messagesAdded?: { message: { id: string; labelIds?: string[] } }[] }[];
+          history?: { id: string; messagesAdded?: { message: { id: string; labelIds?: string[] } }[] }[];
           historyId?: string;
           nextPageToken?: string;
         }>(
@@ -211,20 +217,22 @@ export class GmailApi {
           signal,
         );
         for (const h of res.history ?? []) {
-          for (const added of h.messagesAdded ?? []) {
-            if (added.message.labelIds?.includes('INBOX') !== false) ids.push(added.message.id);
+          for (const m of h.messagesAdded ?? []) {
+            if (m.message.labelIds?.includes('INBOX') === false || seen.has(m.message.id)) continue;
+            seen.add(m.message.id);
+            added.push({ historyId: h.id, messageId: m.message.id });
           }
         }
         historyId = res.historyId ?? historyId;
         pageToken = res.nextPageToken;
-      } while (pageToken && ids.length < 500);
+      } while (pageToken && added.length < 500);
     } catch (error) {
       if (error instanceof GmailError && error.status === 404) {
-        return { historyId: (await this.profile(signal)).historyId, messageIds: [], expired: true };
+        return { historyId: (await this.profile(signal)).historyId, added: [], expired: true };
       }
       throw error;
     }
-    return { historyId, messageIds: [...new Set(ids)], expired: false };
+    return { historyId, added, expired: false };
   }
 
   async raw(id: string, signal: AbortSignal): Promise<Buffer> {

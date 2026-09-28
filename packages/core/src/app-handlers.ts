@@ -7,6 +7,7 @@ import {
   type Logger,
   type RpcPeer,
   type UiSettings,
+  type UncertainSend,
 } from '@tabreach/protocol';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
@@ -75,9 +76,14 @@ export class AppServices {
   readonly accounts: AccountService;
   readonly inbox: InboxService;
   private readonly changed: (entities: ChangedEntity[]) => void;
+  private readonly now: () => Date;
 
-  constructor(db: DatabaseSync, options: AppServicesOptions = {}) {
+  constructor(
+    private readonly db: DatabaseSync,
+    options: AppServicesOptions = {},
+  ) {
     const now = options.now ?? (() => new Date());
+    this.now = now;
     const logger = options.logger ?? silentLogger;
     this.changed = options.onChanged ?? (() => {});
     this.audit = new AuditLog(db, now);
@@ -119,6 +125,11 @@ export class AppServices {
       logger: logger.child({ component: 'campaigns' }),
       changed: (entities) => this.changed(entities),
       onSent: (sent) => this.inbox.recordSent(sent),
+      beforeSend: async (channel, signal, correlationId) => {
+        if (channel.channel === 'email' && channel.accountId) {
+          await this.inbox.ensureFresh(channel.accountId, signal, correlationId);
+        }
+      },
     });
     this.inbox = new InboxService({
       db,
@@ -132,7 +143,15 @@ export class AppServices {
       logger: logger.child({ component: 'inbox' }),
       changed: (entities) => this.changed(entities),
     });
-    this.campaigns = new CampaignService(db, this.audit, this.engine, this.jobs, channels, now);
+    this.campaigns = new CampaignService(
+      db,
+      this.audit,
+      this.engine,
+      this.jobs,
+      channels,
+      now,
+      (contactId, companyId) => this.policy.replyHold(contactId, companyId),
+    );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now);
   }
 
@@ -280,7 +299,6 @@ export class AppServices {
           attempts: j.attempts,
           lastErrorClass: j.last_error_class,
           lastError: j.last_error_redacted,
-          unknownSideEffectId: this.unknownSideEffectOf(j.type, j.payload),
           updatedAt: j.updated_at,
         })),
       }))
@@ -321,6 +339,27 @@ export class AppServices {
           return { ok: true as const };
         }),
       )
+      .handle('contacts.replyHold', ({ id }) => {
+        const contact = this.prospects.getContact(id);
+        return { hold: this.policy.replyHold(id, contact.companyId) };
+      })
+      .handle('contacts.releaseReplyHold', ({ id }, c) =>
+        mutate(['contact'], () => {
+          this.prospects.getContact(id);
+          this.db
+            .prepare('UPDATE contacts SET reply_hold_released_at = ?, updated_at = ? WHERE id = ?')
+            .run(this.now().toISOString(), this.now().toISOString(), id);
+          this.audit.record({
+            actorType: 'user',
+            actionType: 'contact.reply_hold_released',
+            objectType: 'contact',
+            objectId: id,
+            correlationId: c.correlationId,
+          });
+          return { ok: true as const };
+        }),
+      )
+      .handle('sideEffects.uncertain', () => ({ items: this.uncertainSends() }))
       .handle('sideEffects.resolve', ({ id, outcome }, c) =>
         mutate(['job', 'enrollment'], () => this.resolveSideEffect(id, outcome, c.correlationId)),
       )
@@ -350,14 +389,18 @@ export class AppServices {
    * A person settles a send TabReach could not verify (ADR 018 \`user_confirmation\`). The run's
    * job is requeued: it then finds the ledger decided and either moves on or sends.
    */
-  private resolveSideEffect(
-    id: string,
-    outcome: 'completed' | 'not_sent',
-    correlationId: string,
-  ): { ok: true } {
+  resolveSideEffect(id: string, outcome: 'completed' | 'not_sent', correlationId: string): { ok: true } {
     const effect = this.ledger.get(id);
     if (!effect || (effect.status !== 'unknown' && effect.status !== 'executing')) {
       throw new RpcError('CONFLICT', 'Nothing to decide', 'sideEffect.notUnknown');
+    }
+    // While a send job for this run is pending or running, it may be sending or reconciling right
+    // now: a decision could race it into a second message (audit 3.5).
+    const active = effect.workflow_run_id
+      ? this.jobs.latestFor('workflow.run', 'runId', effect.workflow_run_id)
+      : undefined;
+    if (active && (active.status === 'pending' || active.status === 'running')) {
+      throw new RpcError('CONFLICT', 'TabReach is still checking this send', 'sideEffect.busy');
     }
     if (outcome === 'completed') this.ledger.markCompleted(id, {}, 'user_confirmation');
     else this.ledger.markNotSent(id, 'user_confirmed_not_sent', 'user_confirmation');
@@ -377,12 +420,54 @@ export class AppServices {
     return { ok: true };
   }
 
-  /** For a dead send job: the ledger entry whose outcome only a person can settle. */
-  private unknownSideEffectOf(type: string, payload: string): string | null {
-    if (type !== 'workflow.run') return null;
-    const runId = (JSON.parse(payload) as { runId?: string }).runId;
-    if (!runId) return null;
-    const row = this.ledger.unknownForRun(runId);
-    return row?.id ?? null;
+  /**
+   * Sends whose outcome is not known and that nothing is resolving right now: unknown, or stuck in
+   * executing without an active job. Listed whatever happened to their run (audit 3.5).
+   */
+  uncertainSends(): UncertainSend[] {
+    const rows = this.db
+      .prepare(
+        `SELECT se.id, se.status, se.channel, se.target_normalized, se.updated_at, se.workflow_run_id,
+                e.contact_id, cam.name AS campaign_name, c.first_name, c.last_name, c.full_name
+         FROM side_effects se
+         LEFT JOIN campaign_enrollments e ON e.id = se.scope_id
+         LEFT JOIN campaigns cam ON cam.id = e.campaign_id
+         LEFT JOIN contacts c ON c.id = e.contact_id
+         WHERE se.status IN ('unknown', 'executing')
+         ORDER BY se.updated_at`,
+      )
+      .all() as {
+      id: string;
+      status: 'unknown' | 'executing';
+      channel: string;
+      target_normalized: string;
+      updated_at: string;
+      workflow_run_id: string | null;
+      contact_id: string | null;
+      campaign_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+      full_name: string | null;
+    }[];
+    return rows.flatMap((r) => {
+      const job = r.workflow_run_id
+        ? this.jobs.latestFor('workflow.run', 'runId', r.workflow_run_id)
+        : undefined;
+      const checking = job?.status === 'pending' || job?.status === 'running';
+      if (r.status === 'executing' && checking) return []; // an ordinary send in progress
+      return [
+        {
+          id: r.id,
+          channel: r.channel,
+          target: r.target_normalized,
+          contactId: r.contact_id,
+          contactName:
+            r.full_name ?? ([r.first_name, r.last_name].filter(Boolean).join(' ') || r.target_normalized),
+          campaignName: r.campaign_name,
+          attemptedAt: r.updated_at,
+          checking,
+        },
+      ];
+    });
   }
 }

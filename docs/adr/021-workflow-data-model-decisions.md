@@ -67,6 +67,16 @@ Decisions made while implementing, consistent with the above:
 - **Recipient change after approval.** The content hash covers channel, target, subject and body; if the contact's address changes after approval, the final check writes a new draft version and asks again.
 - **Columns added** to the documented shape: `campaign_enrollments.campaign_id`, `workflow_runs.step_position`, `message_drafts.workflow_run_id`. `side_effects.workflow_run_id` has no foreign key (the table predates `workflow_runs`).
 
+## Audit 3.5 changes (2026-09-28)
+
+- **Reply hold.** A strong reply (thread or contact address; a confirmed possible reply for companies) puts the contact — and, with the company stop on, their colleagues — on hold for every campaign: the final pre-send check stops (`replied` / `company_replied`) and `campaigns.enroll` skips them (`onHold`). The user lifts it per contact (`contacts.releaseReplyHold`); replies before that moment stop counting.
+- **Fresh reads in the final check.** The guard in the reserving transaction re-reads the run, enrollment, campaign and approval; reconciliation may have awaited in between.
+- **One unresolved attempt per step.** If another ledger row of the same step (another target, i.e. the address changed) is `executing`/`unknown`, the step waits for a person; if it is `completed`, the step is done.
+- **After the channel acted, a ledger conflict is permanent** (`ledger_conflict`): the job fails instead of retrying, which could send again.
+- **People decide only when nothing is running.** `sideEffects.resolve` is refused while a send job for the run is pending or running. Every `unknown` (and orphaned `executing`) row is listed by `sideEffects.uncertain`, whatever happened to its job. A run whose job failed or died is not revived by `resync`.
+- **Inbox before send.** Email sends read the account's inbox first when the last check is older than 5 minutes, and wait when it cannot be read for 30 minutes.
+- **Launching changes of a paused campaign keeps it paused.** A failed condition with `skip` leaves out the step it guards.
+
 ## Consequences
 
 - Phase 2 migrations implement these tables and CHECK lists directly.

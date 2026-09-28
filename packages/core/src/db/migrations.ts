@@ -475,4 +475,13 @@ export const migrations: readonly Migration[] = [
       ) STRICT;
     `,
   },
+  {
+    version: 11,
+    name: 'reply_hold',
+    sql: `
+      -- A contact who replied is not contacted again by any campaign until the user allows it;
+      -- replies received before this moment no longer hold them (audit 3.5).
+      ALTER TABLE contacts ADD COLUMN reply_hold_released_at TEXT;
+    `,
+  },
 ];

@@ -21,6 +21,13 @@ TabReach reads the user's inbox to notice replies and bounces. A mailbox holds f
 - Outgoing campaign mail is recorded as an outbound message when the send completes, so replies thread to it.
 - Rule-based classification only (reply / out-of-office / automatic / bounce); AI classification (interested, opt-out, …) comes with the AI gateway (Phase 4).
 
+## Audit 3.5 changes (2026-09-28)
+
+- A match by contact address or company domain counts only if TabReach wrote to that contact or company before; so does a bounce without our Message-ID. Contacts with role addresses (`hr@…`) are matched by address.
+- Out-of-office needs auto-reply headers or a subject that starts like one; list headers alone do not drop a reply in our thread (group mailboxes add them); `X-Auto-Response-Suppress` is ignored.
+- Gmail: the cursor advances per history record, so any number of new messages is read; messages are downloaded one at a time. An expired history id is recorded in the activity log (`account.inbox_gap`).
+- The company for a company-level stop is the contact's current company.
+
 ## Consequences
 
 - The database holds prospect conversations only; erasing a person removes their conversations with them.

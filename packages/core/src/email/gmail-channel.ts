@@ -1,6 +1,6 @@
 import type { Logger } from '@tabreach/protocol';
 import type { MessageChannel, OutgoingMessage, ReconcileResult, SendResult } from '../channels/channel.js';
-import { SENT_INDEX_GRACE_MS, type EmailAccountConfig } from './email-channel.js';
+import { RECONCILE_GIVE_UP_MS, SENT_INDEX_GRACE_MS, type EmailAccountConfig } from './email-channel.js';
 import type { GmailApi } from './gmail.js';
 import { composeMessage, messageIdFor } from './mime.js';
 
@@ -61,6 +61,8 @@ export class GmailChannel implements MessageChannel {
       found = await (await this.api()).hasRfcMessage(messageId, signal);
     } catch (error) {
       this.logger.warn({ event: 'gmail.reconcile_failed', err: error }, 'could not search Gmail');
+      if (this.now().getTime() - attemptStartedAt.getTime() > RECONCILE_GIVE_UP_MS)
+        return { status: 'unknown' };
       return { status: 'pending', retryAt: new Date(this.now().getTime() + RECHECK_MS) };
     }
     if (found) return { status: 'completed', externalRefs: { messageId, reconciledIn: 'gmail_search' } };
@@ -68,6 +70,8 @@ export class GmailChannel implements MessageChannel {
     if (this.now().getTime() < settledAt) {
       return { status: 'pending', retryAt: new Date(Math.min(settledAt, this.now().getTime() + RECHECK_MS)) };
     }
-    return { status: 'not_sent' };
+    // Not verified that Gmail keeps a Message-ID given to messages.send: absence is not proof of
+    // not sent, so a person decides (audit 3.5, ADR 023) until that is confirmed on a live account.
+    return { status: 'unknown' };
   }
 }

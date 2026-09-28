@@ -154,7 +154,10 @@ command accounts.update                # name, sender name, limits, new password
 command accounts.test                  # SMTP + IMAP check, reports the Sent folder
 command accounts.disconnect            # deletes the stored password
 command accounts.connectGmail          # { clientId, clientSecret? } -> consent in the system browser, loopback via main (host: oauth.loopback)
-command sideEffects.resolve            # { id, outcome: completed | not_sent } — a person settles an unknown send
+query   sideEffects.uncertain          # sends whose outcome is unknown (or stuck executing), with `checking` while a job still looks
+command sideEffects.resolve            # { id, outcome: completed | not_sent } — refused while a send job for the run is active
+query   contacts.replyHold             # replied | company_replied | null
+command contacts.releaseReplyHold      # campaigns may write again; earlier replies stop counting
 ```
 
 ## Inbox

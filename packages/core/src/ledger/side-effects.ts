@@ -161,15 +161,6 @@ export class SideEffectLedger {
       SideEffectRow | undefined;
   }
 
-  /** An uncertain entry first reserved by this run (for "Needs attention"). */
-  unknownForRun(workflowRunId: string): SideEffectRow | undefined {
-    return this.db
-      .prepare(
-        `SELECT * FROM side_effects WHERE workflow_run_id = ? AND status IN ('unknown', 'executing') LIMIT 1`,
-      )
-      .get(workflowRunId) as SideEffectRow | undefined;
-  }
-
   /** The ledger rows of one enrollment step, whatever their target. */
   forStep(scopeId: string, stepPosition: number): SideEffectRow[] {
     return this.db

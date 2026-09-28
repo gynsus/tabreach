@@ -154,8 +154,8 @@ describe('campaigns over email', () => {
     const [appSide, coreSide] = createEndpointPair();
     h.services.register(new RpcPeer(coreSide));
     const app = new RpcPeer(appSide);
-    const [attention] = (await app.request('jobs.needsAttention', {})).items;
-    expect(attention?.unknownSideEffectId).toBe(effect.id);
+    const [uncertain] = (await app.request('sideEffects.uncertain', {})).items;
+    expect(uncertain).toMatchObject({ id: effect.id, checking: false });
     await app.request('sideEffects.resolve', { id: effect.id, outcome: 'not_sent' });
     await expect(
       app.request('sideEffects.resolve', { id: effect.id, outcome: 'not_sent' }),
@@ -227,7 +227,7 @@ describe('replies', () => {
   afterEach(() => h.close());
 
   /** Acme with Bob and Carol; a two-step campaign (second step after 4 days) sent to both. */
-  async function sentToAcme() {
+  async function sentToAcme(firstSubject = 'First') {
     const { accounts, prospects, campaigns } = h.services;
     const accountId = (await accounts.connectImap(imapInput(), ctx())).id;
     const acme = prospects.createCompany({ name: 'Beta Co', website: 'beta.test' }, ctx()).id;
@@ -252,7 +252,7 @@ describe('replies', () => {
       {
         name: 'Two steps',
         config: {
-          steps: [message('First', 0), message('Follow-up', 4 * 24 * 60 * 60)],
+          steps: [message(firstSubject, 0), message('Follow-up', 4 * 24 * 60 * 60)],
           timezone: 'UTC',
           window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
           approvalMode: 'approve_each',
@@ -413,5 +413,168 @@ describe('replies', () => {
     await h.run();
     expect(h.services.accounts.get(accountId).status).toBe('auth_required');
     expect(h.services.jobs.byDedupeKey(`poll:${accountId}`)).toBeUndefined();
+  });
+  // Audit 3.5 ----------------------------------------------------------------------------------
+
+  it('a contact who replied is on hold in every campaign until the user allows it', async () => {
+    const s = await sentToAcme();
+    await deliver(inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId }));
+    const { campaigns, prospects } = h.services;
+    const other = campaigns.create(
+      {
+        name: 'Another',
+        config: {
+          steps: [
+            {
+              type: 'send_message',
+              channel: 'email',
+              executionMode: 'auto',
+              delaySeconds: 0,
+              subject: 'Hi',
+              body: 'Hi',
+            },
+          ],
+          timezone: 'UTC',
+          window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
+          approvalMode: 'approve_each',
+          emailAccountId: s.accountId,
+        },
+      },
+      ctx(),
+    ).id;
+    campaigns.launch(other, ctx());
+    const dave = prospects.createContact({ firstName: 'Dave', email: 'dave@elsewhere.test' }, ctx()).id;
+    expect(campaigns.enroll(other, [s.bob, s.carol, dave], ctx())).toMatchObject({ enrolled: 1, onHold: 2 });
+    expect(h.services.policy.replyHold(s.bob, s.acme)).toBe('replied');
+    expect(h.services.policy.replyHold(s.carol, s.acme)).toBe('company_replied');
+
+    // Enrolled before the hold existed? The final pre-send check stops it too.
+    h.db
+      .prepare('UPDATE contacts SET reply_hold_released_at = ? WHERE id = ?')
+      .run(h.clock.now().toISOString(), s.carol);
+    h.clock.advance(1_000);
+    expect(campaigns.enroll(other, [s.carol], ctx())).toMatchObject({ enrolled: 1, onHold: 0 });
+  });
+
+  it('a reply is a reply even when the campaign subject mentions absence or auto replies', async () => {
+    const s = await sentToAcme('Отсутствие простоев и auto reply');
+    await deliver(
+      inbound({
+        from: 'bob@beta.test',
+        subject: 'Re: Отсутствие простоев и auto reply',
+        inReplyTo: s.bobMessageId,
+      }),
+    );
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+  });
+
+  it('a person answering from a group mailbox in our thread stops the sequence', async () => {
+    const s = await sentToAcme();
+    await deliver(
+      inbound({
+        from: 'bob@beta.test',
+        inReplyTo: s.bobMessageId,
+        headers: 'List-Id: <sales.beta.test>\nPrecedence: list',
+      }),
+    );
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+  });
+
+  it('reads the inbox right before a send, so a reply waiting there stops it', async () => {
+    const s = await sentToAcme();
+    h.clock.advance(4 * DAY);
+    await h.run(); // follow-ups are due; they wait for approval
+    // Polling stalls (e.g. the Mac just woke up) while a reply sits in the inbox.
+    h.db.prepare(`DELETE FROM jobs WHERE type = 'mailbox.poll'`).run();
+    h.mail.receive(inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId }));
+    h.clock.advance(10 * 60_000);
+    h.approve();
+    await h.run();
+    expect(h.mail.delivered.filter((d) => d.to === 'bob@beta.test')).toHaveLength(1); // only the first
+    expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+  });
+
+  it('does not send while the inbox cannot be read', async () => {
+    const s = await sentToAcme();
+    h.clock.advance(4 * DAY);
+    await h.run();
+    h.mail.mailboxDown = true;
+    h.clock.advance(40 * 60_000);
+    h.approve();
+    await h.run();
+    expect(h.mail.delivered.filter((d) => d.to === 'carol@beta.test')).toHaveLength(1);
+    void s;
+  });
+
+  it('matches an enrolled role address by address', async () => {
+    const { accounts, prospects, campaigns } = h.services;
+    const accountId = (await accounts.connectImap(imapInput(), ctx())).id;
+    const hr = prospects.createContact({ firstName: 'HR', email: 'hr@beta.test' }, ctx()).id;
+    const id = campaigns.create(
+      {
+        name: 'HR',
+        config: {
+          steps: [
+            {
+              type: 'send_message',
+              channel: 'email',
+              executionMode: 'auto',
+              delaySeconds: 0,
+              subject: 'Hi',
+              body: 'Hi',
+            },
+            {
+              type: 'send_message',
+              channel: 'email',
+              executionMode: 'auto',
+              delaySeconds: 86_400,
+              subject: 'Again',
+              body: 'Hi',
+            },
+          ],
+          timezone: 'UTC',
+          window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
+          approvalMode: 'approve_each',
+          emailAccountId: accountId,
+        },
+      },
+      ctx(),
+    ).id;
+    campaigns.launch(id, ctx());
+    campaigns.enroll(id, [hr], ctx());
+    await h.run();
+    h.approve();
+    await h.run();
+    await deliver(inbound({ from: 'hr@beta.test', subject: 'Question' })); // no thread headers
+    expect(enrollment(id, hr)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
+  });
+
+  it('stores nothing from contacts or companies TabReach never wrote to, and ignores their bounces', async () => {
+    const s = await sentToAcme();
+    const { prospects } = h.services;
+    const other = prospects.createCompany({ name: 'Gamma', website: 'gamma.test' }, ctx()).id;
+    const zed = prospects.createContact(
+      { firstName: 'Zed', email: 'zed@gamma.test', companyId: other },
+      ctx(),
+    ).id;
+    await deliver(inbound({ from: 'zed@gamma.test', subject: 'Private note' }));
+    await deliver(inbound({ from: 'yan@gamma.test', subject: 'Hello' }));
+    await deliver(
+      [
+        'From: postmaster@evil.test',
+        'To: me@acme.test',
+        'Subject: Undeliverable',
+        'X-Failed-Recipients: zed@gamma.test',
+        'Content-Type: text/plain',
+        '',
+        'Status: 5.1.1',
+        '',
+      ].join('\n'),
+    );
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM messages WHERE direction = 'inbound'`).get()).toEqual({
+      n: 0,
+    });
+    expect(h.services.prospects.getContact(zed).emailStatus).toBe('unknown');
+    void s;
   });
 });

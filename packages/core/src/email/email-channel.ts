@@ -9,6 +9,8 @@ import type { MailClients, MailSettings } from './transport.js';
  * sent". Only used for servers that store sent mail themselves (ADR 016: delayed retries).
  */
 export const SENT_INDEX_GRACE_MS = 10 * 60_000;
+/** After this, an attempt that still cannot be checked goes to a person instead of waiting on. */
+export const RECONCILE_GIVE_UP_MS = 24 * 60 * 60_000;
 const RECHECK_MS = 2 * 60_000;
 
 export interface EmailAccountConfig {
@@ -121,11 +123,14 @@ export class EmailChannel implements MessageChannel {
         return folder ? box.hasMessage(folder, messageId, signal) : 'no_sent_folder';
       });
     } catch (error) {
-      // The mailbox could not be checked: nothing is decided, try again later.
+      // The mailbox could not be checked: nothing is decided, try again later — within limits.
       this.logger.warn(
         { event: 'email.reconcile_failed', accountId: this.accountId, err: error },
         'could not search Sent',
       );
+      if ((error as { authenticationFailed?: boolean }).authenticationFailed) this.onAuthFailed();
+      if (this.now().getTime() - attemptStartedAt.getTime() > RECONCILE_GIVE_UP_MS)
+        return { status: 'unknown' };
       return { status: 'pending', retryAt: new Date(this.now().getTime() + RECHECK_MS) };
     }
     if (found === true) return { status: 'completed', externalRefs: { messageId, reconciledIn: 'sent' } };

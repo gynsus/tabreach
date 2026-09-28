@@ -1,4 +1,5 @@
 import type { MessageChannel, OutgoingMessage } from '../channels/channel.js';
+import { PermanentError } from '../jobs/dispatcher.js';
 import { intentKey, type IntentParts, type SideEffectLedger } from './side-effects.js';
 
 export type ExecutionOutcome =
@@ -28,6 +29,8 @@ export async function executeSideEffect(opts: {
   signal: AbortSignal;
   /** Final pre-send checks, run in the reserving transaction; throw to block the send. */
   guard?: () => void;
+  /** Told when reconciliation settled an earlier attempt, for the audit trail. */
+  onReconciled?: (outcome: 'completed' | 'not_sent') => void;
 }): Promise<ExecutionOutcome> {
   const { ledger, channel, signal } = opts;
   const key = intentKey(opts.intent);
@@ -43,21 +46,27 @@ export async function executeSideEffect(opts: {
     const id = reservation.effect.id;
     const found = await channel.reconcile(key, signal, new Date(reservation.effect.updated_at));
     if (found.status === 'completed') {
-      ledger.markCompleted(id, found.externalRefs ?? {}, 'provider_lookup');
+      settle(() => ledger.markCompleted(id, found.externalRefs ?? {}, 'provider_lookup'));
+      opts.onReconciled?.('completed');
       return { outcome: 'completed', sideEffectId: id, alreadyDone: true };
     }
     if (found.status === 'pending') {
       return { outcome: 'pending', sideEffectId: id, retryAt: found.retryAt };
     }
     if (found.status === 'unknown') {
-      if (reservation.effect.status === 'executing') ledger.markUnknown(id, 'reconcile_inconclusive');
+      if (reservation.effect.status === 'executing')
+        settle(() => ledger.markUnknown(id, 'reconcile_inconclusive'));
       return { outcome: 'unknown', sideEffectId: id, errorClass: 'reconcile_inconclusive' };
     }
     // Verified: the earlier attempt never reached the recipient. It is safe to send now.
-    ledger.markNotSent(id, 'reconciled_absent', 'provider_lookup');
+    settle(() => ledger.markNotSent(id, 'reconciled_absent', 'provider_lookup'));
+    opts.onReconciled?.('not_sent');
     reservation = reserve();
     if (reservation.action !== 'execute') {
-      throw new Error(`Unexpected ledger state after reconciliation: ${reservation.action}`);
+      throw new PermanentError(
+        'ledger_conflict',
+        `Unexpected ledger state after reconciliation: ${reservation.action}`,
+      );
     }
   }
 
@@ -68,15 +77,15 @@ export async function executeSideEffect(opts: {
     result = await channel.send({ ...opts.message, idempotencyKey: key }, signal);
   } catch {
     // We cannot tell whether it left; treat as possibly sent.
-    ledger.markUnknown(id, 'send_threw');
+    settle(() => ledger.markUnknown(id, 'send_threw'));
     return { outcome: 'unknown', sideEffectId: id, errorClass: 'send_threw' };
   }
   switch (result.outcome) {
     case 'completed':
-      ledger.markCompleted(id, result.externalRefs);
+      settle(() => ledger.markCompleted(id, result.externalRefs));
       return { outcome: 'completed', sideEffectId: id, alreadyDone: false };
     case 'not_sent':
-      ledger.markNotSent(id, result.errorClass);
+      settle(() => ledger.markNotSent(id, result.errorClass));
       return {
         outcome: 'not_sent',
         sideEffectId: id,
@@ -84,7 +93,20 @@ export async function executeSideEffect(opts: {
         permanent: result.permanent ?? false,
       };
     case 'unknown':
-      ledger.markUnknown(id, result.errorClass);
+      settle(() => ledger.markUnknown(id, result.errorClass));
       return { outcome: 'unknown', sideEffectId: id, errorClass: result.errorClass };
+  }
+}
+
+/**
+ * Records what happened after the channel acted. If the ledger row changed meanwhile (a person
+ * settled it, say), the job must not retry: a retry could send again. It fails permanently and
+ * the uncertain row shows up for a person (audit 3.5).
+ */
+function settle(mark: () => void): void {
+  try {
+    mark();
+  } catch (error) {
+    throw new PermanentError('ledger_conflict', error instanceof Error ? error.message : String(error));
   }
 }

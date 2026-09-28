@@ -14,7 +14,7 @@ import type { AuditLog } from '../audit/audit-log.js';
 import type { CampaignEngine, EnrollmentRow } from '../campaigns/engine.js';
 import type { ContactPolicy } from '../campaigns/policy.js';
 import { transaction } from '../db/database.js';
-import type { JobType, JobOutcome } from '../jobs/dispatcher.js';
+import { RetryableError, type JobOutcome, type JobType } from '../jobs/dispatcher.js';
 import type { JobQueue } from '../jobs/queue.js';
 import { normalizeDomain } from '../prospects/normalize.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
@@ -27,6 +27,8 @@ import { InboxAuthError, type InboxSource } from './transport.js';
 export const JOB_POLL = 'mailbox.poll';
 const POLL_EVERY_MS = 2 * 60_000;
 const POLL_AFTER_ERROR_MS = 5 * 60_000;
+const FRESH_MS = 5 * 60_000;
+const STALE_MS = 30 * 60_000;
 const BATCH = 50;
 
 /** Senders that are never a person answering (docs/14), unless they write in a campaign thread. */
@@ -90,7 +92,7 @@ export class InboxService {
       sideEffecting: false,
       concurrency: 2,
       maxAttempts: 3,
-      handler: ({ accountId }, ctx) => this.poll(accountId, ctx.signal, ctx.correlationId),
+      handler: ({ accountId }, ctx) => this.pollOnce(accountId, ctx.signal, ctx.correlationId),
     };
     return [poll] as unknown as JobType<never>[];
   }
@@ -107,6 +109,35 @@ export class InboxService {
   }
 
   // Polling -----------------------------------------------------------------------------------
+
+  private readonly polling = new Map<string, Promise<JobOutcome>>();
+
+  /** One poll per account at a time: a send's freshness check and the polling job share it. */
+  pollOnce(accountId: string, signal: AbortSignal, correlationId: string): Promise<JobOutcome> {
+    const running = this.polling.get(accountId);
+    if (running) return running;
+    const promise = this.poll(accountId, signal, correlationId).finally(() => this.polling.delete(accountId));
+    this.polling.set(accountId, promise);
+    return promise;
+  }
+
+  /**
+   * Before a send: the inbox must have been read recently, so a reply that already arrived stops
+   * the sequence first (audit 3.5: e.g. a reply received while the Mac slept). Reads it now when
+   * the last check is older than 5 minutes; refuses when it cannot be read for 30 minutes.
+   */
+  async ensureFresh(accountId: string, signal: AbortSignal, correlationId: string): Promise<void> {
+    if (this.polledWithin(accountId, FRESH_MS)) return;
+    await this.pollOnce(accountId, signal, correlationId);
+    if (!this.polledWithin(accountId, STALE_MS)) {
+      throw new RetryableError('inbox_unavailable', 'The inbox could not be read, so replies may be missed');
+    }
+  }
+
+  private polledWithin(accountId: string, ms: number): boolean {
+    const at = this.cursor(accountId)?.last_polled_at;
+    return Boolean(at && this.d.now().getTime() - new Date(at).getTime() <= ms);
+  }
 
   async poll(accountId: string, signal: AbortSignal, correlationId: string): Promise<JobOutcome> {
     try {
@@ -130,7 +161,7 @@ export class InboxService {
       for (const message of batch.messages) {
         let mail: InboundMail | null = null;
         try {
-          mail = await parseInbound(message.raw);
+          mail = await parseInbound(await message.load());
         } catch (error) {
           this.d.logger.warn(
             { event: 'inbox.unparseable', accountId, err: error },
@@ -143,11 +174,25 @@ export class InboxService {
             const result = this.ingest(accountId, mail, message.providerId, correlationId);
             if (result.stored) received++;
           }
-          if (message.cursor)
-            this.saveCursor(accountId, { uidValidity: message.cursor.a, lastUid: message.cursor.b });
+          this.saveCursor(accountId, { uidValidity: message.cursor.a, lastUid: message.cursor.b });
         });
       }
       this.saveCursor(accountId, { uidValidity: batch.cursor.a, lastUid: batch.cursor.b, polled: true });
+      if (batch.warning) {
+        // Replies received meanwhile may have been missed: say so where the user looks back.
+        this.d.logger.warn(
+          { event: 'inbox.history_expired', accountId },
+          'replies received while offline may have been missed',
+        );
+        this.d.audit.record({
+          actorType: 'channel_adapter',
+          actionType: 'account.inbox_gap',
+          objectType: 'account',
+          objectId: accountId,
+          status: 'failed',
+          correlationId,
+        });
+      }
     } catch (error) {
       const auth = error instanceof InboxAuthError;
       if (auth) this.d.accounts.markAuthRequired(accountId);
@@ -218,30 +263,43 @@ export class InboxService {
 
       const thread = this.threadMatch(accountId, mail.references);
       let contactId = thread?.contact_id ?? null;
-      let companyId = thread?.company_id ?? null;
+      // The company as it is now: the contact may have moved since the conversation began.
+      let companyId = contactId ? this.companyOf(contactId) : (thread?.company_id ?? null);
       let strength: Strength | null = thread ? 'thread' : null;
-      if (!strength && mail.from && !ROLE_SENDER.test(mail.from)) {
+      if (!strength && mail.from) {
+        // Only people and companies TabReach wrote to (ADR 024, audit 3.5): mail from a contact or
+        // a company domain that was never written to is not a reply and is not stored.
         const contact = this.d.db
           .prepare(`SELECT id, company_id FROM contacts WHERE email_normalized = ? AND status = 'active'`)
           .get(mail.from) as { id: string; company_id: string | null } | undefined;
-        if (contact) {
+        if (contact && this.wroteTo('contact', contact.id)) {
           contactId = contact.id;
           companyId = contact.company_id;
           strength = 'contact_address';
-        } else {
+        } else if (!contact && !ROLE_SENDER.test(mail.from)) {
           const company = this.companyByDomain(mail.from);
-          if (company) {
+          if (company && this.wroteTo('company', company)) {
             companyId = company;
             strength = 'domain_only';
           }
         }
       }
       if (!strength) return { stored: false, reason: 'unmatched' };
-      // Mailing lists and bulk mail are never replies; an auto-reply in a known thread is kept for context.
-      if (mail.automatic && !mail.outOfOffice) return { stored: false, reason: 'automatic' };
-      if (mail.outOfOffice && strength === 'domain_only') return { stored: false, reason: 'automatic' };
-
-      const classification: Classification = mail.outOfOffice ? 'out_of_office' : 'reply';
+      let classification: Classification;
+      if (mail.outOfOffice) {
+        if (strength === 'domain_only') return { stored: false, reason: 'automatic' };
+        classification = 'out_of_office';
+      } else if (mail.autoGenerated) {
+        // Notifications are never replies; inside a campaign thread they are kept for context.
+        if (strength !== 'thread') return { stored: false, reason: 'automatic' };
+        classification = 'auto';
+      } else if (mail.bulk && strength !== 'thread') {
+        // List headers outside our thread: a newsletter. Inside it: a person answering from a
+        // group mailbox (Google Groups, M365), which adds the same headers.
+        return { stored: false, reason: 'automatic' };
+      } else {
+        classification = 'reply';
+      }
       const conversation =
         strength === 'domain_only'
           ? this.conversationFor(accountId, null, companyId, null)
@@ -274,10 +332,12 @@ export class InboxService {
       : undefined;
     let contactId = original?.contact_id ?? null;
     if (!contactId) {
+      // Without our Message-ID in the report, only an address we actually wrote to counts: anyone
+      // can send a mail that looks like a bounce (audit 3.5).
       for (const address of bounce.recipients) {
         const c = this.d.db.prepare('SELECT id FROM contacts WHERE email_normalized = ?').get(address) as
           { id: string } | undefined;
-        if (c) {
+        if (c && this.wroteTo('contact', c.id)) {
           contactId = c.id;
           break;
         }
@@ -503,6 +563,27 @@ export class InboxService {
       .get(id) as unknown as ConversationRow;
   }
 
+  /** Whether TabReach ever sent a message to this contact, or to anyone at this company. */
+  private wroteTo(kind: 'contact' | 'company', id: string): boolean {
+    const sql =
+      kind === 'contact'
+        ? `SELECT 1 FROM messages m JOIN conversations c ON c.id = m.conversation_id
+           WHERE m.direction = 'outbound' AND c.contact_id = ? LIMIT 1`
+        : `SELECT 1 FROM messages m JOIN conversations c ON c.id = m.conversation_id
+           WHERE m.direction = 'outbound' AND (c.company_id = ? OR c.contact_id IN (SELECT id FROM contacts WHERE company_id = ?))
+           LIMIT 1`;
+    return this.d.db.prepare(sql).get(...(kind === 'contact' ? [id] : [id, id])) !== undefined;
+  }
+
+  private companyOf(contactId: string): string | null {
+    return (
+      (
+        this.d.db.prepare('SELECT company_id FROM contacts WHERE id = ?').get(contactId) as
+          { company_id: string | null } | undefined
+      )?.company_id ?? null
+    );
+  }
+
   /** The conversation of one of our messages this message refers to (In-Reply-To / References). */
   private threadMatch(accountId: string, references: readonly string[]): ConversationRow | undefined {
     if (references.length === 0) return undefined;
@@ -530,7 +611,7 @@ export class InboxService {
 
   private cursor(accountId: string) {
     return this.d.db.prepare('SELECT * FROM mailbox_cursors WHERE channel_account_id = ?').get(accountId) as
-      { uid_validity: number | null; last_uid: number | null } | undefined;
+      { uid_validity: number | null; last_uid: number | null; last_polled_at: string | null } | undefined;
   }
 
   private saveCursor(

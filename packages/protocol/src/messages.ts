@@ -28,6 +28,7 @@ import {
   enrollRequestSchema,
   jobSchema,
   policySettingsSchema,
+  uncertainSendSchema,
 } from './campaigns.js';
 import {
   actionEventSchema,
@@ -332,6 +333,21 @@ export const requests = {
   },
   'accounts.test': { channel: 'app', kind: 'command', request: byId, response: connectionCheckSchema },
   'accounts.disconnect': { channel: 'app', kind: 'command', request: byId, response: ok },
+  /** Whether the contact is on hold after a reply (theirs, or their company's). */
+  'contacts.replyHold': {
+    channel: 'app',
+    kind: 'query',
+    request: byId,
+    response: z.object({ hold: z.enum(['replied', 'company_replied']).nullable() }),
+  },
+  /** The user allows campaigns to write to this contact again; earlier replies stop counting. */
+  'contacts.releaseReplyHold': { channel: 'app', kind: 'command', request: byId, response: ok },
+  'sideEffects.uncertain': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(uncertainSendSchema) }),
+  },
   /** A person settles an outcome TabReach could not verify (ADR 018: user_confirmation). */
   'sideEffects.resolve': {
     channel: 'app',

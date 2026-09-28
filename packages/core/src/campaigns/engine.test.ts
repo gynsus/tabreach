@@ -5,6 +5,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { RpcError, silentLogger, uuidv7, type CampaignConfig, type CampaignStep } from '@tabreach/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppServices } from '../app-handlers.js';
+import type { OutgoingMessage } from '../channels/channel.js';
 import { TestChannel } from '../channels/test-channel.js';
 import { openDatabase } from '../db/database.js';
 import { migrate } from '../db/migrate.js';
@@ -125,6 +126,7 @@ describe('campaign engine', () => {
       enrolled: 3,
       alreadyEnrolled: 0,
       skipped: 0,
+      onHold: 0,
     });
     await h.run();
 
@@ -337,6 +339,22 @@ describe('campaign engine', () => {
     expect(h.channel.deliveries()).toHaveLength(0);
   });
 
+  it('a failed condition with "skip" leaves out the step it guards and continues after it', async () => {
+    const campaign = h.launch([
+      {
+        type: 'condition',
+        delaySeconds: 0,
+        conditions: [{ field: 'contact.jobTitle', op: 'exists' }],
+        onFalse: 'skip',
+      },
+      message({ subject: 'Only for people with a title' }),
+      message({ subject: 'For everyone' }),
+    ]);
+    h.services.campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    await h.run();
+    expect(h.pending().map((a) => a.subject)).toEqual(['For everyone']);
+  });
+
   it('condition steps stop or skip', async () => {
     const campaign = h.launch([
       {
@@ -420,5 +438,118 @@ describe('campaign engine', () => {
     await h.run();
     expect(h.pending().map((a) => a.subject)).toEqual(['v1', 'v2']);
     expect(h.enrollments(campaign).map((e) => e.version)).toEqual([1, 2]);
+  });
+});
+
+describe('audit 3.5: send safety', () => {
+  let h: Harness;
+  beforeEach(async () => {
+    h = await new Harness().open();
+  });
+  afterEach(() => h.close());
+
+  const effect = () =>
+    h.db.prepare('SELECT id, status, target_normalized FROM side_effects ORDER BY created_at DESC').get() as {
+      id: string;
+      status: string;
+      target_normalized: string;
+    };
+
+  /** An attempt that ended unknown and that reconciliation cannot settle (nothing was delivered). */
+  async function unknownAttempt(email = 'ann@acme.test') {
+    const campaign = h.launch([message()]);
+    const contactId = h.contact('Ann', email);
+    h.services.campaigns.enroll(campaign, [contactId], ctx());
+    await h.run();
+    h.channel.force('hang_before_delivery');
+    h.channel.reconcile = async () => ({ status: 'unknown' });
+    for (const a of h.pending()) h.services.approvals.approve(a.id, a.contentHash, ctx());
+    void h.run();
+    await new Promise((r) => setImmediate(r));
+    h.boot(); // crash while sending; the new core finds it `executing`
+    h.channel.reconcile = async () => ({ status: 'unknown' });
+    await h.run();
+    return { campaign, contactId };
+  }
+
+  it('refuses a person’s decision while a send job is still checking; lists the attempt meanwhile', async () => {
+    await unknownAttempt();
+    expect(effect().status).toBe('unknown');
+    expect(h.services.uncertainSends()).toMatchObject([{ target: 'ann@acme.test', checking: true }]);
+    expect(() => h.services.resolveSideEffect(effect().id, 'not_sent', 'c')).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'sideEffect.busy' }) }),
+    );
+  });
+
+  it('a ledger row changed while the channel was sending fails permanently instead of retrying', async () => {
+    const campaign = h.launch([message()]);
+    h.services.campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    await h.run();
+    const send = h.channel.send.bind(h.channel);
+    h.channel.send = async (m: OutgoingMessage) => {
+      const result = await send(m);
+      h.services.ledger.markNotSent(effect().id, 'someone_else', 'user_confirmation'); // the race
+      return result;
+    };
+    await h.approveAll();
+    const [job] = h.services.jobs.needsAttention();
+    expect(job).toMatchObject({ status: 'failed', last_error_class: 'ledger_conflict' });
+    await h.advance(60 * 60_000);
+    expect(h.channel.deliveries()).toHaveLength(1); // never a second one
+  });
+
+  it('a stop that arrives while reconciliation awaits is respected', async () => {
+    const { campaign } = await unknownAttempt();
+    const [e] = h.enrollments(campaign);
+    h.channel.reconcile = async () => {
+      h.services.campaigns.stopEnrollment(e!.id, ctx()); // e.g. a reply ingested meanwhile
+      return { status: 'not_sent' };
+    };
+    await h.advance(60 * 60_000);
+    expect(h.channel.deliveries()).toHaveLength(0);
+    expect(h.enrollments(campaign)[0]?.status).toBe('stopped');
+  });
+
+  it('a new address after an unknown attempt waits for a person; "it was sent" completes the step', async () => {
+    const { campaign, contactId } = await unknownAttempt();
+    h.services.prospects.updateContact({ id: contactId, firstName: 'Ann', email: 'ann@new.test' }, ctx());
+    h.channel.reconcile = async () => ({ status: 'unknown' });
+    for (let i = 0; i < 8; i++) await h.advance(60 * 60_000);
+    const pending = h.services.approvals.pending();
+    for (const a of pending) h.services.approvals.approve(a.id, a.contentHash, ctx());
+    await h.advance(60 * 60_000);
+    expect(h.channel.deliveries().filter((d) => d.target === 'ann@new.test')).toHaveLength(0);
+    const [uncertain] = h.services.uncertainSends();
+    expect(uncertain).toMatchObject({ target: 'ann@acme.test', checking: false });
+    h.services.resolveSideEffect(uncertain!.id, 'completed', 'c');
+    for (const job of h.services.jobs.needsAttention()) h.services.jobs.requeue(job.id);
+    await h.advance(60 * 60_000);
+    expect(h.channel.deliveries()).toHaveLength(0);
+    expect(h.enrollments(campaign)[0]?.status).toBe('completed');
+  });
+
+  it('a restart does not revive a send job that died; it waits in Needs attention', async () => {
+    await unknownAttempt();
+    for (let i = 0; i < 8; i++) await h.advance(60 * 60_000);
+    expect(h.services.jobs.needsAttention()).toHaveLength(1);
+    h.boot();
+    await h.advance(60 * 60_000);
+    const active = h.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM jobs WHERE type = 'workflow.run' AND status IN ('pending', 'running')`,
+      )
+      .get();
+    expect(active).toEqual({ n: 0 });
+  });
+
+  it('launching changes of a paused campaign keeps it paused', async () => {
+    const campaign = h.launch([message({ subject: 'v1' })]);
+    h.services.campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    await h.run();
+    h.services.campaigns.pause(campaign, ctx());
+    h.services.campaigns.update({ id: campaign, config: config([message({ subject: 'v2' })]) }, ctx());
+    expect(h.services.campaigns.launch(campaign, ctx()).status).toBe('paused');
+    await h.approveAll();
+    expect(h.channel.deliveries()).toHaveLength(0);
   });
 });

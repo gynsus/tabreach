@@ -93,6 +93,12 @@ export const ru: Catalog = {
     addContact: 'Добавить контакт',
   },
   contacts: {
+    replyHold: {
+      replied: 'Контакт ответил. Кампании не пишут ему, пока вы не разрешите.',
+      company_replied:
+        'Ответил кто-то из компании этого контакта. Кампании не пишут ему, пока вы не разрешите.',
+      release: 'Разрешить кампаниям писать снова',
+    },
     title: 'Контакты',
     new: 'Новый контакт',
     edit: 'Изменить контакт',
@@ -223,9 +229,15 @@ export const ru: Catalog = {
         connected: 'Почтовый ящик подключён',
         updated: 'Почтовый ящик изменён',
         disconnected: 'Почтовый ящик отключён',
+        inbox_gap: 'Ответы, пришедшие без связи, могли быть пропущены',
       },
       side_effect: { resolved: 'Результат отправки подтверждён' },
-      contact: { created: 'Контакт создан', updated: 'Контакт изменён', bounced: 'Адрес не принимает почту' },
+      contact: {
+        created: 'Контакт создан',
+        updated: 'Контакт изменён',
+        bounced: 'Адрес не принимает почту',
+        reply_hold_released: 'Кампаниям снова разрешено писать',
+      },
       company: { created: 'Компания создана', updated: 'Компания изменена' },
       import: { committed: 'Импорт CSV' },
       export: { created: 'Экспорт CSV' },
@@ -321,7 +333,7 @@ export const ru: Catalog = {
     addRule: 'Добавить правило',
     removeRule: 'Удалить правило',
     onFalse: 'Если нет',
-    onFalseOptions: { stop: 'Остановить цепочку', skip: 'Перейти к следующему шагу' },
+    onFalseOptions: { stop: 'Остановить цепочку', skip: 'Пропустить следующий шаг' },
     fields: {
       'contact.firstName': 'Имя',
       'contact.lastName': 'Фамилия',
@@ -347,7 +359,8 @@ export const ru: Catalog = {
     addSelected_few: 'Добавить {{count}} контакта',
     addSelected_many: 'Добавить {{count}} контактов',
     addSelected_other: 'Добавить {{count}} контакта',
-    enrollReport: 'Добавлено: {{enrolled}}, уже были в кампании: {{alreadyEnrolled}}, пропущено: {{skipped}}',
+    enrollReport:
+      'Добавлено: {{enrolled}}, уже были в кампании: {{alreadyEnrolled}}, пропущено: {{skipped}}, на удержании после ответа: {{onHold}}',
     peopleEmpty: 'В кампании пока никого нет.',
     launchFirst: 'Запустите кампанию, чтобы добавлять контакты.',
     searchContacts: 'Поиск контактов',
@@ -492,6 +505,8 @@ export const ru: Catalog = {
     empty: 'Всё в порядке.',
     retry: 'Повторить',
     dismiss: 'Убрать',
+    uncertainTitle: 'Неподтверждённые отправки',
+    checking: 'TabReach ещё проверяет папку «Отправленные»; решить можно, когда проверка закончится.',
     wasSent: 'Отправлено',
     wasNotSent: 'Не отправлено',
     resolveHint:
@@ -511,6 +526,12 @@ export const ru: Catalog = {
       channel_unavailable: 'Канал этого шага недоступен.',
       credentials_unavailable: 'Не удалось прочитать пароль ящика.',
       auth_failed: 'Почтовый сервер не принял пароль. Укажите новый в настройках.',
+      earlier_attempt_unresolved:
+        'Попытка отправки на прежний адрес могла дойти. Примите решение в разделе «Неподтверждённые отправки» и повторите.',
+      ledger_conflict:
+        'Результат этой отправки изменили, пока она шла. Проверьте «Неподтверждённые отправки», прежде чем повторять.',
+      inbox_unavailable:
+        'Не удалось прочитать ящик, поэтому можно пропустить ответ. Отправка ждёт, пока ящик снова станет доступен.',
       unexpected: 'Непредвиденная ошибка.',
     },
   },
@@ -602,7 +623,10 @@ export const ru: Catalog = {
       noPassword: 'Для ящика не сохранён пароль.',
       notImap: 'Для ящика не указаны почтовые серверы.',
     },
-    sideEffect: { notUnknown: 'Это сообщение больше не ждёт решения.' },
+    sideEffect: {
+      notUnknown: 'Это сообщение больше не ждёт решения.',
+      busy: 'TabReach ещё проверяет, ушло ли это сообщение. Попробуйте позже.',
+    },
     campaign: {
       notFound: 'Этой кампании больше нет.',
       notLaunched: 'Сначала запустите кампанию.',

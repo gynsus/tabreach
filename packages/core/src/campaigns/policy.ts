@@ -72,6 +72,8 @@ export class ContactPolicy {
     }
     const suppressed = this.suppressionRule(target, contact.email_normalized, contact.domain_normalized);
     if (suppressed) return { kind: 'stop', reason: 'suppressed', rule: suppressed };
+    const hold = this.replyHold(target.contactId, target.companyId);
+    if (hold) return { kind: 'stop', reason: hold, rule: `reply.${hold}` };
 
     const now = this.now();
     const allowed = nextAllowedAt(now, target.timeZone, target.window);
@@ -134,6 +136,40 @@ export class ContactPolicy {
       };
     }
     return ok;
+  }
+
+  /**
+   * A reply stops more than the sequence it answered: nobody writes to that person again — nor,
+   * with the company stop on, to their colleagues — until the user allows it on the contact
+   * (audit 3.5). Replies from before that moment no longer count.
+   */
+  replyHold(contactId: string, companyId: string | null): 'replied' | 'company_replied' | null {
+    const released =
+      (
+        this.db.prepare('SELECT reply_hold_released_at AS at FROM contacts WHERE id = ?').get(contactId) as
+          { at: string | null } | undefined
+      )?.at ?? '';
+    const own = this.db
+      .prepare(
+        `SELECT 1 FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         WHERE c.contact_id = ? AND m.direction = 'inbound' AND m.classification = 'reply' AND m.created_at > ?
+         LIMIT 1`,
+      )
+      .get(contactId, released);
+    if (own) return 'replied';
+    if (!companyId || !this.current().companyStopOnReply) return null;
+    const colleague = this.db
+      .prepare(
+        `SELECT 1 FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.direction = 'inbound' AND m.classification = 'reply' AND m.created_at > ?
+           AND (
+             (c.contact_id IN (SELECT id FROM contacts WHERE company_id = ?) AND m.match_strength != 'domain_only')
+             OR (c.contact_id IS NULL AND c.company_id = ? AND m.review_status = 'confirmed')
+           )
+         LIMIT 1`,
+      )
+      .get(released, companyId, companyId);
+    return colleague ? 'company_replied' : null;
   }
 
   private suppressionRule(
