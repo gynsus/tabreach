@@ -221,7 +221,9 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(page.getByTestId('approval-body')).toHaveText('Hi there, this is a test.', {
     timeout: 15_000,
   });
-  await page.keyboard.press('a');
+  // Focus something in the queue first: on CI the window may not have OS focus, and a bare
+  // keyboard.press then reaches no element. The shortcut handler itself is what is tested.
+  await page.getByRole('button', { name: 'Approve' }).press('a');
   await expect(page.getByText('Nothing to approve')).toBeVisible();
 
   await page.getByRole('link', { name: 'Campaigns' }).click();
