@@ -51,3 +51,14 @@ describe('detectChrome', () => {
     await expect(detectChrome([app])).resolves.toMatchObject({ installed: true, version: null });
   });
 });
+
+describe('sweepStaleProfiles', () => {
+  it('removes only leftover launch-check profiles', async () => {
+    const { sweepStaleProfiles } = await import('./launch-check.js');
+    mkdirSync(join(dir, 'tabreach-launch-check-abc'));
+    mkdirSync(join(dir, 'unrelated'));
+    expect(await sweepStaleProfiles(dir)).toBe(1);
+    const { readdirSync } = await import('node:fs');
+    expect(readdirSync(dir)).toEqual(['unrelated']);
+  });
+});

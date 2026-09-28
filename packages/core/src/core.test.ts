@@ -61,7 +61,7 @@ describe('CoreService', () => {
     const health = await new RpcPeer(rendererSide).request('app.health', {});
     expect(health.database).toMatchObject({ status: 'ok', schemaVersion: migrations.length });
     expect(health.secrets).toEqual({ status: 'ok' });
-    expect(health.worker).toEqual({ status: 'down', detail: 'Browser worker is not running' });
+    expect(health.worker).toEqual({ status: 'down', detail: 'worker.notRunning' });
     core.close();
   });
 
@@ -115,7 +115,10 @@ describe('CoreService', () => {
       host: coreSide,
       logger: silentLogger,
     });
-    expect((await core.health()).secrets).toEqual({ status: 'down', detail: 'Encryption is not available' });
+    expect((await core.health()).secrets).toEqual({
+      status: 'down',
+      detail: 'secrets.encryptionUnavailable',
+    });
     core.close();
   });
 });
@@ -148,7 +151,8 @@ describe('SettingsRepository', () => {
     settings.set('app.power', { keepAwake: false });
     expect(settings.get('app.power', schema)).toEqual({ keepAwake: false });
     settings.set('app.power', { keepAwake: 'yes' });
-    expect(() => settings.get('app.power', schema)).toThrow();
+    // An invalid stored value falls back to defaults (undefined) instead of failing forever.
+    expect(settings.get('app.power', schema)).toBeUndefined();
     db.close();
   });
 });

@@ -13,6 +13,11 @@ export const envelopeSchema = z.object({
   schemaVersion: z.number().int().positive(),
   correlationId: z.uuid(),
   causationId: z.uuid().optional(),
+  /**
+   * Caller-chosen key for commands that create things: a retry with the same key returns the first
+   * result instead of executing again (ADR 020). Generated once per user intent, reused on retry.
+   */
+  idempotencyKey: z.uuid().optional(),
   sentAt: z.iso.datetime(),
   payload: z.unknown(),
 });

@@ -1,6 +1,6 @@
 # ADR 018 — Side-effect ledger keyed by logical intent
 
-**Status:** Accepted (2026-09-28)
+**Status:** Accepted (2026-09-28); refined by ADR 021 §3 — ledger statuses are `reserved | executing | completed | not_sent | unknown` (no `failed`), re-execution only from `not_sent`, key = sha256 of the logical-intent parts.
 
 ## Context
 

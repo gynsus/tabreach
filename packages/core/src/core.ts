@@ -42,7 +42,12 @@ export class CoreService {
     readonly migration: MigrationReport,
   ) {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
-    this.services = new AppServices(db);
+    this.services = new AppServices(db, {
+      logger: options.logger,
+      onChanged: (entities) => {
+        for (const peer of this.appPeers) peer.emit('data.changed', { entities });
+      },
+    });
   }
 
   static async start(options: CoreOptions): Promise<CoreService> {
@@ -53,6 +58,9 @@ export class CoreService {
     options.logger.info({ event: 'db.migrated', ...report }, 'database ready');
 
     const core = new CoreService(db, options, report);
+    const pruned = core.services.commands.prune();
+    if (pruned > 0)
+      options.logger.info({ event: 'commands.pruned', count: pruned }, 'old command results pruned');
     await core.checkSecretStorage();
     return core;
   }
@@ -71,15 +79,19 @@ export class CoreService {
     };
   }
 
-  /** Attaches the browser worker, replacing a previous (crashed or restarted) one. */
-  attachWorker(endpoint: MessageEndpoint): void {
+  /**
+   * Attaches the browser worker, replacing a previous (crashed or restarted) one. The returned
+   * detach only affects this connection: a late close event from an old worker's port must not
+   * disconnect the new worker.
+   */
+  attachWorker(endpoint: MessageEndpoint): () => void {
     this.workerPeer?.close();
-    this.workerPeer = new RpcPeer(endpoint, this.peerOptions('browser'));
-  }
-
-  detachWorker(): void {
-    this.workerPeer?.close();
-    this.workerPeer = null;
+    const peer = new RpcPeer(endpoint, this.peerOptions('browser'));
+    this.workerPeer = peer;
+    return () => {
+      peer.close();
+      if (this.workerPeer === peer) this.workerPeer = null;
+    };
   }
 
   async health(): Promise<HealthReport> {
@@ -100,13 +112,15 @@ export class CoreService {
   close(): void {
     for (const peer of this.appPeers) peer.close();
     this.appPeers.clear();
-    this.detachWorker();
+    this.workerPeer?.close();
+    this.workerPeer = null;
     this.hostPeer.close();
     this.db.close();
   }
 
   private async launchCheck(url: string, correlationId: string): Promise<LaunchCheckResult> {
-    if (!this.workerPeer) throw new RpcError('UNAVAILABLE', 'Browser worker is not running');
+    if (!this.workerPeer)
+      throw new RpcError('UNAVAILABLE', 'Browser worker is not running', 'worker.notRunning');
     const result = await this.workerPeer.request(
       'worker.launchCheck',
       { url },
@@ -128,17 +142,17 @@ export class CoreService {
       };
     } catch (error) {
       this.options.logger.error({ event: 'db.health_failed', err: error }, 'database health check failed');
-      return { status: 'down', sqliteVersion: null, schemaVersion: 0, detail: 'Database query failed' };
+      return { status: 'down', sqliteVersion: null, schemaVersion: 0, detail: 'database.queryFailed' };
     }
   }
 
   private async workerHealth(): Promise<HealthReport['worker']> {
-    if (!this.workerPeer) return { status: 'down', detail: 'Browser worker is not running' };
+    if (!this.workerPeer) return { status: 'down', detail: 'worker.notRunning' };
     try {
       return await this.workerPeer.request('worker.health', {}, { timeoutMs: WORKER_HEALTH_TIMEOUT_MS });
     } catch (error) {
-      const detail = error instanceof RpcError ? error.problem.title : 'Unexpected error';
-      return { status: 'down', detail };
+      this.options.logger.warn({ event: 'worker.health_failed', err: error }, 'worker health check failed');
+      return { status: 'down', detail: 'worker.unreachable' };
     }
   }
 
@@ -146,19 +160,23 @@ export class CoreService {
   private async checkSecretStorage(): Promise<void> {
     const store = new SecretStore(this.db, this.cipher());
     const probe = `self-test-${Date.now()}`;
+    let id: string | null = null;
     try {
-      const id = await store.put('self_test', probe);
+      id = await store.put('self_test', probe);
       const back = await store.reveal(id);
-      store.delete(id);
-      this.secretsStatus =
-        back === probe ? { status: 'ok' } : { status: 'down', detail: 'Round trip mismatch' };
+      this.secretsStatus = back === probe ? { status: 'ok' } : { status: 'down', detail: 'secrets.mismatch' };
     } catch (error) {
-      const detail = error instanceof RpcError ? error.problem.title : 'Secret storage unavailable';
+      const detail =
+        error instanceof RpcError && error.problem.code === 'UNAVAILABLE'
+          ? 'secrets.encryptionUnavailable'
+          : 'secrets.unavailable';
       this.options.logger.error(
         { event: 'secrets.self_test_failed', err: error },
         'secret storage self-test failed',
       );
       this.secretsStatus = { status: 'down', detail };
+    } finally {
+      if (id) store.delete(id);
     }
   }
 

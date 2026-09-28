@@ -69,6 +69,17 @@ Produces `apps/desktop/release/mac-arm64/TabReach.app`: ad-hoc signed, Electron 
 in Phase 8. The packaged app stores data in `~/Library/Application Support/TabReach/` and logs in
 `~/Library/Logs/TabReach/`.
 
+### Signing and notarization (Phase 8)
+
+Distribution to other Macs needs, in addition to the current ad-hoc build:
+
+- an Apple Developer Program membership and a **Developer ID Application** certificate in the build machine's keychain (`mac.identity` in `electron-builder.yml`);
+- notarization credentials for `notarytool`: an App Store Connect API key (key id, issuer id, `.p8`) or an Apple ID with an app-specific password, provided to electron-builder through environment variables in CI;
+- hardened runtime (already on) with an entitlements file. Electron needs `com.apple.security.cs.allow-jit`; `com.apple.security.cs.allow-unsigned-executable-memory` only if a crash report shows it is required. No camera, microphone or other entitlements.
+- a DMG target and stapling of the notarization ticket.
+
+Not yet verified: a first launch on a clean macOS user account (Gatekeeper path). That check belongs to Phase 8 together with signing.
+
 ### Self-check
 
 Because the fuses disable the Node inspector, automation tools cannot attach to the packaged app.
@@ -87,8 +98,11 @@ UI uses, optionally runs a Chrome launch check against the URL, prints one
 
 ```text
 apps/desktop            Electron main, preload, renderer (React), process entry points, packaging
-packages/protocol       IPC envelope, message registry (Zod), RpcPeer, bridge types, logger contract
-packages/core           SQLite (node:sqlite), migrations, settings, secrets, CoreService
+packages/protocol       IPC envelope, request and event registries (Zod), RpcPeer, bridge types, audit catalogue,
+                        shared secret redaction, logger contract
+packages/core           SQLite (node:sqlite), migrations, transactions, CoreService, command log (idempotency),
+                        prospects (companies, contacts, tags, normalization, CSV import/export),
+                        suppressions, audit log, settings, secrets
 packages/browser-worker Chrome detection, Playwright launch check, BrowserWorker
 packages/adapter-packs  Adapter pack schema (ADR 017)
 fixtures/sites          Local pages for browser tests

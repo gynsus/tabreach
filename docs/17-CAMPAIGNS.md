@@ -84,6 +84,16 @@ Before every critical action (in the workflow's final pre-send check):
 
 A blocked action is recorded with the blocking rule and the enrollment is stopped or deferred according to the rule.
 
+Definitions and defaults (ADR 021 §6, settings key `policy`):
+
+- a **touch** is a side effect toward the contact/company in status `executing`, `completed` or `unknown` (an uncertain send counts);
+- caps: 1 touch per contact per 3 days, 3 touches per company per 7 days;
+- company-level stop on reply: on (strong matches only, see `14-CHANNEL-ADAPTERS.md`);
+- active window: Monday–Friday 09:00–18:00 in the recipient's timezone; per-campaign override;
+- minimum spacing per email account: 60 s;
+- a domain suppression also covers its subdomains; a company suppression covers all its contacts;
+- all checks run in the final pre-send step, in the same transaction that reserves the side-effect ledger entry.
+
 ## Scheduling
 
 Requirements:
@@ -91,7 +101,7 @@ Requirements:
 - timezone-aware: quiet hours/active windows evaluated in the **recipient's** timezone when known (contact → company → campaign timezone fallback);
 - campaign active windows;
 - daily action limits per channel account;
-- next-action timestamps stored on enrollments; due work becomes jobs;
+- next-action timestamps stored on enrollments (the enrollment owns delays between steps); due work becomes jobs;
 - deterministic delay calculation;
 - no busy polling per enrollment.
 

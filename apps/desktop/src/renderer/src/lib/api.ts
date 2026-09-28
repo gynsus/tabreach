@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import type { Problem, RequestOf, RequestsOn, ResponseOf } from '@tabreach/protocol';
+import type { InvokeOptions, Problem, RequestOf, RequestsOn, ResponseOf } from '@tabreach/protocol';
 import { translateKey } from '../i18n';
 
 export class ApiError extends Error {
@@ -13,8 +13,9 @@ export class ApiError extends Error {
 export async function call<T extends RequestsOn<'app'>>(
   type: T,
   payload: RequestOf<T>,
+  options: InvokeOptions = {},
 ): Promise<ResponseOf<T>> {
-  const result = await window.tabreach.invoke(type, payload);
+  const result = await window.tabreach.invoke(type, payload, options);
   if (!result.ok) throw new ApiError(result.error);
   return result.data;
 }
@@ -22,6 +23,20 @@ export async function call<T extends RequestsOn<'app'>>(
 /** Per-field error keys from a validation failure (translated by the form). */
 export function fieldErrors(error: unknown): Record<string, string> {
   return error instanceof ApiError ? (error.problem.fields ?? {}) : {};
+}
+
+/**
+ * The message for a form-level alert: everything the form's own fields do not display (a record
+ * deleted meanwhile, core unavailable, unexpected errors). Null when every error is on a field.
+ */
+export function formAlert(t: TFunction, error: unknown, shownFields: readonly string[]): string | null {
+  if (!error) return null;
+  const fields = fieldErrors(error);
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return errorMessage(t, error);
+  const unshown = keys.filter((k) => !shownFields.includes(k));
+  if (unshown.length === 0) return null;
+  return unshown.map((k) => translateKey(t, `errors.${fields[k]}`, t('errors.generic'))).join(' ');
 }
 
 /** One human-readable message for any failure, in the current language. */

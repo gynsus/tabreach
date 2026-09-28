@@ -12,8 +12,9 @@ import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
 import type { CompanyFields, CompanyRow } from './companies.js';
 import { ProfileUrlConflictError, type ContactFields, type ContactRow } from './contacts.js';
-import { customKey, parseCsv, suggestMapping } from './csv.js';
+import { customKey, parseCsv, suggestMapping, unescapeCell } from './csv.js';
 import {
+  CUSTOM_FIELD_KEY_MAX,
   normalizeDomain,
   normalizeEmail,
   normalizeProfileUrl,
@@ -46,8 +47,11 @@ interface RowValues {
 /** A row that cannot be imported; the message is an error key the UI translates (`errors.*`). */
 class InvalidRow extends Error {}
 
-/** Undo the export's formula-injection guard (`'=SUM` -> `=SUM`) so exports re-import cleanly. */
-const unescapeCell = (v: string) => (/^'[=+\-@]/.test(v) ? v.slice(1) : v);
+/** Mirrors the limits of `customFieldsSchema`, so stored values always read back. */
+const CUSTOM_FIELD_VALUE_MAX = 2_000;
+const fieldKey = (header: string, index: number) =>
+  (customKey(header) || `column ${index + 1}`).slice(0, CUSTOM_FIELD_KEY_MAX);
+
 const nonEmpty = (v: string | undefined): string | null => {
   const t = v === undefined ? '' : unescapeCell(v).trim();
   return t ? t : null;
@@ -98,7 +102,9 @@ export class ImportService {
       parsed.rows.forEach(({ cells, line }) => {
         try {
           const values = this.mapRow(parsed.headers, cells, mapping);
-          const outcome = this.importRow(values, onMatch, importId, ctx);
+          // Each row is a savepoint: a row rejected halfway (company written, contact conflicts)
+          // leaves nothing behind, while the rest of the file still commits.
+          const outcome = transaction(this.db, () => this.importRow(values, onMatch, importId, ctx));
           report[outcome.result] += 1;
           if (outcome.companyCreated) report.companiesCreated += 1;
           if (outcome.contactCreated) report.contactsCreated += 1;
@@ -148,7 +154,14 @@ export class ImportService {
     mapping.forEach((field, i) => {
       const value = nonEmpty(cells[i]);
       if (value === null || field === 'ignore') return;
-      const header = headers[i] ?? `column${i + 1}`;
+      // A blank header still needs a usable custom field name.
+      const header = headers[i]?.trim() ? (headers[i] as string) : `column ${i + 1}`;
+      if (
+        (field === 'company.custom' || field === 'contact.custom') &&
+        value.length > CUSTOM_FIELD_VALUE_MAX
+      ) {
+        throw new InvalidRow('customField.tooLong');
+      }
       switch (field) {
         case 'company.name':
           v.company.name = value;
@@ -166,7 +179,7 @@ export class ImportService {
           v.companyTags.push(...splitTags(value));
           break;
         case 'company.custom':
-          v.companyCustom[customKey(header)] = value;
+          v.companyCustom[fieldKey(header, i)] = value;
           break;
         case 'contact.firstName':
           v.contact.firstName = value;
@@ -190,7 +203,7 @@ export class ImportService {
           v.contactTags.push(...splitTags(value));
           break;
         case 'contact.custom':
-          v.contactCustom[customKey(header)] = value;
+          v.contactCustom[fieldKey(header, i)] = value;
           break;
       }
     });
@@ -279,7 +292,7 @@ export class ImportService {
       const contact: ContactRow | undefined =
         (emailNormalized ? repo.findByEmail(emailNormalized) : undefined) ??
         (profile ? repo.findByProfile(profile) : undefined) ??
-        (personName ? repo.findByName(personName, companyId) : undefined);
+        this.compatibleByName(personName, companyId, emailNormalized, profile);
 
       if (contact) {
         if (profile) {
@@ -342,6 +355,27 @@ export class ImportService {
 
     const result = companyCreated || contactCreated ? 'inserted' : changed ? 'updated' : 'skipped';
     return { result, companyCreated, contactCreated };
+  }
+
+  /**
+   * Name is the weakest identity: two people can share one. A same-named contact only matches when
+   * nothing contradicts it — a different email or a different LinkedIn profile means another person.
+   */
+  private compatibleByName(
+    personName: string | null,
+    companyId: string | null,
+    emailNormalized: string | null,
+    profile: NormalizedProfileUrl | null,
+  ): ContactRow | undefined {
+    if (!personName) return undefined;
+    const candidate = this.prospects.contacts.findByName(personName, companyId);
+    if (!candidate) return undefined;
+    if (emailNormalized && candidate.email_normalized && candidate.email_normalized !== emailNormalized) {
+      return undefined;
+    }
+    const storedProfile = profile ? this.prospects.contacts.profileOf(candidate.id, profile.channel) : null;
+    if (profile && storedProfile && storedProfile !== profile.normalized) return undefined;
+    return candidate;
   }
 
   /** fill_empty sets only empty stored fields; overwrite replaces with non-empty imported values. */

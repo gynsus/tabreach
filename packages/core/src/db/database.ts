@@ -21,15 +21,40 @@ export function sqliteVersion(db: DatabaseSync): string {
   return row.v;
 }
 
-/** Runs `fn` inside BEGIN IMMEDIATE / COMMIT, rolling back on any error. */
+const depth = new WeakMap<DatabaseSync, number>();
+
+/**
+ * Runs `fn` atomically. The outermost call uses BEGIN IMMEDIATE / COMMIT; nested calls become
+ * SAVEPOINTs, so services compose (a job enqueued inside a state change commits or rolls back with
+ * it) and a caller can roll back one step (one CSV row) while keeping the rest.
+ *
+ * `fn` must be synchronous: node:sqlite is synchronous, and awaiting inside a transaction would
+ * commit before the awaited work ran.
+ */
 export function transaction<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec('BEGIN IMMEDIATE');
+  const level = depth.get(db) ?? 0;
+  const savepoint = `sp_${level}`;
+  db.exec(level === 0 ? 'BEGIN IMMEDIATE' : `SAVEPOINT ${savepoint}`);
+  depth.set(db, level + 1);
+  let result: T;
   try {
-    const result = fn();
-    db.exec('COMMIT');
-    return result;
+    result = fn();
+    if (result instanceof Promise) {
+      throw new TypeError('transaction() callback must be synchronous; it returned a Promise');
+    }
   } catch (error) {
-    db.exec('ROLLBACK');
+    depth.set(db, level);
+    try {
+      db.exec(level === 0 ? 'ROLLBACK' : `ROLLBACK TO ${savepoint}; RELEASE ${savepoint}`);
+    } catch (rollbackError) {
+      // Keep the original failure visible; the rollback failure is secondary.
+      throw new AggregateError([error, rollbackError], 'Transaction failed and rollback failed', {
+        cause: rollbackError,
+      });
+    }
     throw error;
   }
+  depth.set(db, level);
+  db.exec(level === 0 ? 'COMMIT' : `RELEASE ${savepoint}`);
+  return result;
 }

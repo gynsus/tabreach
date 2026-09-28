@@ -35,6 +35,34 @@ describe('log redaction', () => {
     expect(out).toContain('visible');
   });
 
+  it('redacts snake_case OAuth fields, headers, deep keys and token-looking strings', () => {
+    const { lines, stream } = capture();
+    createPinoLogger('test', stream).error(
+      {
+        oauth: { access_token: 'ya29.secretaccess123', refresh_token: 'r-7', client_secret: 'cs-8' },
+        err: Object.assign(new Error('failed with Bearer abcdefghij.klm'), {
+          response: { headers: { Authorization: 'Bearer zzzzzzzzzz', 'Set-Cookie': 'sid=9' } },
+        }),
+        a: { b: { c: { d: { e: { password: 'deep-10' } } } } },
+        usage: { outputTokens: 42 },
+      },
+      'call failed',
+    );
+    const out = lines.join('');
+    for (const v of [
+      'ya29.secretaccess123',
+      'r-7',
+      'cs-8',
+      'abcdefghij.klm',
+      'zzzzzzzzzz',
+      'sid=9',
+      'deep-10',
+    ]) {
+      expect(out).not.toContain(v);
+    }
+    expect(out).toContain('"outputTokens":42');
+  });
+
   it('redacts in child loggers too', () => {
     const { lines, stream } = capture();
     createPinoLogger('test', stream).child({ channel: 'host' }).warn({ token: 't-6' }, 'x');
@@ -56,7 +84,7 @@ describe('rotateLog', () => {
     writeFileSync(join(dir, 'core.1.log'), 'older');
     writeFileSync(join(dir, 'core.2.log'), 'oldest');
     writeFileSync(file, 'x'.repeat(20));
-    rotateLog(file, 10, 2);
+    expect(rotateLog(file, 10, 2)).toBe(true);
     expect(existsSync(file)).toBe(false);
     expect(readFileSync(join(dir, 'core.1.log'), 'utf8')).toBe('x'.repeat(20));
     expect(readFileSync(join(dir, 'core.2.log'), 'utf8')).toBe('older');

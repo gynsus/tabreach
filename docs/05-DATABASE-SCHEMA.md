@@ -31,8 +31,8 @@ name_key not null             -- nameKey(name), Unicode lowercase
 search_key not null           -- name + domain
 domain_normalized null        -- punycode, no www; UNIQUE when not null
 website_url null
-country, region, city null
-timezone null
+country, city null
+timezone null             -- set from Phase 2 (quiet hours); not yet editable in the UI
 status not null
 custom_fields json not null default '{}'
 created_at, updated_at not null
@@ -72,7 +72,7 @@ url_normalized
 
 Unique `(channel, url_normalized)`.
 
-### `contact_channel_eligibility`
+### `contact_channel_eligibility` (Phase 2)
 
 ```text
 contact_id fk
@@ -93,14 +93,15 @@ Primary key `(contact_id, channel)`.
 ```text
 id pk
 kind check in ('email','domain','company','profile_url')
-value_original not null   -- as entered (company: its name)
-value_normalized not null -- email/domain normalized; profile_url as `<channel>:<normalized>`; company: company id
+value_original not null   -- for display: as entered; domains in Unicode form; company: its name
+value_normalized not null -- email/domain (punycode) normalized; profile_url as `<channel>:<normalized>`; company: company id
 reason check in ('opt_out','bounce','manual','imported')
 source_ref json null
+search_key not null       -- Unicode-lowercased original + normalized (migration 6)
 created_at
 ```
 
-Unique `(kind, value_normalized)`.
+Unique `(kind, value_normalized)`. Domain entries match the domain and its subdomains at send time (ADR 021 §6).
 
 ### `research_runs`
 
@@ -154,7 +155,7 @@ confidence real null
 ```text
 id pk
 name
-status
+status check in ('draft','active','paused','archived')
 draft_config json         -- mutable editing state
 active_version_id null fk -> campaign_versions
 created_at, updated_at
@@ -194,9 +195,9 @@ id pk
 campaign_version_id fk
 company_id null fk
 contact_id null fk
-status
+status check in ('active','paused','completed','stopped')
 current_step_position
-next_action_at null
+next_action_at null       -- owns the gap between steps (ADR 021 §1)
 stop_reason null
 last_reply_at null
 created_at, updated_at
@@ -212,15 +213,16 @@ id pk
 workflow_type
 definition_version integer
 business_type, business_id
-status
+status check in ('pending','running','waiting_approval','waiting_for_human','waiting_external',
+                 'paused','completed','failed','cancelled')
 current_state
 context json
 correlation_id
-retry_count integer
-next_attempt_at null
 lock_version integer
 created_at, updated_at
 ```
+
+No retry fields: execution retries belong to `jobs` (ADR 021 §2). Waiting between steps belongs to the enrollment; waiting inside a step is a status here.
 
 ### `workflow_step_runs`
 
@@ -257,7 +259,8 @@ dispatched_at, finished_at
 
 ```text
 id pk
-contact_id fk
+contact_id null fk        -- null for company-level drafts (web forms); CHECK contact or company present
+company_id null fk
 campaign_enrollment_id null fk
 channel
 subject
@@ -285,34 +288,49 @@ created_at
 
 ```text
 id pk
-object_type, object_id
+workflow_run_id fk
 campaign_enrollment_id null
+message_draft_id null fk
+draft_version integer null
 target_snapshot json
 content_hash
 scope check in ('single_action','campaign')
-decision check in ('approved','rejected','skipped')
-actor
+status check in ('pending','approved','rejected','skipped','superseded','expired')
+decided_by null           -- 'user' | 'campaign_policy'
+decided_at null
 expires_at null
 created_at
 ```
+
+A row is created `pending` when a workflow reaches `CHECK_APPROVAL`; a draft edit marks open rows `superseded` and creates a new `pending` one (ADR 021 §4).
 
 ### `side_effects`
 
 ```text
 id pk
-idempotency_key unique not null
-workflow_run_id fk
-channel
-action_type
-status check in ('reserved','executing','completed','failed','unknown')
+idempotency_key unique not null   -- sha256 of v1|scope id|step|channel|action|normalized target (ADR 021 §3)
+scope_id, step_position, channel, action_type, target_normalized   -- readable key parts
+workflow_run_id null fk           -- run that first reserved the key; ON DELETE SET NULL
+status check in ('reserved','executing','completed','not_sent','unknown')
 content_hash null
 external_refs json        -- {messageId, providerMessageId, threadId, url, ...}
 reconciled_by null check in ('provider_lookup','ui_verification','user_confirmation')
-error_class null
+error_class null          -- why it was not sent
 created_at, updated_at
 ```
 
-Replaces the earlier generic `idempotency_keys` table. See ADR 018.
+Re-execution of an intent is allowed only from `not_sent`. See ADR 018 and ADR 021 §3.
+
+### `command_log`
+
+```text
+idempotency_key pk        -- caller-chosen UUID (envelope idempotencyKey)
+command_type
+result json               -- the first result, returned again for repeated keys
+created_at                -- pruned after 7 days
+```
+
+Exactly-once execution of creating commands from the UI (ADR 020). Not used for external side effects.
 
 ### `browser_profiles`
 
@@ -441,6 +459,8 @@ Index `(correlation_id, created_at)` and `(object_type, object_id, created_at)`.
 
 Append-only is enforced by `BEFORE UPDATE` / `BEFORE DELETE` triggers that abort. Retention of audit events therefore needs an explicit, audited maintenance path; until one is designed, audit events are kept (see `18-SECURITY-PRIVACY-COMPLIANCE.md`).
 
+Payloads hold identifiers, field names, counts, enums and codes only — never names, emails, domains, URLs or message text (ADR 022), so erasing a person never requires touching this table. `action_type` and `object_type` come from the catalogue in `packages/protocol/src/audit.ts`.
+
 ### `jobs`
 
 ```text
@@ -463,6 +483,19 @@ created_at, updated_at
 
 Index `(status, run_at)`. Dead jobs are shown in the UI's "needs attention" view.
 
+Jobs own execution retries: `failed` = non-retryable error class, `dead` = retries or maximum age exhausted. Leases last 60 s and are renewed every 20 s by long handlers; `lease_owner` is the core process instance id. Each job type declares whether it is side-effecting; expired side-effecting jobs go to reconciliation, never straight back to `pending` (ADR 021 §2).
+
+### `test_channel_deliveries` (Phase 2)
+
+```text
+id pk
+idempotency_key
+target
+content_hash
+outcome check in ('completed','not_sent','unknown')   -- forced outcomes for recovery tests
+created_at
+```
+
 ### `settings`
 
 Key/value (`key text pk`, `value json`) for application settings, including contact-policy settings and adapter kill switches.
@@ -470,6 +503,7 @@ Key/value (`key text pk`, `value json`) for application settings, including cont
 ## Migration discipline
 
 - Never edit an applied migration.
+- A migration may add a TypeScript data step (`run`) for work SQL cannot do (Unicode keys); it runs in the same transaction. Table rebuilds set `foreignKeysOff`, and the runner checks `PRAGMA foreign_key_check` before commit.
 - Before applying migrations, core creates a local recovery backup in `data/backups/` using the SQLite online backup API or `VACUUM INTO` — never a plain file copy of a WAL database.
 - Every migration must have a safe rollback strategy (restore from pre-migration backup is acceptable for the local app) or be documented as irreversible.
 - Destructive schema changes require an explicit data migration plan.

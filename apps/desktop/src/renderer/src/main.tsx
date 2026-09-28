@@ -38,11 +38,19 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 5_000 } },
 });
 
-/** Applies the saved language before the first paint; English if core is not reachable in time. */
+/**
+ * Applies the saved language before the first paint. If core is slow (first start, migrations),
+ * the UI starts in English and switches as soon as the setting arrives.
+ */
 async function loadLanguage(): Promise<void> {
+  const saved = window.tabreach.invoke('settings.ui.get', {});
   const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000));
-  const result = await Promise.race([window.tabreach.invoke('settings.ui.get', {}), timeout]);
-  await setLanguage(result?.ok ? result.data.language : 'en');
+  const first = await Promise.race([saved, timeout]);
+  if (first) {
+    if (first.ok) await setLanguage(first.data.language);
+    return;
+  }
+  void saved.then((late) => (late.ok ? setLanguage(late.data.language) : undefined));
 }
 
 const root = document.getElementById('root');

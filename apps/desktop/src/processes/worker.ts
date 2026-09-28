@@ -1,6 +1,6 @@
 // Entry point of the browser worker utility process (ADR 012). The worker package itself only
 // sees a MessageEndpoint, so the host process type can change without touching worker logic.
-import { BrowserWorker } from '@tabreach/browser-worker';
+import { BrowserWorker, sweepStaleProfiles } from '@tabreach/browser-worker';
 import { createLogger } from '../shared/logger';
 import { parentPortEndpoint, portEndpoint, readChildEnv } from '../shared/ipc';
 
@@ -30,3 +30,12 @@ process.on('uncaughtException', (error) => {
 });
 
 logger.info({ event: 'worker.started' }, 'worker started');
+
+sweepStaleProfiles().then(
+  (count) => {
+    if (count > 0)
+      logger.info({ event: 'worker.stale_profiles_removed', count }, 'removed leftover temp profiles');
+  },
+  (error: unknown) =>
+    logger.warn({ event: 'worker.sweep_failed', err: error }, 'could not sweep temp profiles'),
+);

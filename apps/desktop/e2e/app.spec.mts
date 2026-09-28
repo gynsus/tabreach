@@ -44,7 +44,7 @@ test('status screen shows core, database, secret storage and worker working', as
       timeout: 20_000,
     });
   }
-  await expect(page.getByTestId('component-database')).toContainText('schema version 5');
+  await expect(page.getByTestId('component-database')).toContainText(/schema version \d+/);
 });
 
 test('renderer has no Node access and cannot reach host or browser channels', async () => {
@@ -102,7 +102,7 @@ async function importCsv(file: string) {
   const dialog = page.getByRole('dialog', { name: 'Import prospects' });
   await dialog.getByLabel('Choose a CSV file').setInputFiles(file);
   await expect(dialog.getByLabel('Import as: Email')).toHaveValue('contact.email');
-  await dialog.getByRole('button', { name: /Import 4 rows/ }).click();
+  await dialog.getByRole('button', { name: 'Import 4 rows' }).click();
   const report = dialog.getByTestId('import-report');
   await expect(report).toBeVisible();
   return { dialog, report };
@@ -150,6 +150,36 @@ test('adds a domain to the do-not-contact list', async () => {
   await page.getByLabel('Value').fill('https://www.Example.org/');
   await page.getByRole('button', { name: 'Add to list' }).click();
   await expect(page.getByRole('list', { name: 'Do not contact' })).toContainText('example.org');
+});
+
+test('picks a company with the keyboard: Enter chooses the first match', async () => {
+  await go('#/contacts');
+  await page.getByRole('button', { name: 'New contact' }).click();
+  const dialog = page.getByRole('dialog', { name: 'New contact' });
+  await dialog.getByLabel('Full name').fill('Picker Person');
+  const picker = dialog.getByRole('combobox', { name: 'Company' });
+  await picker.fill('Acm');
+  await expect(dialog.getByRole('option', { name: 'Acme' })).toBeVisible();
+  await picker.press('Enter');
+  await expect(picker).toHaveValue('Acme');
+  await dialog.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('heading', { name: 'Picker Person' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('link', { name: 'Acme' })).toBeVisible();
+});
+
+test('says so when core crashes and recovers with data', async () => {
+  await go('#/contacts');
+  await page.getByRole('searchbox', { name: /Search by name/ }).fill('');
+  await expect(dataRows('Contacts')).not.toHaveCount(0);
+  const pid = await app.evaluate(
+    ({ app: electronApp }) =>
+      electronApp.getAppMetrics().find((m) => m.type === 'Utility' && m.name === 'TabReach core')?.pid,
+  );
+  expect(pid).toBeTruthy();
+  process.kill(pid as number, 'SIGKILL');
+  await expect(page.getByTestId('core-banner')).toBeVisible();
+  await expect(page.getByTestId('core-banner')).toBeHidden({ timeout: 20_000 });
+  await expect(dataRows('Contacts')).not.toHaveCount(0);
 });
 
 test('switches the interface to Russian and keeps it after a reload', async () => {

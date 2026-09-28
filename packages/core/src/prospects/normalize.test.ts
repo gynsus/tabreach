@@ -79,17 +79,29 @@ describe('normalizeProfileUrl', () => {
     expect(normalizeProfileUrl('https://www.linkedin.com/company/acme')).toBeNull();
   });
 
-  it('keeps other profile URLs as host + path and preserves the original', () => {
+  it('keeps other profile URLs as host + path + query (the query often is the id)', () => {
     expect(normalizeProfileUrl(' https://www.x.com/JaneDoe/?s=1 ')).toEqual({
       channel: 'other',
-      normalized: 'x.com/JaneDoe',
+      normalized: 'x.com/JaneDoe?s=1',
       original: 'https://www.x.com/JaneDoe/?s=1',
     });
+  });
+
+  it('tells apart profiles that differ only by query', () => {
+    expect(normalizeProfileUrl('facebook.com/profile.php?id=1')?.normalized).not.toBe(
+      normalizeProfileUrl('facebook.com/profile.php?id=2')?.normalized,
+    );
   });
 
   it('rejects non-web schemes', () => {
     expect(normalizeProfileUrl('javascript:alert(1)')).toBeNull();
     expect(normalizeProfileUrl('ftp://example.com/x')).toBeNull();
+  });
+});
+
+describe('Unicode forms', () => {
+  it('treats composed and decomposed characters as the same name', () => {
+    expect(nameKey('Café')).toBe(nameKey('Cafe\u0301'));
   });
 });
 

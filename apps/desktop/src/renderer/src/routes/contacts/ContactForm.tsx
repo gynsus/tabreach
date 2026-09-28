@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Contact } from '@tabreach/protocol';
+import { uuidv7, type Contact } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CompanyPicker, type PickedCompany } from '../../components/CompanyPicker';
 import { Alert, Button, Field, Input, Modal } from '../../components/ui';
-import { call, errorMessage, fieldErrors } from '../../lib/api';
+import { call, fieldErrors, formAlert } from '../../lib/api';
+import { invalidateEntities } from '../../lib/live';
 
 const splitTags = (value: string) =>
   value
@@ -36,18 +37,31 @@ export function ContactForm(props: {
     c?.companyId ? { id: c.companyId, name: c.companyName ?? '' } : (props.company ?? null),
   );
 
+  // One key per opened form: retrying after a timeout cannot create a second contact (ADR 020).
+  const [idempotencyKey] = useState(() => uuidv7());
   const save = useMutation({
     mutationFn: () => {
       const payload = { ...form, tags: splitTags(form.tags), companyId: company?.id ?? null };
-      return c ? call('contacts.update', { id: c.id, ...payload }) : call('contacts.create', payload);
+      return c
+        ? call('contacts.update', { id: c.id, ...payload })
+        : call('contacts.create', payload, { idempotencyKey });
     },
     onSuccess: async (saved) => {
-      await qc.invalidateQueries();
+      await invalidateEntities(qc, ['contact', 'company', 'activity']);
       props.onSaved?.(saved);
       props.onClose();
     },
   });
   const errors = fieldErrors(save.error);
+  const alert = formAlert(t, save.error, [
+    'firstName',
+    'lastName',
+    'fullName',
+    'email',
+    'jobTitle',
+    'linkedinUrl',
+    'companyId',
+  ]);
   const set = (key: keyof typeof form) => (e: { target: { value: string } }) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
@@ -86,10 +100,7 @@ export function ContactForm(props: {
       }
     >
       <form id="contact-form" onSubmit={submit} className="grid gap-3">
-        {save.isError && Object.keys(errors).length === 0 ? (
-          <Alert>{errorMessage(t, save.error)}</Alert>
-        ) : null}
-        {errors.fullName === 'contact.identityRequired' ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
+        {alert ? <Alert>{alert}</Alert> : null}
         <div className="grid grid-cols-2 gap-3">
           {text('firstName', t('contacts.firstName'))}
           {text('lastName', t('contacts.lastName'))}

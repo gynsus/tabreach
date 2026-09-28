@@ -95,3 +95,50 @@ describe('migrate', () => {
     db.close();
   });
 });
+
+describe('migration hooks', () => {
+  it('runs the data step in the same transaction and rolls both back on failure', async () => {
+    const db = openDatabase(join(dir, 'app.db'));
+    await migrate(db, [first], { backupDir: backupDir() });
+    db.prepare('INSERT INTO a (id) VALUES (?)').run('x');
+    const failing: Migration = {
+      version: 2,
+      name: 'with data step',
+      sql: 'ALTER TABLE a ADD COLUMN k TEXT;',
+      run: () => {
+        throw new Error('data step failed');
+      },
+    };
+    await expect(migrate(db, [first, failing], { backupDir: backupDir() })).rejects.toThrow(
+      'data step failed',
+    );
+    expect(currentSchemaVersion(db)).toBe(1);
+    expect(db.prepare("SELECT name FROM pragma_table_info('a') WHERE name = 'k'").all()).toEqual([]);
+    db.close();
+  });
+
+  it('rebuilds a parent table without cascading deletes when foreign keys are off', async () => {
+    const db = openDatabase(join(dir, 'app.db'));
+    const base: Migration = {
+      version: 1,
+      name: 'base',
+      sql: `CREATE TABLE p (id TEXT PRIMARY KEY) STRICT;
+            CREATE TABLE c (id TEXT PRIMARY KEY, p_id TEXT NOT NULL REFERENCES p (id) ON DELETE CASCADE) STRICT;`,
+    };
+    await migrate(db, [base], { backupDir: backupDir() });
+    db.exec("INSERT INTO p VALUES ('p1'); INSERT INTO c VALUES ('c1', 'p1');");
+    const rebuild: Migration = {
+      version: 2,
+      name: 'rebuild p',
+      foreignKeysOff: true,
+      sql: `CREATE TABLE p_new (id TEXT PRIMARY KEY, extra TEXT) STRICT;
+            INSERT INTO p_new (id) SELECT id FROM p;
+            DROP TABLE p;
+            ALTER TABLE p_new RENAME TO p;`,
+    };
+    await migrate(db, [base, rebuild], { backupDir: backupDir() });
+    expect(db.prepare('SELECT id FROM c').all()).toEqual([{ id: 'c1' }]);
+    expect((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys).toBe(1);
+    db.close();
+  });
+});

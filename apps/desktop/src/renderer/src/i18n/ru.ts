@@ -39,6 +39,32 @@ export const ru: Catalog = {
     created: 'Создано',
     updated: 'Изменено',
     history: 'История',
+    loadMore: 'Загрузить ещё',
+  },
+  core: {
+    starting: 'TabReach запускается…',
+    restarting:
+      'В TabReach произошёл сбой, приложение перезапускается. Данные в сохранности; это займёт несколько секунд.',
+    failed:
+      'TabReach остановился после повторных ошибок. Закройте и снова откройте приложение. Если это повторится, создайте диагностический архив.',
+  },
+  fieldNames: {
+    name: 'название',
+    website: 'сайт',
+    domain: 'домен',
+    country: 'страна',
+    city: 'город',
+    status: 'статус',
+    tags: 'теги',
+    customFields: 'доп. поля',
+    companyId: 'компания',
+    firstName: 'имя',
+    lastName: 'фамилия',
+    fullName: 'полное имя',
+    jobTitle: 'должность',
+    email: 'почта',
+    linkedinUrl: 'профиль LinkedIn',
+    websiteUrl: 'сайт',
   },
   companies: {
     title: 'Компании',
@@ -104,7 +130,10 @@ export const ru: Catalog = {
     },
     matchRules:
       'Компании сопоставляются по домену, затем по названию. Контакты — по почте, затем по профилю LinkedIn, затем по имени внутри компании.',
-    commit: 'Импортировать строк: {{count}}',
+    commit_one: 'Импортировать {{count}} строку',
+    commit_few: 'Импортировать {{count}} строки',
+    commit_many: 'Импортировать {{count}} строк',
+    commit_other: 'Импортировать {{count}} строки',
     committing: 'Импорт…',
     done: 'Импорт завершён',
     inserted: 'Новых',
@@ -134,7 +163,10 @@ export const ru: Catalog = {
     },
   },
   export: {
-    saved: 'Выгружено строк: {{count}}',
+    saved_one: 'Выгружена {{count}} строка',
+    saved_few: 'Выгружено {{count}} строки',
+    saved_many: 'Выгружено {{count}} строк',
+    saved_other: 'Выгружено {{count}} строки',
   },
   suppressions: {
     title: 'Не связываться',
@@ -169,6 +201,7 @@ export const ru: Catalog = {
     search: 'Поиск по списку',
     emptyTitle: 'Список пуст',
     emptyBody: 'Добавьте почту, домены или ссылки на профили, с которыми нельзя связываться.',
+    noResults: 'В списке нет ничего по этому запросу.',
   },
   activity: {
     title: 'Журнал',
@@ -215,6 +248,18 @@ export const ru: Catalog = {
       chromeUnknownVersion: 'Установлен, версия неизвестна',
       chrome: 'Версия {{version}}',
     },
+    detailKeys: {
+      worker: {
+        notRunning: 'Браузерный процесс не запущен. TabReach перезапустит его автоматически.',
+        unreachable: 'Браузерный процесс не отвечает.',
+      },
+      database: { queryFailed: 'База данных не ответила на проверочный запрос.' },
+      secrets: {
+        encryptionUnavailable: 'Связка ключей macOS недоступна для шифрования.',
+        mismatch: 'Зашифрованные данные не удалось прочитать обратно.',
+        unavailable: 'Хранилище секретов недоступно.',
+      },
+    },
     launch: {
       heading: 'Проверка запуска Chrome',
       body: 'Открывает Chrome с временным профилем, загружает страницу, читает её заголовок и закрывается. На несколько секунд появится окно Chrome.',
@@ -254,7 +299,11 @@ export const ru: Catalog = {
     csv: {
       unreadable: 'Этот файл не читается как CSV.',
       noHeader: 'В первой строке должны быть названия колонок.',
+      unclosedQuote:
+        'В файле есть незакрытая кавычка, из-за неё потерялись бы строки. Исправьте файл и попробуйте снова.',
     },
+    customField: { tooLong: 'Значение доп. поля длиннее 2000 символов.' },
+    idempotency: { reused: 'Это действие уже использовано для другого. Попробуйте ещё раз.' },
     import: {
       mappingLength: 'Сопоставление колонок не совпадает с файлом. Выберите файл заново.',
       nothingMapped: 'Выберите хотя бы одну колонку для импорта.',

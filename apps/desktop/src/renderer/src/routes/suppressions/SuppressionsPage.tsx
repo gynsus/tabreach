@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { Suppression, SuppressionKind } from '@tabreach/protocol';
+import { uuidv7, type Suppression, type SuppressionKind } from '@tabreach/protocol';
 import { Upload } from 'lucide-react';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -8,6 +8,7 @@ import { useToast } from '../../components/toast';
 import { Alert, Badge, Button, EmptyState, Field, Input, PageHeader, Select } from '../../components/ui';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { usePagedList } from '../../lib/lists';
+import { invalidateEntities } from '../../lib/live';
 
 /** Kinds a user can type in; companies are suppressed from their company page. */
 const KINDS: SuppressionKind[] = ['email', 'domain', 'profile_url'];
@@ -27,14 +28,16 @@ export function SuppressionsPage() {
     mutationFn: () => call('suppressions.add', { kind, value }),
     onSuccess: async () => {
       setValue('');
-      await qc.invalidateQueries({ queryKey: ['suppressions.list'] });
+      await invalidateEntities(qc, ['suppression', 'activity']);
     },
   });
   const importList = useMutation({
-    mutationFn: async (file: File) => call('suppressions.import', { csv: await file.text() }),
+    // A fresh key per chosen file: a retry after a timeout does not import it twice.
+    mutationFn: async (file: File) =>
+      call('suppressions.import', { csv: await file.text() }, { idempotencyKey: uuidv7() }),
     onSuccess: async (r) => {
       toast(t('suppressions.importReport', r));
-      await qc.invalidateQueries({ queryKey: ['suppressions.list'] });
+      await invalidateEntities(qc, ['suppression', 'activity']);
     },
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
@@ -127,7 +130,7 @@ export function SuppressionsPage() {
         {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
         {query.isSuccess && rows.length === 0 ? (
           searching ? (
-            <EmptyState title={t('suppressions.search')} />
+            <EmptyState title={t('suppressions.noResults')} />
           ) : (
             <EmptyState title={t('suppressions.emptyTitle')} body={t('suppressions.emptyBody')} />
           )
@@ -147,7 +150,7 @@ export function SuppressionsPage() {
             onClick={() => void query.fetchNextPage()}
             disabled={query.isFetchingNextPage}
           >
-            {t('common.loading')}
+            {query.isFetchingNextPage ? t('common.loading') : t('common.loadMore')}
           </Button>
         ) : null}
       </div>
@@ -158,10 +161,15 @@ export function SuppressionsPage() {
 function SuppressionRow({ item, language }: { item: Suppression; language: string }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const remove = useMutation({
     mutationFn: () => call('suppressions.remove', { id: item.id }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['suppressions.list'] }),
+    onSuccess: () => invalidateEntities(qc, ['suppression', 'activity']),
+    onError: (error) => {
+      setConfirming(false);
+      toast(errorMessage(t, error), 'bad');
+    },
   });
   return (
     <li className="grid grid-cols-[120px_1fr_160px_150px_auto] items-center gap-4 px-3 py-2 text-[13px]">

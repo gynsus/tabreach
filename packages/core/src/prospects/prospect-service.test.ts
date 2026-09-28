@@ -143,7 +143,7 @@ describe('audit trail', () => {
   it('redacts secret-looking payload keys', () => {
     const id = s.audit.record({
       actorType: 'system',
-      actionType: 'test',
+      actionType: 'export.created',
       payload: { nested: { apiKey: 'sk-1', ok: 1 } },
       correlationId: ctx().correlationId,
     });

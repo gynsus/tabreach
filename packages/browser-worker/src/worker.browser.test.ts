@@ -62,3 +62,16 @@ describe('BrowserWorker over the browser protocol', () => {
     worker.close();
   });
 });
+
+describe('launchCheck cancellation', () => {
+  it('stops and reports when aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const result = await launchCheck(fixtures.url, {
+      headless: true,
+      signal: controller.signal,
+      logger: silentLogger,
+    });
+    expect(result).toMatchObject({ ok: false, error: 'Aborted' });
+  });
+});

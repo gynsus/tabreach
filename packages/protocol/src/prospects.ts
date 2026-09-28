@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { auditObjectTypeSchema } from './audit.js';
 
 /** Shared DTOs for prospects, imports, suppressions and activity (docs/06-API-CONTRACT.md). */
 
@@ -212,7 +213,7 @@ export const actionEventSchema = z.object({
 export type ActionEvent = z.infer<typeof actionEventSchema>;
 
 export const activityListRequestSchema = z.object({
-  objectType: z.enum(['company', 'contact', 'suppression', 'import']).optional(),
+  objectType: auditObjectTypeSchema.optional(),
   objectId: z.string().optional(),
   limit: z.number().int().min(1).max(500).default(200),
 });

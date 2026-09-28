@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { customFieldsSchema, uuidv7, type Company, type CustomFields } from '@tabreach/protocol';
-import { nameKey, searchKey } from './normalize.js';
+import { uuidv7, type Company, type CustomFields } from '@tabreach/protocol';
+import { nameKey, readCustomFields, searchKey } from './normalize.js';
 import { companyTags, tagsOf } from './tags.js';
 
 export interface CompanyRow {
@@ -175,7 +175,7 @@ export class CompanyRepository {
       city: r.city,
       status: r.status,
       tags: tags.get(r.id) ?? [],
-      customFields: customFieldsSchema.parse(JSON.parse(r.custom_fields)),
+      customFields: readCustomFields(r.custom_fields),
       contactCount: counts.get(r.id) ?? 0,
       createdAt: r.created_at,
       updatedAt: r.updated_at,

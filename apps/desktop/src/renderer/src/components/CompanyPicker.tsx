@@ -10,7 +10,11 @@ export interface PickedCompany {
   name: string;
 }
 
-/** Searchable company combobox (ARIA combobox pattern): type to search, arrows + Enter to pick. */
+/**
+ * Searchable company combobox (ARIA combobox pattern). Typing searches; Enter picks the highlighted
+ * match (the first one by default). The input never shows a company that is not actually selected:
+ * leaving the field without picking restores the current selection.
+ */
 export function CompanyPicker(props: {
   id: string;
   value: PickedCompany | null;
@@ -24,13 +28,13 @@ export function CompanyPicker(props: {
   const [active, setActive] = useState(0);
   const query = useQuery({
     queryKey: ['companies', 'picker', text],
-    queryFn: () => call('companies.list', { search: text || undefined, limit: 20, offset: 0 }),
+    queryFn: () => call('companies.list', { search: text.trim() || undefined, limit: 20, offset: 0 }),
     enabled: open,
   });
-  const options: (PickedCompany | null)[] = [
-    null,
-    ...(query.data?.items ?? []).map((c) => ({ id: c.id, name: c.name })),
-  ];
+  const matches: PickedCompany[] = (query.data?.items ?? []).map((c) => ({ id: c.id, name: c.name }));
+  // With a search, matches come first so Enter picks one; with an empty field, "No company" does.
+  const options: (PickedCompany | null)[] = text.trim() ? [...matches, null] : [null, ...matches];
+  const current = Math.min(active, options.length - 1);
 
   const pick = (company: PickedCompany | null) => {
     props.onChange(company);
@@ -47,30 +51,35 @@ export function CompanyPicker(props: {
         aria-controls={listId}
         aria-autocomplete="list"
         aria-describedby={props.describedBy}
-        aria-activedescendant={open ? `${listId}-${active}` : undefined}
+        aria-activedescendant={open && options.length > 0 ? `${listId}-${current}` : undefined}
         value={text}
         placeholder={t('contacts.noCompany')}
         onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onBlur={() =>
+          setTimeout(() => {
+            setOpen(false);
+            setText(props.value?.name ?? '');
+          }, 150)
+        }
         onChange={(e) => {
           setText(e.target.value);
           setActive(0);
           setOpen(true);
-          if (!e.target.value) props.onChange(null);
         }}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') {
             e.preventDefault();
             setOpen(true);
-            setActive((i) => Math.min(i + 1, options.length - 1));
+            setActive(Math.min(current + 1, options.length - 1));
           } else if (e.key === 'ArrowUp') {
             e.preventDefault();
-            setActive((i) => Math.max(i - 1, 0));
+            setActive(Math.max(current - 1, 0));
           } else if (e.key === 'Enter' && open) {
             e.preventDefault();
-            pick(options[active] ?? null);
+            pick(options[current] ?? null);
           } else if (e.key === 'Escape') {
             setOpen(false);
+            setText(props.value?.name ?? '');
           }
         }}
       />
@@ -85,14 +94,14 @@ export function CompanyPicker(props: {
               key={option?.id ?? 'none'}
               id={`${listId}-${i}`}
               role="option"
-              aria-selected={i === active}
+              aria-selected={i === current}
               onMouseDown={(e) => {
                 e.preventDefault();
                 pick(option);
               }}
               className={cn(
                 'cursor-pointer px-2.5 py-1.5 text-[13px]',
-                i === active && 'bg-accent-soft',
+                i === current && 'bg-accent-soft',
                 !option && 'text-soft',
               )}
             >

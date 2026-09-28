@@ -4,38 +4,43 @@ There is no HTTP API. The renderer talks to core through a `MessagePort` (broker
 
 ## Principles
 
-- Messages use the envelope from `03-SYSTEM-ARCHITECTURE.md`.
-- Three kinds from the renderer: `command` (mutates), `query` (reads), `subscribe` (event stream).
+- Messages use the envelope from `03-SYSTEM-ARCHITECTURE.md`. Kinds: `command` (mutates), `query` (reads), `result`, `event` (one-way hint).
 - Names are `<area>.<verb>` for commands/queries and `<area>.<past_tense>` for events.
-- Every message type has a Zod schema in `packages/protocol`; request and response types are inferred from them.
-- Every command returns a result with `correlationId`.
-- Commands that trigger external side effects never execute them synchronously; they create workflows/jobs and return their IDs.
-- The preload bridge exposes only `invoke`, `query` and `subscribe`; the renderer cannot address main-only capabilities except the listed `app.*` commands.
+- Every message type has a Zod schema in `packages/protocol` (`messages.ts` for requests, `events.ts` for events); types are inferred from them.
+- Commands that create records accept an `idempotencyKey` (envelope field). The renderer generates one per user intent and reuses it on retry; core returns the first result for a repeated key (ADR 020).
+- Commands that trigger external side effects never execute them synchronously; they create workflows/jobs and return their IDs. The diagnostic `browser.launchCheck` is the one exception: it runs a throwaway Chrome check and waits for it.
+- Core never sends user-facing sentences: failures carry codes and message keys, which the renderer translates.
+
+## Preload bridge (`window.tabreach`)
+
+```text
+invoke(type, payload, { idempotencyKey? }) -> { ok: true, data } | { ok: false, error }
+subscribe(eventType, listener) -> unsubscribe          # survives core restarts and reloads
+onCoreState(listener) -> unsubscribe                   # 'starting' | 'running' | 'restarting' | 'failed'
+saveTextFile({ suggestedName, content }) -> { saved, path? }   # main shows the save dialog
+```
+
+Only app-channel request types are accepted by `invoke`; host (core → main) and browser (core → worker) messages are not addressable from the renderer. While core is down, requests fail fast with `UNAVAILABLE` instead of waiting for their timeouts; when core returns, the renderer refetches everything because events sent meanwhile are lost.
 
 ## Result shape
 
-Success:
-
-```json
-{ "ok": true, "correlationId": "019...", "data": { } }
-```
+Success: `{ "ok": true, "data": { } }`
 
 Failure (problem-details style):
 
 ```json
 {
   "ok": false,
-  "correlationId": "019...",
   "error": {
     "code": "VALIDATION_FAILED",
     "title": "Validation failed",
-    "detail": "One or more fields are invalid.",
-    "fields": { "email": ["Invalid email address"] }
+    "detail": "optional technical detail",
+    "fields": { "email": "email.duplicate" }
   }
 }
 ```
 
-Do not expose stack traces or secrets in results. Stable codes are listed in `25-DEVELOPMENT-CONVENTIONS.md`.
+`fields` maps a field name to a **message key**, not text. Keys without a matching form field (e.g. `id: contact.notFound`) are shown as a form-level message. Do not expose stack traces or secrets in results. Stable codes are listed in `25-DEVELOPMENT-CONVENTIONS.md`.
 
 ## Prospects
 
@@ -162,7 +167,7 @@ command jobs.retry / jobs.dismiss
 command diagnostics.createBundle       # main shows the save dialog
 ```
 
-## App (handled by main)
+## App-wide commands (Phase 2+)
 
 ```text
 command app.globalPause / app.emergencyStop
@@ -171,25 +176,18 @@ query   app.versions                   # app, Electron, Chrome, adapter packs
 command app.backupDatabase
 ```
 
+These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel, which becomes bidirectional in Phase 2: main also sends core `power.suspend` / `power.resume`.
+
 ## Events
 
-The renderer subscribes by type. Event envelope as in `03-SYSTEM-ARCHITECTURE.md`.
+Events are one-way hints validated against the event registry (`packages/protocol/src/events.ts`); receivers refetch authoritative state. The renderer subscribes through `window.tabreach.subscribe`.
 
-Initial event types:
+Implemented:
 
 ```text
-workflow.state_changed
-approval.created
-approval.resolved
-browser.session_changed
-browser.intervention_required
-research.completed
-research.failed
-email.reply_received
-campaign.enrollment_changed
-action_event.created
-job.dead
-app.health_changed
+data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings')[] }   # after every mutation
 ```
 
-Events are notifications; the renderer re-queries for authoritative state after reconnecting (e.g. after a core restart).
+Planned with their phases: `approval` / `enrollment` / `workflow` entities in `data.changed` (Phase 2), `job.dead` (Phase 2), `email.reply_received` (Phase 3), `browser.intervention_required` and `browser.session_changed` (Phase 5).
+
+Core availability is not an event: main reports it through `onCoreState` (ADR 020).

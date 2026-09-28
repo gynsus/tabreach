@@ -169,6 +169,93 @@ describe('RpcPeer', () => {
     expect(error.problem.code).toBe('TIMEOUT');
   });
 
+  it('delivers validated events to subscribers and reports invalid ones', async () => {
+    const onInvalid = vi.fn();
+    const [a, b] = createEndpointPair();
+    const sender = new RpcPeer(a);
+    const receiver = new RpcPeer(b, { onInvalid });
+    const got = vi.fn();
+    const off = receiver.on('data.changed', got);
+    sender.emit('data.changed', { entities: ['contact'] });
+    await vi.waitFor(() => expect(got).toHaveBeenCalledWith({ entities: ['contact'] }, expect.anything()));
+    a.postMessage({
+      id: uuidv7(),
+      kind: 'event',
+      type: 'data.changed',
+      schemaVersion: SCHEMA_VERSION,
+      correlationId: uuidv7(),
+      sentAt: new Date().toISOString(),
+      payload: { entities: [] },
+    });
+    await vi.waitFor(() =>
+      expect(onInvalid).toHaveBeenCalledWith('invalid data.changed payload', expect.anything()),
+    );
+    off();
+    sender.emit('data.changed', { entities: ['company'] });
+    await new Promise((r) => setTimeout(r, 10));
+    expect(got).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes the idempotency key to the handler', async () => {
+    const { client, server } = peers();
+    const seen = vi.fn();
+    server.handle('worker.launchCheck', (_p, ctx) => {
+      seen(ctx.idempotencyKey);
+      return launchResult;
+    });
+    const key = uuidv7();
+    await client.request('worker.launchCheck', { url: 'https://example.com' }, { idempotencyKey: key });
+    expect(seen).toHaveBeenCalledWith(key);
+  });
+
+  it('fails fast with UNAVAILABLE when the port throws on send', async () => {
+    const client = new RpcPeer({
+      postMessage() {
+        throw new Error('port closed');
+      },
+      onMessage: () => () => {},
+    });
+    const error = (await client.request('worker.health', {}).catch((e: unknown) => e)) as RpcError;
+    expect(error).toBeInstanceOf(RpcError);
+    expect(error.problem.code).toBe('UNAVAILABLE');
+  });
+
+  it('does not answer after it was closed while a handler ran', async () => {
+    const [a, b] = createEndpointPair();
+    const server = new RpcPeer(b);
+    let release = () => {};
+    server.handle(
+      'worker.health',
+      () =>
+        new Promise(
+          (r) =>
+            (release = () =>
+              r({
+                status: 'ok',
+                node: '24',
+                playwright: '1',
+                chrome: { installed: false, version: null, path: null },
+              })),
+        ),
+    );
+    const replies: unknown[] = [];
+    a.onMessage((m) => replies.push(m));
+    a.postMessage({
+      id: uuidv7(),
+      kind: 'query',
+      type: 'worker.health',
+      schemaVersion: SCHEMA_VERSION,
+      correlationId: uuidv7(),
+      sentAt: new Date().toISOString(),
+      payload: {},
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    server.close();
+    release();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(replies).toEqual([]);
+  });
+
   it('rejects pending requests when closed', async () => {
     const [a] = createEndpointPair();
     const client = new RpcPeer(a);

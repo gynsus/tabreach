@@ -1,6 +1,7 @@
 import { Activity, Building2, Gauge, Settings, ShieldBan, Users, type LucideIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { NavLink, Outlet } from 'react-router';
+import { useLiveUpdates } from '../lib/live';
 import { cn } from '../lib/cn';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string }) {
@@ -32,6 +33,26 @@ function NavGroup(props: { label: string; children: React.ReactNode }) {
   );
 }
 
+/** Says plainly when core cannot answer, instead of letting every request wait for a timeout. */
+function CoreBanner() {
+  const { t } = useTranslation();
+  const state = useLiveUpdates();
+  if (state === 'running') return null;
+  return (
+    <p
+      role={state === 'failed' ? 'alert' : 'status'}
+      data-testid="core-banner"
+      data-state={state}
+      className={cn(
+        'px-6 py-2 text-[13px]',
+        state === 'failed' ? 'bg-bad-bg text-bad' : 'bg-warn-bg text-warn',
+      )}
+    >
+      {t(`core.${state}`)}
+    </p>
+  );
+}
+
 export function AppShell() {
   const { t } = useTranslation();
   return (
@@ -59,6 +80,7 @@ export function AppShell() {
         </div>
       </nav>
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <CoreBanner />
         <Outlet />
       </main>
     </div>

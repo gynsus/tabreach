@@ -1,17 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MAX_CSV_CHARS,
+  uuidv7,
   type ImportField,
   type ImportPreview,
   type ImportReport,
   type OnMatch,
 } from '@tabreach/protocol';
 import { Upload } from 'lucide-react';
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { translateKey } from '../../i18n';
 import { Alert, Button, Modal, Select } from '../../components/ui';
 import { call, errorMessage } from '../../lib/api';
+import { invalidateEntities } from '../../lib/live';
 
 const FIELDS: ImportField[] = [
   'ignore',
@@ -64,18 +66,27 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
   const [report, setReport] = useState<ImportReport | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
 
+  // Each chosen file gets a token (to drop a slow preview of an earlier file) and an idempotency key
+  // (so a retried commit of the same file imports it once).
+  const fileToken = useRef(0);
+  const [idempotencyKey, setIdempotencyKey] = useState(() => uuidv7());
   const read = useMutation({
-    mutationFn: (text: string) => call('imports.prospects.preview', { csv: text }),
-    onSuccess: (p) => {
+    mutationFn: async ({ text, token }: { text: string; token: number }) => ({
+      token,
+      preview: await call('imports.prospects.preview', { csv: text }),
+    }),
+    onSuccess: ({ token, preview: p }) => {
+      if (token !== fileToken.current) return;
       setPreview(p);
       setMapping(p.suggestedMapping);
     },
   });
   const commit = useMutation({
-    mutationFn: () => call('imports.prospects.commit', { csv: csv ?? '', mapping, onMatch }),
+    mutationFn: () =>
+      call('imports.prospects.commit', { csv: csv ?? '', mapping, onMatch }, { idempotencyKey }),
     onSuccess: async (r) => {
       setReport(r);
-      await qc.invalidateQueries();
+      await invalidateEntities(qc, ['company', 'contact', 'activity']);
     },
   });
 
@@ -90,14 +101,17 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
 
   const onFile = async (file: File | undefined) => {
     reset();
+    const token = ++fileToken.current;
+    setIdempotencyKey(uuidv7());
     if (!file) return;
     const text = await file.text();
+    if (token !== fileToken.current) return;
     if (text.length > MAX_CSV_CHARS) {
       setFileError(t('import.fileTooLarge'));
       return;
     }
     setCsv(text);
-    read.mutate(text);
+    read.mutate({ text, token });
   };
 
   const example = (column: number) =>
@@ -112,7 +126,9 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
     </>
   ) : (
     <>
-      <Button onClick={onClose}>{t('common.cancel')}</Button>
+      <Button onClick={onClose} disabled={commit.isPending}>
+        {t('common.cancel')}
+      </Button>
       <Button
         variant="primary"
         disabled={!preview || commit.isPending || mapping.every((f) => f === 'ignore')}
@@ -124,7 +140,7 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <Modal open onClose={onClose} title={t('import.title')} wide footer={footer}>
+    <Modal open onClose={onClose} title={t('import.title')} wide footer={footer} busy={commit.isPending}>
       {report ? (
         <ReportView report={report} />
       ) : (
