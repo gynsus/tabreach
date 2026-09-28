@@ -405,6 +405,32 @@ export const ru: Catalog = {
       'Ящики, с которых кампании отправляют письма. Пароли хранятся зашифрованными в связке ключей macOS.',
     empty: 'Почтовый ящик пока не подключён.',
     connect: 'Подключить ящик',
+    connectGmail: 'Подключить Gmail',
+    gmail: {
+      title: 'Подключение Gmail через ваш проект Google Cloud',
+      intro:
+        'У TabReach нет сервера. Gmail подключается через OAuth-клиент, который вы создаёте в своём проекте Google Cloud: Google проверяет клиент, а не то, где работает TabReach. Это займёт 10–15 минут, один раз.',
+      steps: {
+        project: 'Откройте console.cloud.google.com и создайте проект (название любое).',
+        api: 'APIs & Services → Library: включите Gmail API.',
+        consent:
+          'APIs & Services → OAuth consent screen. Для аккаунта Google Workspace выберите Internal: без проверки и предупреждения. Иначе — External.',
+        production:
+          'Только для External: переведите статус публикации в In production. В режиме Testing Google разрывает подключение через 7 дней.',
+        client:
+          'APIs & Services → Credentials → Create credentials → OAuth client ID → тип приложения Desktop app.',
+        paste: 'Вставьте ниже Client ID и Client secret и войдите.',
+      },
+      scopes:
+        'TabReach запрашивает два разрешения: отправку писем (gmail.send, «чувствительное») и чтение почты (gmail.readonly, «ограниченное»). Чтение нужно, чтобы замечать ответы и проверять, ушло ли прерванное письмо.',
+      unverified:
+        'Google покажет «Приложение не проверено Google»: это ваш собственный проект. Нажмите «Дополнительно» → «Перейти на страницу…» и продолжите. Проект, которым пользуетесь только вы, может подпадать под исключение Google для личного использования; при этом действуют правила Google и настройки администратора Workspace.',
+      clientId: 'Client ID',
+      clientSecret: 'Client secret',
+      signIn: 'Войти через Google',
+      waiting: 'Завершите вход в браузере… (до 10 минут)',
+      connected: 'Gmail подключён',
+    },
     connectTitle: 'Подключить почтовый ящик',
     connecting: 'Проверяем подключение…',
     address: 'Адрес',
@@ -551,6 +577,17 @@ export const ru: Catalog = {
     },
   },
   errors: {
+    oauth: {
+      notCompleted: 'Вход не завершён. Попробуйте ещё раз.',
+      denied: 'В Google доступ не был предоставлен.',
+      stateMismatch: 'Ответ из браузера не совпал с этим запросом. Попробуйте ещё раз.',
+      scopesMissing: 'Нужны оба разрешения: оставьте обе галочки на странице Google.',
+      noRefreshToken:
+        'Google не выдал долгосрочный токен. Удалите TabReach в сторонних приложениях своего аккаунта Google и попробуйте снова.',
+      invalidClient: 'Google не принял Client ID или секрет.',
+      exchangeFailed: 'Google не завершил вход. Проверьте Client ID и секрет.',
+      clientIdInvalid: 'Client ID заканчивается на .apps.googleusercontent.com.',
+    },
     conversation: { notFound: 'Этой переписки больше нет.' },
     message: { notFound: 'Этого сообщения больше нет.', reviewed: 'Это сообщение уже проверено.' },
     account: {

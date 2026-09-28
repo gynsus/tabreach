@@ -261,6 +261,18 @@ test('connecting an email account fills in known servers and reports a wrong ser
   await expect(page.getByText('No email account connected yet.')).toBeVisible();
 });
 
+test('the Gmail wizard explains the setup and checks the client ID before opening a browser', async () => {
+  await go('#/settings');
+  await page.getByRole('button', { name: 'Connect Gmail' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Connect Gmail through your own Google Cloud project' });
+  await expect(dialog.getByText('enable the Gmail API')).toBeVisible();
+  await expect(dialog.getByText(/gmail\.readonly, “restricted”/)).toBeVisible();
+  await dialog.getByLabel('Client ID').fill('not-a-client-id');
+  await dialog.getByRole('button', { name: 'Sign in with Google' }).click();
+  await expect(dialog.getByText('A client ID ends with .apps.googleusercontent.com.')).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+});
+
 test('the inbox opens with its filters and says when there are no replies', async () => {
   await page.getByRole('link', { name: 'Inbox' }).click();
   await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible();

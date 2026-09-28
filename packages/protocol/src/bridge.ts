@@ -44,4 +44,10 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   'imports.prospects.preview': 60_000,
   'exports.prospects': 120_000,
   'suppressions.import': 120_000,
+  // SMTP and IMAP checks take up to 30 s each.
+  'accounts.connectImap': 90_000,
+  'accounts.update': 90_000,
+  'accounts.test': 90_000,
+  // The user signs in to Google in the browser.
+  'accounts.connectGmail': 11 * 60_000,
 };

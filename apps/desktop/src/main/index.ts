@@ -6,12 +6,14 @@ import {
   powerMonitor,
   safeStorage,
   session,
+  shell,
   type UtilityProcess,
 } from 'electron';
 import { RpcError, RpcPeer, type CoreState, type Logger } from '@tabreach/protocol';
 import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
 import { installMenu } from './menu';
+import { runLoopback } from './oauth-loopback';
 import { registerSaveFile } from './save-file';
 import { parseSelfCheck, runSelfCheck } from './self-check';
 import { Supervised } from './supervisor';
@@ -239,6 +241,15 @@ function serveHost(proc: UtilityProcess, logger: Logger): RpcPeer {
     .handle('secret.encrypt', ({ plaintext }) => {
       requireEncryption();
       return { ciphertext: safeStorage.encryptString(plaintext).toString('base64') };
+    })
+    .handle('oauth.loopback', async ({ authorizeUrl, timeoutMs }) => {
+      log.info({ event: 'oauth.started' }, 'opening the consent page in the browser');
+      const result = await runLoopback({ authorizeUrl, timeoutMs, open: (url) => shell.openExternal(url) });
+      log.info(
+        { event: 'oauth.redirect_received', ok: Boolean(result.params.code) },
+        'OAuth redirect received',
+      );
+      return result;
     })
     .handle('secret.decrypt', ({ ciphertext }) => {
       requireEncryption();

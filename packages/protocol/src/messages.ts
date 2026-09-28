@@ -9,7 +9,10 @@ import {
   accountUpdateSchema,
   connectionCheckSchema,
   emailAccountSchema,
+  gmailAccountInputSchema,
   imapAccountInputSchema,
+  oauthLoopbackRequestSchema,
+  oauthLoopbackResultSchema,
 } from './accounts.js';
 import {
   approvalDecisionSchema,
@@ -314,6 +317,13 @@ export const requests = {
     request: imapAccountInputSchema,
     response: emailAccountSchema,
   },
+  /** Opens Google's consent page in the system browser and waits for the user (ADR 016). */
+  'accounts.connectGmail': {
+    channel: 'app',
+    kind: 'command',
+    request: gmailAccountInputSchema,
+    response: emailAccountSchema,
+  },
   'accounts.update': {
     channel: 'app',
     kind: 'command',
@@ -348,6 +358,13 @@ export const requests = {
     kind: 'command',
     request: launchCheckRequestSchema,
     response: launchCheckResultSchema,
+  },
+  /** Core → main: one OAuth authorization through the system browser and a loopback redirect. */
+  'oauth.loopback': {
+    channel: 'host',
+    kind: 'command',
+    request: oauthLoopbackRequestSchema,
+    response: oauthLoopbackResultSchema,
   },
   /** Main → core: the Mac is going to sleep; stop claiming jobs (docs/17, "Sleep"). */
   'power.suspend': { channel: 'host', kind: 'command', request: z.object({}), response: ok },

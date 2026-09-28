@@ -153,7 +153,7 @@ command accounts.connectImap           # { address, smtp, imap, username, passwo
 command accounts.update                # name, sender name, limits, new password (tested before saving)
 command accounts.test                  # SMTP + IMAP check, reports the Sent folder
 command accounts.disconnect            # deletes the stored password
-command accounts.connectGmail          # Phase 3b: { clientId, clientSecret? } -> OAuth loopback via main
+command accounts.connectGmail          # { clientId, clientSecret? } -> consent in the system browser, loopback via main (host: oauth.loopback)
 command sideEffects.resolve            # { id, outcome: completed | not_sent } — a person settles an unknown send
 ```
 

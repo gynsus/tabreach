@@ -44,3 +44,30 @@ export interface MailClients {
   /** Connects (and logs in); throws when that fails. */
   mailbox(settings: MailSettings, signal: AbortSignal): Promise<MailboxClient>;
 }
+
+/** Position in an inbox: IMAP (UIDVALIDITY, last UID) or Gmail (0, historyId). */
+export interface InboxCursor {
+  a: number | null;
+  b: number | null;
+}
+
+/** New inbox messages, provider-neutral, for reply ingestion (ADR 024). */
+export interface InboxSource {
+  fetchNew(
+    cursor: InboxCursor,
+    limit: number,
+    signal: AbortSignal,
+  ): Promise<{
+    cursor: { a: number; b: number };
+    /** `cursor`, when present, is the position right after that message (IMAP). */
+    messages: { providerId: string; raw: Buffer; cursor?: { a: number; b: number } }[];
+    /** More are waiting: poll again soon. */
+    more: boolean;
+  }>;
+  close(): Promise<void>;
+}
+
+/** The provider refused the stored credentials: the account needs the user. */
+export class InboxAuthError extends Error {
+  override name = 'InboxAuthError';
+}
