@@ -22,6 +22,15 @@ export class FakeMail implements MailClients {
   sentFolderName: string | null = 'Sent';
   password = 'app-password';
   mailboxDown = false;
+  /** The inbox as the server has it: UIDs are assigned on arrival. */
+  readonly inbox: { uid: number; raw: Buffer }[] = [];
+  uidValidity = 1;
+  private nextUid = 1;
+
+  /** A message arrives in the inbox. */
+  receive(raw: string): void {
+    this.inbox.push({ uid: this.nextUid++, raw: Buffer.from(raw.replace(/\r?\n/g, '\r\n')) });
+  }
   private readonly next: SmtpBehaviour[] = [];
 
   queue(...behaviours: SmtpBehaviour[]): void {
@@ -63,6 +72,15 @@ export class FakeMail implements MailClients {
       hasMessage: async (_folder, messageId) => this.sent.includes(messageId),
       append: async (_folder, raw) => {
         this.sent.push(/^Message-ID:\s*(<[^>]+>)/im.exec(raw.toString('utf8'))?.[1] ?? '');
+      },
+      fetchNew: async (_folder, cursor, limit) => {
+        const top = this.nextUid - 1;
+        if (cursor.uidValidity !== this.uidValidity || cursor.lastUid === null) {
+          return { uidValidity: this.uidValidity, lastUid: top, messages: [] };
+        }
+        const lastUid = cursor.lastUid;
+        const messages = this.inbox.filter((m) => m.uid > lastUid).slice(0, limit);
+        return { uidValidity: this.uidValidity, lastUid: messages.at(-1)?.uid ?? lastUid, messages };
       },
       close: async () => {},
     };

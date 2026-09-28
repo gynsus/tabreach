@@ -7,6 +7,7 @@ import { ToastProvider } from './components/toast';
 import { setLanguage } from './i18n';
 import { ActivityPage } from './routes/activity/ActivityPage';
 import { ApprovalsPage } from './routes/approvals/ApprovalsPage';
+import { InboxPage } from './routes/inbox/InboxPage';
 import { CampaignPage } from './routes/campaigns/CampaignPage';
 import { CampaignsPage } from './routes/campaigns/CampaignsPage';
 import { CompaniesPage } from './routes/companies/CompaniesPage';
@@ -33,6 +34,7 @@ const router = createHashRouter([
       { path: 'campaigns', element: <CampaignsPage /> },
       { path: 'campaigns/:id', element: <CampaignPage /> },
       { path: 'approvals', element: <ApprovalsPage /> },
+      { path: 'inbox', element: <InboxPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'status', element: <StatusPage /> },
       { path: 'settings', element: <SettingsPage /> },

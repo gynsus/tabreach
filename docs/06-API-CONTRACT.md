@@ -160,10 +160,11 @@ command sideEffects.resolve            # { id, outcome: completed | not_sent } â
 ## Inbox
 
 ```text
-query   conversations.list / conversations.get / conversations.messages
-command conversations.draftReply
-command conversations.stopSequence
+query   conversations.list             # { filter: all | unread | review } -> items, total, unread count
+query   conversations.get              # summary + messages (outbound and inbound)
 command conversations.markRead
+command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
+command conversations.draftReply       # Phase 4 (AI drafting)
 ```
 
 ## Jobs and diagnostics

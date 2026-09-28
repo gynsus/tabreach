@@ -17,3 +17,4 @@ minimumReleaseAgeExclude:
   - libqp@2.1.2
   - nodemailer@10.0.12
   - smtp-server@3.19.15
+  - mailparser@3.9.31

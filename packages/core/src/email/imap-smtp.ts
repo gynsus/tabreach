@@ -3,6 +3,7 @@ import SMTPConnection from 'nodemailer/lib/smtp-connection';
 import type { MailClients, MailboxClient, MailSettings, SmtpClient } from './transport.js';
 
 const TIMEOUT_MS = 60_000;
+const MAX_MESSAGE_BYTES = 10 * 1024 * 1024;
 
 function abortable<T>(signal: AbortSignal, work: Promise<T>, onAbort: () => void): Promise<T> {
   if (signal.aborted) {
@@ -135,6 +136,38 @@ async function mailboxClient(s: MailSettings, signal: AbortSignal): Promise<Mail
           drop,
         );
         return Array.isArray(found) && found.length > 0;
+      } finally {
+        lock.release();
+      }
+    },
+    async fetchNew(folder, cursor, limit, sig) {
+      const lock = await abortable(sig, client.getMailboxLock(folder, { readOnly: true }), drop);
+      try {
+        const box = client.mailbox;
+        if (!box) throw new Error('No mailbox selected');
+        const uidValidity = Number(box.uidValidity);
+        const top = Number(box.uidNext) - 1;
+        if (cursor.uidValidity !== uidValidity || cursor.lastUid === null) {
+          return { uidValidity, lastUid: top, messages: [] };
+        }
+        const messages: { uid: number; raw: Buffer }[] = [];
+        let lastUid = cursor.lastUid;
+        if (top > cursor.lastUid) {
+          for await (const msg of client.fetch(
+            `${cursor.lastUid + 1}:*`,
+            { uid: true, size: true, source: true },
+            { uid: true },
+          )) {
+            if (sig.aborted) break;
+            if (msg.uid <= cursor.lastUid) continue;
+            // Very large messages are skipped (not kept); the cursor still moves past them.
+            if (msg.source && (msg.size ?? 0) <= MAX_MESSAGE_BYTES)
+              messages.push({ uid: msg.uid, raw: msg.source });
+            lastUid = Math.max(lastUid, msg.uid);
+            if (messages.length >= limit) break;
+          }
+        }
+        return { uidValidity, lastUid, messages: messages.sort((a, b) => a.uid - b.uid) };
       } finally {
         lock.release();
       }

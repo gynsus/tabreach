@@ -12,11 +12,13 @@
   "dependencies": {
     "@tabreach/protocol": "workspace:*",
     "imapflow": "2.1.2",
+    "mailparser": "3.9.31",
     "nodemailer": "10.0.12",
     "papaparse": "5.7.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@types/mailparser": "3.4.6",
     "@types/papaparse": "5.5.2",
     "@types/smtp-server": "3.5.13",
     "smtp-server": "3.19.15"

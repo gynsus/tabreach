@@ -17,6 +17,7 @@ import type { ChannelResolver, MessageChannel } from './channels/channel.js';
 import { TestChannel } from './channels/test-channel.js';
 import { CommandLog } from './commands/command-log.js';
 import { AccountService } from './email/accounts.js';
+import { InboxService } from './email/inbox.js';
 import { imapSmtpClients } from './email/imap-smtp.js';
 import type { MailClients } from './email/transport.js';
 import { JobQueue } from './jobs/queue.js';
@@ -70,6 +71,7 @@ export class AppServices {
   readonly approvals: ApprovalService;
   readonly secrets: SecretStore;
   readonly accounts: AccountService;
+  readonly inbox: InboxService;
   private readonly changed: (entities: ChangedEntity[]) => void;
 
   constructor(db: DatabaseSync, options: AppServicesOptions = {}) {
@@ -95,6 +97,7 @@ export class AppServices {
       options.mailClients ?? imapSmtpClients,
       now,
       logger.child({ component: 'email' }),
+      (accountId) => this.inbox.schedulePoll(accountId),
     );
     const named = new Map(
       (options.channels ?? [new TestChannel(db, now, 60_000)]).map((c) => [c.channel, c] as const),
@@ -111,6 +114,20 @@ export class AppServices {
       policy: this.policy,
       channels,
       logger: logger.child({ component: 'campaigns' }),
+      changed: (entities) => this.changed(entities),
+      onSent: (sent) => this.inbox.recordSent(sent),
+    });
+    this.inbox = new InboxService({
+      db,
+      now,
+      audit: this.audit,
+      engine: this.engine,
+      policy: this.policy,
+      suppressions: this.suppressions,
+      accounts: this.accounts,
+      clients: options.mailClients ?? imapSmtpClients,
+      jobs: this.jobs,
+      logger: logger.child({ component: 'inbox' }),
       changed: (entities) => this.changed(entities),
     });
     this.campaigns = new CampaignService(db, this.audit, this.engine, this.jobs, channels, now);
@@ -265,6 +282,20 @@ export class AppServices {
           updatedAt: j.updated_at,
         })),
       }))
+      .handle('conversations.list', (p) => this.inbox.list(p.filter, p))
+      .handle('conversations.get', ({ id }) => this.inbox.get(id))
+      .handle('conversations.markRead', ({ id }) =>
+        mutate(['conversation'], () => {
+          this.inbox.markRead(id);
+          return { ok: true as const };
+        }),
+      )
+      .handle('conversations.review', (p, c) =>
+        mutate(['conversation', 'enrollment', 'campaign'], () => {
+          this.inbox.review(p.messageId, p.decision, ctx(c));
+          return { ok: true as const };
+        }),
+      )
       .handle('accounts.list', () => ({ items: this.accounts.list() }))
       .handle('accounts.connectImap', async (p, c) => {
         const account = await this.accounts.connectImap(p, ctx(c));

@@ -131,6 +131,18 @@ export interface CampaignEngineDeps {
   channels: ChannelResolver;
   logger: Logger;
   changed: (entities: ChangedEntity[]) => void;
+  /** Told about every completed send (in its transaction), e.g. to thread replies to it. */
+  onSent?: (sent: {
+    channel: string;
+    accountId: string | null;
+    enrollmentId: string;
+    contactId: string;
+    companyId: string | null;
+    idempotencyKey: string;
+    subject: string | null;
+    body: string;
+    externalRefs: Record<string, unknown>;
+  }) => void;
 }
 
 /** Thrown by the pre-send guard to block a send without touching the ledger. */
@@ -536,6 +548,18 @@ export class CampaignEngine {
     return transaction(this.d.db, () => {
       this.recordSendAttempt(run.id, ctx.attempt, outcome);
       audit('completed', { alreadyDone: outcome.alreadyDone });
+      const effect = this.d.ledger.get(outcome.sideEffectId);
+      this.d.onSent?.({
+        channel: step.channel,
+        accountId: channel.accountId,
+        enrollmentId: e.id,
+        contactId: e.contact_id,
+        companyId: facts.company_id,
+        idempotencyKey: intentKey(intent),
+        subject: draft.subject,
+        body: draft.body,
+        externalRefs: effect ? (JSON.parse(effect.external_refs) as Record<string, unknown>) : {},
+      });
       const fresh = this.run(run.id);
       const freshEnrollment = this.enrollment(e.id);
       if (fresh && !TERMINAL.has(fresh.status))
