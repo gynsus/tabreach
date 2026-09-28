@@ -43,6 +43,8 @@ export class CampaignService {
     private readonly jobs: JobQueue,
     private readonly channels: ChannelResolver,
     private readonly now: () => Date,
+    /** Whether a reply puts the contact on hold (ContactPolicy.replyHold). */
+    private readonly replyHold: (contactId: string, companyId: string | null) => string | null = () => null,
   ) {}
 
   list(includeArchived: boolean): Campaign[] {
@@ -134,9 +136,11 @@ export class CampaignService {
           ts,
         ),
       );
-      this.save(row, { status: 'active', active_version_id: versionId });
+      // A paused campaign stays paused: launching changes only takes effect when it resumes.
+      const status = row.status === 'paused' ? 'paused' : 'active';
+      this.save(row, { status, active_version_id: versionId });
       this.record('campaign.launched', id, ctx, { version: number, steps: steps.length });
-      this.engine.resync({ campaignId: id });
+      if (status === 'active') this.engine.resync({ campaignId: id });
       return this.get(id);
     });
   }
@@ -180,7 +184,7 @@ export class CampaignService {
         throw conflict('campaign.notLaunched');
       }
       const versionId = row.active_version_id;
-      const report: EnrollReport = { enrolled: 0, alreadyEnrolled: 0, skipped: 0 };
+      const report: EnrollReport = { enrolled: 0, alreadyEnrolled: 0, skipped: 0, onHold: 0 };
       const existing = this.db.prepare(
         'SELECT 1 FROM campaign_enrollments WHERE campaign_id = ? AND contact_id = ?',
       );
@@ -199,6 +203,11 @@ export class CampaignService {
         const c = contact.get(contactId) as { company_id: string | null } | undefined;
         if (!c) {
           report.skipped++;
+          continue;
+        }
+        if (this.replyHold(contactId, c.company_id)) {
+          // They (or their company) replied: not contacted again until the user allows it.
+          report.onHold++;
           continue;
         }
         const id = uuidv7();

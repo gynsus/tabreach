@@ -131,6 +131,11 @@ export interface CampaignEngineDeps {
   channels: ChannelResolver;
   logger: Logger;
   changed: (entities: ChangedEntity[]) => void;
+  /**
+   * Runs before a send leaves (before the ledger reservation): e.g. read the email inbox first so
+   * a reply that already arrived stops the sequence. May throw a RetryableError to wait.
+   */
+  beforeSend?: (channel: MessageChannel, signal: AbortSignal, correlationId: string) => Promise<void>;
   /** Told about every completed send (in its transaction), e.g. to thread replies to it. */
   onSent?: (sent: {
     channel: string;
@@ -231,12 +236,20 @@ export class CampaignEngine {
         const run = this.openRun(e.id);
         if (!run) {
           this.scheduleEnrollment(e.id, e.next_action_at ? new Date(e.next_action_at) : this.d.now());
+        } else if (this.runNeedsAttention(run.id)) {
+          // Its job failed or died: it waits in "Needs attention" until a person retries it.
+          continue;
         } else if (run.status === 'paused' || run.status === 'pending' || run.status === 'running') {
           if (run.status === 'paused') this.updateRun(run, { status: 'running' });
           this.wakeRun(run.id, run.correlation_id);
         }
       }
     });
+  }
+
+  private runNeedsAttention(runId: string): boolean {
+    const job = this.d.jobs.latestFor(JOB_RUN, 'runId', runId);
+    return job?.status === 'dead' || job?.status === 'failed';
   }
 
   // enrollment.advance ---------------------------------------------------------------------
@@ -253,8 +266,9 @@ export class CampaignEngine {
         const open = this.openRun(e.id);
         if (open) {
           // The run drives the step; make sure it is not stranded.
-          if (open.status === 'pending' || open.status === 'running')
+          if ((open.status === 'pending' || open.status === 'running') && !this.runNeedsAttention(open.id)) {
             this.wakeRun(open.id, open.correlation_id);
+          }
           return;
         }
         const step = this.step(e.campaign_version_id, e.current_step_position);
@@ -269,7 +283,9 @@ export class CampaignEngine {
             this.stopEnrollment(e, 'condition_not_met', ctx.correlationId, 'system');
             return;
           }
-          const next = this.finishStep(e, ctx.correlationId);
+          let next = this.finishStep(e, ctx.correlationId);
+          // "Skip": the condition guards the step after it; that step is left out (audit 3.5).
+          if (!holds && next !== null) next = this.finishStep(e, ctx.correlationId);
           if (!next) return;
           if (next > now) return { continueAt: next };
           continue;
@@ -414,6 +430,14 @@ export class CampaignEngine {
           this.updateRun(run, { current_state: 'CHECK_APPROVAL' });
           return 'next';
         }
+        const earlier = this.earlierAttempt(e, run, this.intentKeyFor(e, run, step, target as string));
+        if (earlier === 'completed') {
+          // An attempt to the previous address was confirmed sent: the step is done.
+          this.updateRun(run, { status: 'completed', current_state: 'COMPLETE' });
+          this.finishStep(e, correlationId);
+          return 'done';
+        }
+        if (earlier === 'unresolved') throw new PermanentError('earlier_attempt_unresolved');
         const channel = this.channelFor(e, step);
         const pacing = this.d.policy.checkChannel(channel, this.intentKeyFor(e, run, step, target as string));
         if (pacing.kind === 'defer') return { continueAt: pacing.until };
@@ -468,6 +492,7 @@ export class CampaignEngine {
         correlationId: run.correlation_id,
       });
 
+    await this.d.beforeSend?.(channel, ctx.signal, run.correlation_id);
     let outcome;
     try {
       outcome = await executeSideEffect({
@@ -483,11 +508,33 @@ export class CampaignEngine {
           contentHash: hash,
         },
         signal: ctx.signal,
+        onReconciled: (settled) =>
+          audit(settled === 'completed' ? 'completed' : 'failed', {
+            reconciled: true,
+            ...(settled === 'not_sent' ? { errorClass: 'reconciled_not_sent' } : {}),
+          }),
         guard: () => {
-          // Final pre-send check, in the reserving transaction (ADR 021 §6).
-          if (approval.status !== 'approved' || approval.content_hash !== hash) {
+          // Final pre-send check, in the reserving transaction (ADR 021 §6). Everything is read
+          // again here: reconciliation may have awaited for a while, and a reply, a stop, a pause
+          // or a rejection may have arrived meanwhile (audit 3.5).
+          const freshRun = this.run(run.id);
+          const freshE = this.enrollment(e.id);
+          if (
+            !freshRun ||
+            freshRun.status !== 'running' ||
+            freshRun.current_state !== 'SEND' ||
+            !freshE ||
+            freshE.status !== 'active' ||
+            this.campaignStatus(freshE.campaign_id) !== 'active'
+          ) {
+            throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'run.changed' });
+          }
+          const freshApproval = this.currentApproval(run.id);
+          if (!freshApproval || freshApproval.status !== 'approved' || freshApproval.content_hash !== hash) {
             throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'approval.stale' });
           }
+          if (this.earlierAttempt(e, run, intentKey(intent)))
+            throw new PermanentError('earlier_attempt_unresolved');
           const verdict = this.policyVerdict(e, run, step, facts, target);
           if (verdict.kind !== 'ok') throw new PolicyBlocked(verdict);
           const pacing = this.d.policy.checkChannel(channel, intentKey(intent));
@@ -506,6 +553,7 @@ export class CampaignEngine {
           this.stopEnrollment(freshEnrollment, v.reason, run.correlation_id, 'system', { rule: v.rule });
           return 'done';
         }
+        if (v.rule === 'run.changed') return 'next'; // the next pass sees the stop, pause or cancel
         if (v.rule === 'approval.stale') {
           this.updateRun(fresh, { current_state: 'FINAL_PRE_SEND_CHECK' });
           return 'next';
@@ -828,6 +876,18 @@ export class CampaignEngine {
       timeZone: this.timeZoneFor(e, facts),
       window: this.windowFor(e.campaign_version_id),
     });
+  }
+
+  /**
+   * Another attempt for the same step under a different key — the recipient's address changed
+   * after an attempt. `unresolved`: it may have been delivered; a person decides before anything
+   * else is sent. `completed`: it was, so the step is done.
+   */
+  private earlierAttempt(e: EnrollmentRow, run: RunRow, key: string): 'completed' | 'unresolved' | null {
+    const others = this.d.ledger.forStep(e.id, run.step_position).filter((se) => se.idempotency_key !== key);
+    if (others.some((se) => se.status === 'executing' || se.status === 'unknown')) return 'unresolved';
+    if (others.some((se) => se.status === 'completed')) return 'completed';
+    return null;
   }
 
   private channelFor(e: EnrollmentRow, step: SendStep): MessageChannel {

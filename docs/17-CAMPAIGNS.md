@@ -79,6 +79,7 @@ Before every critical action (in the workflow's final pre-send check):
 - suppression list (email, domain, company, profile URL);
 - per-contact channel eligibility;
 - frequency caps across all campaigns (per contact and per company);
+- reply hold: a contact who replied (or, with the company stop on, whose colleague replied) is not contacted by any campaign until the user allows it on the contact (ADR 021, audit 3.5);
 - stop conditions: reply from this contact; reply from another contact of the company (if enabled, strong match or user-confirmed only); opt-out; bounce;
 - channel account limits and adapter kill switches.
 

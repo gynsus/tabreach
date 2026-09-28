@@ -87,6 +87,12 @@ export const en = {
     addContact: 'Add contact',
   },
   contacts: {
+    replyHold: {
+      replied: 'This contact replied. No campaign writes to them until you allow it.',
+      company_replied:
+        'Someone at this contact’s company replied. No campaign writes to them until you allow it.',
+      release: 'Allow campaigns to write again',
+    },
     title: 'Contacts',
     new: 'New contact',
     edit: 'Edit contact',
@@ -210,9 +216,15 @@ export const en = {
         connected: 'Email account connected',
         updated: 'Email account changed',
         disconnected: 'Email account disconnected',
+        inbox_gap: 'Replies received while offline may have been missed',
       },
       side_effect: { resolved: 'Send outcome confirmed' },
-      contact: { created: 'Contact created', updated: 'Contact updated', bounced: 'Email address bounced' },
+      contact: {
+        created: 'Contact created',
+        updated: 'Contact updated',
+        bounced: 'Email address bounced',
+        reply_hold_released: 'Campaigns may write again',
+      },
       company: { created: 'Company created', updated: 'Company updated' },
       import: { committed: 'CSV imported' },
       export: { created: 'CSV exported' },
@@ -303,7 +315,7 @@ export const en = {
     addRule: 'Add rule',
     removeRule: 'Remove rule',
     onFalse: 'If not',
-    onFalseOptions: { stop: 'Stop the sequence', skip: 'Skip to the next step' },
+    onFalseOptions: { stop: 'Stop the sequence', skip: 'Skip the next step' },
     fields: {
       'contact.firstName': 'First name',
       'contact.lastName': 'Last name',
@@ -327,7 +339,8 @@ export const en = {
     addPeople: 'Add contacts',
     addSelected_one: 'Add {{count}} contact',
     addSelected_other: 'Add {{count}} contacts',
-    enrollReport: '{{enrolled}} added, {{alreadyEnrolled}} already in the campaign, {{skipped}} skipped',
+    enrollReport:
+      '{{enrolled}} added, {{alreadyEnrolled}} already in the campaign, {{skipped}} skipped, {{onHold}} on hold after a reply',
     peopleEmpty: 'No one in this campaign yet.',
     launchFirst: 'Launch the campaign to add contacts.',
     searchContacts: 'Search contacts',
@@ -464,6 +477,8 @@ export const en = {
     empty: 'Nothing needs attention.',
     retry: 'Retry',
     dismiss: 'Dismiss',
+    uncertainTitle: 'Unconfirmed sends',
+    checking: 'TabReach is still checking the Sent folder; you can decide once it gives up.',
     wasSent: 'It was sent',
     wasNotSent: 'It was not sent',
     resolveHint: 'Check the Sent folder of the account. If it was not sent, TabReach sends it now.',
@@ -477,6 +492,12 @@ export const en = {
       channel_unavailable: 'The channel of this step is not available.',
       credentials_unavailable: 'The account password could not be read.',
       auth_failed: 'The mail server refused the password. Enter a new one in Settings.',
+      earlier_attempt_unresolved:
+        'An earlier attempt to a previous address may have been delivered. Decide on it under Unconfirmed sends, then retry.',
+      ledger_conflict:
+        'The outcome of this send was changed while it was running. Check Unconfirmed sends before retrying.',
+      inbox_unavailable:
+        'The inbox could not be read, so a reply might be missed. Sending waits until it can be read.',
       unexpected: 'Unexpected error.',
     },
   },
@@ -568,7 +589,10 @@ export const en = {
       noPassword: 'The account has no stored password.',
       notImap: 'This account has no mail servers configured.',
     },
-    sideEffect: { notUnknown: 'This message is no longer waiting for a decision.' },
+    sideEffect: {
+      notUnknown: 'This message is no longer waiting for a decision.',
+      busy: 'TabReach is still checking whether this message was sent. Try again later.',
+    },
     campaign: {
       notFound: 'This campaign no longer exists.',
       notLaunched: 'Launch the campaign first.',

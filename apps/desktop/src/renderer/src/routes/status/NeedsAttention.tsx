@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Job } from '@tabreach/protocol';
+import type { Job, UncertainSend } from '@tabreach/protocol';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
@@ -13,6 +13,7 @@ export function NeedsAttention() {
   const { t } = useTranslation();
   const jobs = useQuery({ queryKey: ['jobs', 'attention'], queryFn: () => call('jobs.needsAttention', {}) });
   const items = jobs.data?.items ?? [];
+  const uncertain = useUncertainSends();
   return (
     <section className="grid gap-3" aria-labelledby="attention-heading">
       <div className="grid gap-1">
@@ -22,9 +23,10 @@ export function NeedsAttention() {
         <p className="text-[13px] text-soft">{t('attention.subtitle')}</p>
       </div>
       {jobs.isError ? <Alert tone="warn">{errorMessage(t, jobs.error)}</Alert> : null}
-      {jobs.isSuccess && items.length === 0 ? (
+      {jobs.isSuccess && items.length === 0 && uncertain.isSuccess && uncertain.data.items.length === 0 ? (
         <p className="text-[13px] text-soft">{t('attention.empty')}</p>
       ) : null}
+      <UncertainSends />
       {items.length > 0 ? (
         <ul
           aria-label={t('attention.title')}
@@ -48,12 +50,6 @@ function JobRow({ job }: { job: Job }) {
     onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
-  const resolve = useMutation({
-    mutationFn: (outcome: 'completed' | 'not_sent') =>
-      call('sideEffects.resolve', { id: job.unknownSideEffectId as string, outcome }),
-    onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
-    onError: (error) => toast(errorMessage(t, error), 'bad'),
-  });
   const reason = job.lastErrorClass
     ? translateKey(t, `attention.errors.${job.lastErrorClass}`, job.lastErrorClass)
     : t('attention.errors.unexpected');
@@ -67,30 +63,92 @@ function JobRow({ job }: { job: Job }) {
           </Badge>
         </span>
         <span className="text-soft">{reason}</span>
-        {job.unknownSideEffectId ? (
-          <span className="text-xs text-faint">{t('attention.resolveHint')}</span>
-        ) : null}
         <span className="font-mono text-[11px] text-faint">
           {formatDateTime(job.updatedAt, i18n.language)}
         </span>
       </span>
       <span className="flex gap-1">
-        {job.unknownSideEffectId ? (
-          <>
-            <Button size="sm" onClick={() => resolve.mutate('completed')} disabled={resolve.isPending}>
-              {t('attention.wasSent')}
-            </Button>
-            <Button size="sm" onClick={() => resolve.mutate('not_sent')} disabled={resolve.isPending}>
-              {t('attention.wasNotSent')}
-            </Button>
-          </>
-        ) : (
-          <Button size="sm" onClick={() => act.mutate('jobs.retry')} disabled={act.isPending}>
-            {t('attention.retry')}
-          </Button>
-        )}
+        <Button size="sm" onClick={() => act.mutate('jobs.retry')} disabled={act.isPending}>
+          {t('attention.retry')}
+        </Button>
         <Button size="sm" variant="ghost" onClick={() => act.mutate('jobs.dismiss')} disabled={act.isPending}>
           {t('attention.dismiss')}
+        </Button>
+      </span>
+    </li>
+  );
+}
+
+const useUncertainSends = () =>
+  useQuery({ queryKey: ['jobs', 'uncertain'], queryFn: () => call('sideEffects.uncertain', {}) });
+
+/**
+ * Sends whose outcome TabReach could not verify. Only a person can say whether they went out;
+ * until then nothing is sent to that person for that step (ADR 018, audit 3.5).
+ */
+function UncertainSends() {
+  const { t } = useTranslation();
+  const uncertain = useUncertainSends();
+  const items = uncertain.data?.items ?? [];
+  if (items.length === 0) return null;
+  return (
+    <div className="grid gap-2">
+      <h3 className="text-[13px] font-semibold">{t('attention.uncertainTitle')}</h3>
+      <p className="text-xs text-soft">{t('attention.resolveHint')}</p>
+      <ul
+        aria-label={t('attention.uncertainTitle')}
+        className="divide-y divide-rule rounded-md border border-rule bg-raised"
+      >
+        {items.map((item) => (
+          <UncertainRow key={item.id} item={item} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function UncertainRow({ item }: { item: UncertainSend }) {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const resolve = useMutation({
+    mutationFn: (outcome: 'completed' | 'not_sent') => call('sideEffects.resolve', { id: item.id, outcome }),
+    onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
+  return (
+    <li
+      data-testid="uncertain-send"
+      className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-2.5 text-[13px]"
+    >
+      <span className="grid gap-0.5">
+        <span className="font-medium">
+          {item.contactName} &lt;{item.target}&gt;
+        </span>
+        <span className="text-soft">
+          {[item.campaignName, translateKey(t, `campaigns.channels.${item.channel}`, item.channel)]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
+        <span className="font-mono text-[11px] text-faint">
+          {formatDateTime(item.attemptedAt, i18n.language)}
+        </span>
+        {item.checking ? <span className="text-xs text-warn">{t('attention.checking')}</span> : null}
+      </span>
+      <span className="flex gap-1">
+        <Button
+          size="sm"
+          onClick={() => resolve.mutate('completed')}
+          disabled={resolve.isPending || item.checking}
+        >
+          {t('attention.wasSent')}
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => resolve.mutate('not_sent')}
+          disabled={resolve.isPending || item.checking}
+        >
+          {t('attention.wasNotSent')}
         </Button>
       </span>
     </li>

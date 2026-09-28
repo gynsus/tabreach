@@ -71,10 +71,19 @@ interface Metadata {
 const CHECK_TIMEOUT_MS = 30_000;
 
 /** Providers whose servers keep a copy of mail sent over SMTP; others need an IMAP APPEND. */
-const SAVES_SENT = /(^|\.)(gmail\.com|googlemail\.com|office365\.com|outlook\.com|hotmail\.com|live\.com)$/i;
+/**
+ * Exact submission hosts known to keep a Sent copy of mail sent over SMTP. Relays such as
+ * smtp-relay.gmail.com do not, so a suffix match would be wrong (audit 3.5).
+ */
+const SAVES_SENT = new Set([
+  'smtp.gmail.com',
+  'smtp.googlemail.com',
+  'smtp.office365.com',
+  'smtp-mail.outlook.com',
+]);
 
 export function serverSavesSent(smtpHost: string): boolean {
-  return SAVES_SENT.test(smtpHost.trim());
+  return SAVES_SENT.has(smtpHost.trim().toLowerCase());
 }
 
 /** A short, secret-free reason for a failed connection, for the UI (`account.<reason>`). */
@@ -619,7 +628,7 @@ function imapInbox(box: Awaited<ReturnType<MailClients['mailbox']>>): InboxSourc
         cursor: { a: batch.uidValidity, b: batch.lastUid },
         messages: batch.messages.map((m) => ({
           providerId: `${batch.uidValidity}:${m.uid}`,
-          raw: m.raw,
+          load: () => Promise.resolve(m.raw),
           cursor: { a: batch.uidValidity, b: m.uid },
         })),
         more: batch.messages.length >= limit,
@@ -649,12 +658,19 @@ function gmailInbox(api: GmailApi): InboxSource {
         }
         throw error;
       }
-      const ids = since.messageIds.slice(0, limit);
-      const messages = [];
-      for (const id of ids) messages.push({ providerId: `gmail:${id}`, raw: await api.raw(id, signal) });
-      const more = since.messageIds.length > ids.length;
-      // With a partial batch the history position stays; the rest is read (and deduplicated) next time.
-      return { cursor: { a: 0, b: more ? cursor.b : Number(since.historyId) }, messages, more };
+      const batch = since.added.slice(0, limit);
+      const more = since.added.length > batch.length;
+      return {
+        // Each message carries the position after it; a partial batch continues from there.
+        cursor: { a: 0, b: more ? Number(batch.at(-1)?.historyId ?? cursor.b) : Number(since.historyId) },
+        messages: batch.map((m) => ({
+          providerId: `gmail:${m.messageId}`,
+          load: () => api.raw(m.messageId, signal),
+          cursor: { a: 0, b: Number(m.historyId) },
+        })),
+        more,
+        ...(since.expired ? { warning: 'historyExpired' as const } : {}),
+      };
     },
     close: async () => {},
   };

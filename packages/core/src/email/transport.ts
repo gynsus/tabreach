@@ -59,10 +59,12 @@ export interface InboxSource {
     signal: AbortSignal,
   ): Promise<{
     cursor: { a: number; b: number };
-    /** `cursor`, when present, is the position right after that message (IMAP). */
-    messages: { providerId: string; raw: Buffer; cursor?: { a: number; b: number } }[];
+    /** `cursor` is the position right after that message; `load` fetches it when it is processed. */
+    messages: { providerId: string; load: () => Promise<Buffer>; cursor: { a: number; b: number } }[];
     /** More are waiting: poll again soon. */
     more: boolean;
+    /** Something the user should know: e.g. Gmail no longer had the history since the last check. */
+    warning?: 'historyExpired';
   }>;
   close(): Promise<void>;
 }

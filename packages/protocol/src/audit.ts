@@ -50,9 +50,11 @@ export const auditActionTypes = [
   'account.connected',
   'account.updated',
   'account.disconnected',
+  'account.inbox_gap',
   'side_effect.resolved',
   'message.received',
   'message.reviewed',
   'contact.bounced',
+  'contact.reply_hold_released',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

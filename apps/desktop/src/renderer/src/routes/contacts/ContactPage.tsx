@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -6,6 +6,7 @@ import { Link, useParams } from 'react-router';
 import { Timeline, formatDateTime } from '../../components/Timeline';
 import { Alert, Badge, Button, DetailList, PageHeader, Tags } from '../../components/ui';
 import { call, errorMessage } from '../../lib/api';
+import { invalidateEntities } from '../../lib/live';
 import { ContactForm } from './ContactForm';
 
 export function ContactPage() {
@@ -71,9 +72,43 @@ export function ContactPage() {
             { label: t('common.updated'), value: formatDateTime(c.updatedAt, i18n.language) },
           ]}
         />
+        <ReplyHold contactId={c.id} />
         <Timeline objectType="contact" objectId={c.id} />
       </div>
       {editing ? <ContactForm open contact={c} onClose={() => setEditing(false)} /> : null}
     </>
+  );
+}
+
+/** A contact who (or whose company) replied is on hold for every campaign until the user allows it. */
+function ReplyHold({ contactId }: { contactId: string }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const hold = useQuery({
+    queryKey: ['contact', contactId, 'hold'],
+    queryFn: () => call('contacts.replyHold', { id: contactId }),
+  });
+  const release = useMutation({
+    mutationFn: () => call('contacts.releaseReplyHold', { id: contactId }),
+    onSuccess: () => invalidateEntities(qc, ['contact', 'activity']),
+  });
+  const reason = hold.data?.hold;
+  if (!reason) return null;
+  return (
+    <div
+      className="grid gap-2 rounded-md bg-warn-bg px-4 py-3 text-[13px] text-warn"
+      data-testid="reply-hold"
+    >
+      <p>{t(`contacts.replyHold.${reason}`)}</p>
+      <Button
+        size="sm"
+        className="justify-self-start"
+        onClick={() => release.mutate()}
+        disabled={release.isPending}
+      >
+        {t('contacts.replyHold.release')}
+      </Button>
+      {release.isError ? <Alert>{errorMessage(t, release.error)}</Alert> : null}
+    </div>
   );
 }

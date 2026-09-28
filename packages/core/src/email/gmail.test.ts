@@ -133,7 +133,7 @@ describe('Gmail accounts and campaigns', () => {
     expect(status(campaign)?.status).toBe('completed');
   });
 
-  it('a crash before Gmail answered, with nothing stored, sends once after the index grace period', async () => {
+  it('a server error with nothing stored is never re-sent on its own: after the grace period a person decides', async () => {
     const account = await connect();
     const campaign = await campaignTo(account.id, 'bob@beta.test');
     h.google.queue('server_error');
@@ -141,8 +141,22 @@ describe('Gmail accounts and campaigns', () => {
     await h.run();
     h.clock.advance(60_000);
     await h.run();
-    expect(h.google.sent).toHaveLength(0); // still inside the grace period: not re-sent
-    h.clock.advance(SENT_INDEX_GRACE_MS);
+    expect(h.google.sent).toHaveLength(0); // inside the grace period: still looking
+    // Whether Gmail keeps our Message-ID is not verified, so absence is not proof (audit 3.5).
+    for (let i = 0; i < 8; i++) {
+      h.clock.advance(SENT_INDEX_GRACE_MS);
+      await h.run();
+    }
+    expect(h.google.sent).toHaveLength(0);
+    const effect = h.db.prepare('SELECT id, status FROM side_effects').get() as {
+      id: string;
+      status: string;
+    };
+    expect(effect.status).toBe('unknown');
+    const [uncertain] = h.services.uncertainSends();
+    expect(uncertain).toMatchObject({ id: effect.id, target: 'bob@beta.test', checking: false });
+
+    h.services.resolveSideEffect(effect.id, 'not_sent', 'c-1');
     await h.run();
     expect(h.google.sent).toHaveLength(1);
     expect(status(campaign)?.status).toBe('completed');
@@ -203,6 +217,30 @@ describe('Gmail accounts and campaigns', () => {
     expect(again.status).toBe('active');
     expect(h.services.accounts.list()).toHaveLength(1);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM secrets').get()).toEqual({ n: 2 }); // old ones deleted
+  });
+
+  it('reads more than one batch of new mail instead of stalling on the first 50', async () => {
+    const account = await connect();
+    const campaign = await campaignTo(account.id, 'bob@beta.test');
+    h.approve();
+    await h.run();
+    const sentId = h.google.sent[0]!.messageId;
+    for (let i = 0; i < 70; i++)
+      h.google.receive(inbound({ from: `news${i}@elsewhere.test`, subject: `News ${i}` }));
+    h.google.receive(inbound({ from: 'bob@beta.test', inReplyTo: sentId, body: 'Late reply' }));
+    for (let i = 0; i < 4; i++) {
+      h.clock.advance(2 * 60_000);
+      await h.run();
+    }
+    expect(h.services.inbox.list('all', { limit: 10, offset: 0 }).items).toMatchObject([
+      { lastSnippet: 'Late reply' },
+    ]);
+    expect(
+      h.db.prepare('SELECT last_uid FROM mailbox_cursors WHERE channel_account_id = ?').get(account.id),
+    ).toEqual({
+      last_uid: h.google.historyId,
+    });
+    void campaign;
   });
 
   it('restarts from the current position when Gmail no longer has the history', async () => {

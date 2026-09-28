@@ -96,7 +96,7 @@ export const conditionStepSchema = z.object({
   type: z.literal('condition'),
   delaySeconds,
   conditions: z.array(conditionSchema).min(1).max(10),
-  /** What happens when a condition does not hold: stop the enrollment, or skip to the next step. */
+  /** When a condition does not hold: stop the enrollment, or skip the next step and continue after it. */
   onFalse: z.enum(['stop', 'skip']),
 });
 
@@ -163,6 +163,8 @@ export const enrollReportSchema = z.object({
   alreadyEnrolled: z.number().int().nonnegative(),
   /** Archived or missing contacts. */
   skipped: z.number().int().nonnegative(),
+  /** Contacts who (or whose company) replied: not contacted again until allowed. */
+  onHold: z.number().int().nonnegative(),
 });
 export type EnrollReport = z.infer<typeof enrollReportSchema>;
 
@@ -246,8 +248,20 @@ export const jobSchema = z.object({
   attempts: z.number().int(),
   lastErrorClass: z.string().nullable(),
   lastError: z.string().nullable(),
-  /** A send whose outcome could not be verified: a person can settle it (sideEffects.resolve). */
-  unknownSideEffectId: z.uuid().nullable(),
   updatedAt: z.iso.datetime(),
 });
 export type Job = z.infer<typeof jobSchema>;
+
+/** A send whose outcome TabReach could not verify; a person settles it (ADR 018 user_confirmation). */
+export const uncertainSendSchema = z.object({
+  id: z.uuid(),
+  channel: z.string(),
+  target: z.string(),
+  contactId: z.uuid().nullable(),
+  contactName: z.string(),
+  campaignName: z.string().nullable(),
+  attemptedAt: z.iso.datetime(),
+  /** TabReach is still checking on its own (a job will look again); deciding now is refused. */
+  checking: z.boolean(),
+});
+export type UncertainSend = z.infer<typeof uncertainSendSchema>;

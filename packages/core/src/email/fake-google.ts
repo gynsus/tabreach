@@ -110,7 +110,10 @@ export class FakeGoogle {
       const added = this.inbox.filter((m) => m.historyId > start);
       return json(200, {
         historyId: String(this.historyId),
-        history: added.map((m) => ({ messagesAdded: [{ message: { id: m.id, labelIds: ['INBOX'] } }] })),
+        history: added.map((m) => ({
+          id: String(m.historyId),
+          messagesAdded: [{ message: { id: m.id, labelIds: ['INBOX'] } }],
+        })),
       });
     }
     const raw = /^\/messages\/([^/]+)$/.exec(path);

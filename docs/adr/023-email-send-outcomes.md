@@ -24,6 +24,12 @@ ADR 016 requires an app-generated `Message-ID` "persisted before sending" and re
 - Whether a server keeps sent mail is decided from the SMTP host at connection time (Gmail, Outlook/Office 365) and stored on the account.
 - An authentication failure while sending puts the account in `auth_required`; its campaigns stop sending until the user enters a new password.
 
+## Audit 3.5 changes (2026-09-28)
+
+- Only the exact submission hosts `smtp.gmail.com`, `smtp.googlemail.com`, `smtp.office365.com` and `smtp-mail.outlook.com` count as keeping a Sent copy; relays such as `smtp-relay.gmail.com` do not.
+- **Gmail API:** it is not yet verified on a live account that `users.messages.send` keeps a caller-supplied Message-ID (it does over SMTP — verified on a real account). Until it is, "not found" after the grace period is `unknown` for a person, never `not_sent`.
+- Reconciliation that cannot reach the mailbox keeps waiting (`pending`) for at most 24 hours, then becomes `unknown`. A refused IMAP login during reconciliation puts the account on hold.
+
 ## Alternatives
 
 - Random Message-ID persisted on the draft or ledger row before sending: equivalent guarantee, one more write in the critical path.
