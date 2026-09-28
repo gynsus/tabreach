@@ -56,7 +56,7 @@ export class CoreService {
       now: () => new Date(),
       logger: options.logger.child({ component: 'jobs' }),
       onFinished: (_job, status) => {
-        if (status === 'failed' || status === 'dead') this.announce(['job']);
+        if (status === 'failed' || status === 'dead') this.announce(['job', 'enrollment']);
       },
     });
   }
@@ -73,7 +73,9 @@ export class CoreService {
     if (pruned > 0)
       options.logger.info({ event: 'commands.pruned', count: pruned }, 'old command results pruned');
     await core.checkSecretStorage();
+    for (const type of core.services.engine.jobTypes()) core.dispatcher.register(type);
     core.dispatcher.start();
+    core.services.engine.resync();
     return core;
   }
 

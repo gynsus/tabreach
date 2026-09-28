@@ -34,6 +34,12 @@ export interface JobContext {
   signal: AbortSignal;
 }
 
+/**
+ * What a handler may return: nothing (done), or a time to run again. Continuing is not a failure —
+ * a message waiting for its send window, say — so it neither counts an attempt nor logs an error.
+ */
+export type JobOutcome = void | { continueAt: Date };
+
 export interface JobType<P> {
   type: string;
   payload: z.ZodType<P>;
@@ -46,7 +52,7 @@ export interface JobType<P> {
   maxAttempts?: number;
   /** Older than this (since creation) and still failing: dead instead of retrying. */
   maxAgeMs?: number;
-  handler(payload: P, ctx: JobContext): Promise<void> | void;
+  handler(payload: P, ctx: JobContext): Promise<JobOutcome> | JobOutcome;
 }
 
 export interface DispatcherOptions {
@@ -58,7 +64,7 @@ export interface DispatcherOptions {
   leaseMs?: number;
   /** Longest sleep between checks even when nothing is due (guards against clock jumps). */
   maxIdleMs?: number;
-  onFinished?: (job: JobRow, status: 'succeeded' | 'failed' | 'dead' | 'retry') => void;
+  onFinished?: (job: JobRow, status: 'succeeded' | 'continued' | 'failed' | 'dead' | 'retry') => void;
 }
 
 const BASE_BACKOFF_MS = 5_000;
@@ -204,13 +210,22 @@ export class Dispatcher {
       () => queue.renew(job.id, this.owner, this.leaseMs),
       Math.floor(this.leaseMs / 3),
     );
+    // Renewing a lease is no reason to keep the process alive.
+    renew.unref();
     try {
-      await type.handler(payload.data, {
+      const outcome = await type.handler(payload.data, {
         jobId: job.id,
         attempt: job.attempts,
         correlationId: job.correlation_id,
         signal: this.abort.signal,
       });
+      if (outcome) {
+        // Never sooner than a second from now: a handler bug must not become a hot loop.
+        const floor = this.options.now().getTime() + 1_000;
+        queue.reschedule(job.id, new Date(Math.max(outcome.continueAt.getTime(), floor)));
+        this.options.onFinished?.(job, 'continued');
+        return;
+      }
       queue.succeed(job.id);
       this.options.onFinished?.(job, 'succeeded');
     } catch (error) {

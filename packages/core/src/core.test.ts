@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RpcError, RpcPeer, silentLogger, type WorkerHealth } from '@tabreach/protocol';
+import { RpcError, RpcPeer, silentLogger, uuidv7, type WorkerHealth } from '@tabreach/protocol';
 import { createEndpointPair } from '@tabreach/protocol/testing';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
@@ -54,6 +54,56 @@ async function startCore() {
 }
 
 describe('CoreService', () => {
+  it('runs a campaign end to end through the app protocol', async () => {
+    const core = await startCore();
+    const [rendererSide, coreSide] = createEndpointPair();
+    core.attachApp(coreSide);
+    const app = new RpcPeer(rendererSide);
+    const contact = await app.request('contacts.create', { firstName: 'Ann', email: 'ann@acme.test' });
+    const campaign = await app.request('campaigns.create', {
+      name: 'Hello',
+      config: {
+        steps: [
+          {
+            type: 'send_message',
+            channel: 'test',
+            executionMode: 'auto',
+            delaySeconds: 0,
+            subject: 'Hi',
+            body: 'Hi {{firstName}}',
+          },
+        ],
+        timezone: 'UTC',
+        window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
+        approvalMode: 'approve_each',
+      },
+    });
+    await app.request('campaigns.launch', { id: campaign.id });
+    const key = uuidv7();
+    const enroll = { campaignId: campaign.id, contactIds: [contact.id] };
+    expect(await app.request('campaigns.enroll', enroll, { idempotencyKey: key })).toMatchObject({
+      enrolled: 1,
+    });
+    expect(await app.request('campaigns.enroll', enroll, { idempotencyKey: key })).toMatchObject({
+      enrolled: 1,
+    });
+
+    await expect.poll(async () => (await app.request('approvals.pending', {})).items).toHaveLength(1);
+    const [approval] = (await app.request('approvals.pending', {})).items;
+    expect(approval).toMatchObject({ body: 'Hi Ann', target: 'ann@acme.test' });
+    await expect(
+      app.request('approvals.approve', { approvalId: approval?.id as string, contentHash: '0'.repeat(64) }),
+    ).rejects.toMatchObject({ problem: { code: 'APPROVAL_STALE' } });
+    await app.request('approvals.approve', {
+      approvalId: approval?.id as string,
+      contentHash: approval?.contentHash as string,
+    });
+    await expect
+      .poll(async () => (await app.request('enrollments.list', { campaignId: campaign.id })).items[0]?.status)
+      .toBe('completed');
+    core.close();
+  });
+
   it('runs enqueued jobs right away and tells windows about failures', async () => {
     const core = await startCore();
     const [rendererSide, coreSide] = createEndpointPair();
@@ -72,7 +122,7 @@ describe('CoreService', () => {
     expect(await ran).toBe('hello');
 
     core.services.jobs.enqueue('test.unregistered', {});
-    await expect.poll(() => changed).toContainEqual(['job']);
+    await expect.poll(() => changed).toContainEqual(['job', 'enrollment']);
     core.close();
   });
 

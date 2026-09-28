@@ -63,10 +63,16 @@ export class SideEffectLedger {
     private readonly now: () => Date,
   ) {}
 
-  reserve(parts: IntentParts, workflowRunId: string, contentHash: string): Reservation {
+  /**
+   * `guard` runs inside the reserving transaction, only when the result would be `execute`: the
+   * final pre-send checks (suppression, caps, approval hash) and the reservation commit together
+   * (ADR 021 §6). A guard that throws leaves the ledger unchanged.
+   */
+  reserve(parts: IntentParts, workflowRunId: string, contentHash: string, guard?: () => void): Reservation {
     return transaction(this.db, () => {
       const key = intentKey(parts);
       const existing = this.byKey(key);
+      if (!existing || existing.status === 'reserved' || existing.status === 'not_sent') guard?.();
       if (!existing) {
         const ts = this.now().toISOString();
         this.db
@@ -138,6 +144,13 @@ export class SideEffectLedger {
   byKey(key: string): SideEffectRow | undefined {
     return this.db.prepare('SELECT * FROM side_effects WHERE idempotency_key = ?').get(key) as
       SideEffectRow | undefined;
+  }
+
+  /** The ledger rows of one enrollment step, whatever their target. */
+  forStep(scopeId: string, stepPosition: number): SideEffectRow[] {
+    return this.db
+      .prepare('SELECT * FROM side_effects WHERE scope_id = ? AND step_position = ?')
+      .all(scopeId, stepPosition) as unknown as SideEffectRow[];
   }
 
   /**

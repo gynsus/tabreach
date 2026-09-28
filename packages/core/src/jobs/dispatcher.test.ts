@@ -126,6 +126,24 @@ describe('Dispatcher', () => {
     expect(queue.get(b)).toMatchObject({ status: 'failed', last_error_class: 'suppressed', attempts: 1 });
   });
 
+  it('continues a job later without counting an attempt, never sooner than a second', async () => {
+    let calls = 0;
+    dispatcher.register(
+      type({
+        type: 'later',
+        handler: () => (++calls === 1 ? { continueAt: clock.now() } : undefined),
+      }),
+    );
+    const id = queue.enqueue('later', {}) as string;
+    await dispatcher.runDue();
+    expect(queue.get(id)).toMatchObject({ status: 'pending', attempts: 0 });
+    expect(new Date(queue.get(id)?.run_at as string).getTime() - clock.now().getTime()).toBe(1_000);
+    clock.advance(1_000);
+    await dispatcher.runDue();
+    expect(queue.get(id)).toMatchObject({ status: 'succeeded', attempts: 1 });
+    expect(finished).toEqual(['later:continued', 'later:succeeded']);
+  });
+
   it('buries jobs older than maxAgeMs instead of retrying them', async () => {
     dispatcher.register(
       type({

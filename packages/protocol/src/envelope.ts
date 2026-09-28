@@ -33,6 +33,11 @@ export const errorCodeSchema = z.enum([
   'UNAVAILABLE',
   'INTERNAL',
   'BROWSER_CHROME_NOT_FOUND',
+  'NOT_FOUND',
+  /** The action does not fit the current state (e.g. launching an archived campaign). */
+  'CONFLICT',
+  /** The draft or target changed after the user looked at it (ADR 021 §4). */
+  'APPROVAL_STALE',
 ]);
 export type ErrorCode = z.infer<typeof errorCodeSchema>;
 

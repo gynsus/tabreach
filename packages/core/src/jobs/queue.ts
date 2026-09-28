@@ -139,6 +139,22 @@ export class JobQueue {
       .run(runAt.toISOString(), errorClass, message.slice(0, 500), this.now().toISOString(), id);
   }
 
+  /** The handler asked to run again later: not a failure, so the attempt is given back. */
+  reschedule(id: string, runAt: Date): void {
+    this.db
+      .prepare(
+        `UPDATE jobs SET status = 'pending', run_at = ?, attempts = MAX(attempts - 1, 0), lease_owner = NULL,
+                         lease_until = NULL, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(runAt.toISOString(), this.now().toISOString(), id);
+  }
+
+  /** The job holding a dedupe key right now (pending or running), if any. */
+  byDedupeKey(key: string): JobRow | undefined {
+    return this.db.prepare('SELECT * FROM jobs WHERE dedupe_key = ?').get(key) as JobRow | undefined;
+  }
+
   /**
    * After a crash: running jobs whose lease expired go back to pending. Side-effecting handlers are
    * guarded by the side-effect ledger, so running them again leads to reconciliation, not a repeat.

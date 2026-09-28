@@ -1,5 +1,20 @@
 import { z } from 'zod';
 import {
+  approvalDecisionSchema,
+  approvalSchema,
+  approveRequestSchema,
+  campaignCreateSchema,
+  campaignSchema,
+  campaignUpdateSchema,
+  draftReviseSchema,
+  enrollmentListRequestSchema,
+  enrollmentSchema,
+  enrollReportSchema,
+  enrollRequestSchema,
+  jobSchema,
+  policySettingsSchema,
+} from './campaigns.js';
+import {
   actionEventSchema,
   activityListRequestSchema,
   companyDetailSchema,
@@ -73,6 +88,9 @@ export const launchCheckResultSchema = z.object({
   error: z.string().optional(),
 });
 export type LaunchCheckResult = z.infer<typeof launchCheckResultSchema>;
+
+const byId = z.object({ id: z.uuid() });
+const ok = z.object({ ok: z.literal(true) });
 
 export const secretCipherTextSchema = z.object({ ciphertext: z.base64() });
 
@@ -192,6 +210,74 @@ export const requests = {
     request: z.object({ csv: z.string().min(1).max(MAX_CSV_CHARS) }),
     response: suppressionImportReportSchema,
   },
+  'campaigns.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ includeArchived: z.boolean().default(false) }),
+    response: z.object({ items: z.array(campaignSchema) }),
+  },
+  'campaigns.get': { channel: 'app', kind: 'query', request: byId, response: campaignSchema },
+  'campaigns.create': {
+    channel: 'app',
+    kind: 'command',
+    request: campaignCreateSchema,
+    response: campaignSchema,
+  },
+  'campaigns.update': {
+    channel: 'app',
+    kind: 'command',
+    request: campaignUpdateSchema,
+    response: campaignSchema,
+  },
+  'campaigns.launch': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
+  'campaigns.pause': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
+  'campaigns.resume': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
+  'campaigns.archive': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
+  'campaigns.enroll': {
+    channel: 'app',
+    kind: 'command',
+    request: enrollRequestSchema,
+    response: enrollReportSchema,
+  },
+  'enrollments.list': {
+    channel: 'app',
+    kind: 'query',
+    request: enrollmentListRequestSchema,
+    response: pageOf(enrollmentSchema),
+  },
+  'enrollments.pause': { channel: 'app', kind: 'command', request: byId, response: enrollmentSchema },
+  'enrollments.resume': { channel: 'app', kind: 'command', request: byId, response: enrollmentSchema },
+  'enrollments.stop': { channel: 'app', kind: 'command', request: byId, response: enrollmentSchema },
+  'approvals.pending': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ campaignId: z.uuid().optional() }),
+    response: z.object({ items: z.array(approvalSchema) }),
+  },
+  'approvals.approve': { channel: 'app', kind: 'command', request: approveRequestSchema, response: ok },
+  'approvals.reject': { channel: 'app', kind: 'command', request: approvalDecisionSchema, response: ok },
+  'approvals.skip': { channel: 'app', kind: 'command', request: approvalDecisionSchema, response: ok },
+  'drafts.revise': { channel: 'app', kind: 'command', request: draftReviseSchema, response: approvalSchema },
+  'policy.settings.get': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: policySettingsSchema,
+  },
+  'policy.settings.update': {
+    channel: 'app',
+    kind: 'command',
+    request: policySettingsSchema,
+    response: policySettingsSchema,
+  },
+  'jobs.needsAttention': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(jobSchema) }),
+  },
+  'jobs.retry': { channel: 'app', kind: 'command', request: byId, response: ok },
+  'jobs.dismiss': { channel: 'app', kind: 'command', request: byId, response: ok },
   'activity.list': {
     channel: 'app',
     kind: 'query',

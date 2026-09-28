@@ -24,10 +24,12 @@ export async function executeSideEffect(opts: {
   workflowRunId: string;
   message: Omit<OutgoingMessage, 'idempotencyKey'>;
   signal: AbortSignal;
+  /** Final pre-send checks, run in the reserving transaction; throw to block the send. */
+  guard?: () => void;
 }): Promise<ExecutionOutcome> {
   const { ledger, channel, signal } = opts;
   const key = intentKey(opts.intent);
-  let reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash);
+  let reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard);
 
   if (reservation.action === 'already_done') {
     return { outcome: 'completed', sideEffectId: reservation.effect.id, alreadyDone: true };
@@ -46,7 +48,7 @@ export async function executeSideEffect(opts: {
     }
     // Verified: the earlier attempt never reached the recipient. It is safe to send now.
     ledger.markNotSent(id, 'reconciled_absent', 'provider_lookup');
-    reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash);
+    reservation = ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard);
     if (reservation.action !== 'execute') {
       throw new Error(`Unexpected ledger state after reconciliation: ${reservation.action}`);
     }
