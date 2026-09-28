@@ -50,6 +50,7 @@ export class CoreService {
       onChanged: (entities) => this.announce(entities),
       // Deferred: the enqueuing transaction must commit before the dispatcher looks.
       onJobEnqueued: () => queueMicrotask(() => this.dispatcher.wake()),
+      cipher: this.cipher(),
     });
     this.dispatcher = new Dispatcher({
       queue: this.services.jobs,

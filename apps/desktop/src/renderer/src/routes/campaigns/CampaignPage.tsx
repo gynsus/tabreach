@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, Field, Input, PageHeader } from '../../components/ui';
+import { Alert, Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
 import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
@@ -153,6 +153,15 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
             />
           </section>
 
+          {config.steps.some((s) => s.type === 'send_message' && s.channel === 'email') ? (
+            <SendingSection
+              value={config.emailAccountId}
+              errorKey={errors.emailAccountId}
+              disabled={archived || busy}
+              onChange={(emailAccountId) => edit({ ...config, emailAccountId })}
+            />
+          ) : null}
+
           <section aria-labelledby="schedule-heading" className="grid gap-3">
             <h2 id="schedule-heading" className="text-[15px] font-semibold">
               {t('campaigns.schedule')}
@@ -197,5 +206,53 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
         </div>
       </div>
     </>
+  );
+}
+
+function SendingSection(props: {
+  value: string | null;
+  errorKey: string | undefined;
+  disabled: boolean;
+  onChange: (id: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const accounts = useQuery({ queryKey: ['accounts'], queryFn: () => call('accounts.list', {}) });
+  const items = accounts.data?.items ?? [];
+  return (
+    <section aria-labelledby="sending-heading" className="grid gap-3">
+      <h2 id="sending-heading" className="text-[15px] font-semibold">
+        {t('campaigns.sending')}
+      </h2>
+      <Field
+        label={t('campaigns.emailAccount')}
+        errorKey={props.errorKey}
+        hint={accounts.isSuccess && items.length === 0 ? t('campaigns.connectAccountHint') : undefined}
+        className="max-w-md"
+      >
+        {(id, describedBy) => (
+          <Select
+            id={id}
+            value={props.value ?? ''}
+            disabled={props.disabled}
+            aria-describedby={describedBy}
+            aria-invalid={props.errorKey ? true : undefined}
+            onChange={(e) => props.onChange(e.target.value || null)}
+          >
+            <option value="">{t('campaigns.noAccount')}</option>
+            {items.map((a) => (
+              <option key={a.id} value={a.id} disabled={a.status !== 'active'}>
+                {a.fromName ? `${a.fromName} <${a.address}>` : a.address}
+                {a.status === 'active' ? '' : ` — ${t(`accounts.statuses.${a.status}`)}`}
+              </option>
+            ))}
+          </Select>
+        )}
+      </Field>
+      {accounts.isSuccess && items.length === 0 ? (
+        <Link to="/settings" className="text-[13px] text-accent hover:underline">
+          {t('accounts.connect')}
+        </Link>
+      ) : null}
+    </section>
   );
 }

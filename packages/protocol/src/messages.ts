@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import {
+  accountUpdateSchema,
+  connectionCheckSchema,
+  emailAccountSchema,
+  imapAccountInputSchema,
+} from './accounts.js';
+import {
   approvalDecisionSchema,
   approvalSchema,
   approveRequestSchema,
@@ -275,6 +281,34 @@ export const requests = {
     kind: 'query',
     request: z.object({}),
     response: z.object({ items: z.array(jobSchema) }),
+  },
+  'accounts.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(emailAccountSchema) }),
+  },
+  /** Tests the connection first; saves only if SMTP and IMAP both work. */
+  'accounts.connectImap': {
+    channel: 'app',
+    kind: 'command',
+    request: imapAccountInputSchema,
+    response: emailAccountSchema,
+  },
+  'accounts.update': {
+    channel: 'app',
+    kind: 'command',
+    request: accountUpdateSchema,
+    response: emailAccountSchema,
+  },
+  'accounts.test': { channel: 'app', kind: 'command', request: byId, response: connectionCheckSchema },
+  'accounts.disconnect': { channel: 'app', kind: 'command', request: byId, response: ok },
+  /** A person settles an outcome TabReach could not verify (ADR 018: user_confirmation). */
+  'sideEffects.resolve': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ id: z.uuid(), outcome: z.enum(['completed', 'not_sent']) }),
+    response: ok,
   },
   'jobs.retry': { channel: 'app', kind: 'command', request: byId, response: ok },
   'jobs.dismiss': { channel: 'app', kind: 'command', request: byId, response: ok },

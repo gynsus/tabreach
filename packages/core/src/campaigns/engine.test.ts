@@ -30,6 +30,7 @@ const config = (steps: CampaignStep[], over: Partial<CampaignConfig> = {}): Camp
   timezone: 'UTC',
   window: null,
   approvalMode: 'approve_each',
+  emailAccountId: null,
   ...over,
 });
 

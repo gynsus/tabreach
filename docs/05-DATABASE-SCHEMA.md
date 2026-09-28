@@ -391,11 +391,13 @@ display_name
 external_account_id
 browser_profile_id null
 secret_id null fk -> secrets
-limits json
-status
-metadata json             -- non-secret config: IMAP host, OAuth client id, ...
+limits json               -- { dailyLimit, minSpacingSeconds }
+status check in ('active','auth_required','disabled')
+metadata json             -- non-secret config: SMTP/IMAP servers, username, sender name, appendToSent, OAuth client id
 created_at, updated_at
 ```
+
+Unique `(channel, provider, external_account_id)` among accounts that are not disabled. `side_effects.channel_account_id` (nullable, migration 9) records the account that sent; pacing is per account.
 
 ### `secrets`
 

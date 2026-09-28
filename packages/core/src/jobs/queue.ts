@@ -150,6 +150,15 @@ export class JobQueue {
       .run(runAt.toISOString(), this.now().toISOString(), id);
   }
 
+  /** The newest job of a type whose payload field has this value (active or finished). */
+  latestFor(type: string, payloadField: string, value: string): JobRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM jobs WHERE type = ? AND json_extract(payload, ?) = ? ORDER BY created_at DESC, id DESC LIMIT 1`,
+      )
+      .get(type, `$.${payloadField}`, value) as JobRow | undefined;
+  }
+
   /** The job holding a dedupe key right now (pending or running), if any. */
   byDedupeKey(key: string): JobRow | undefined {
     return this.db.prepare('SELECT * FROM jobs WHERE dedupe_key = ?').get(key) as JobRow | undefined;

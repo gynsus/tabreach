@@ -16,7 +16,7 @@ const textarea =
 
 export const newMessage = (): CampaignStep => ({
   type: 'send_message',
-  channel: 'test',
+  channel: 'email',
   executionMode: 'auto',
   delaySeconds: 0,
   subject: '',
@@ -162,7 +162,15 @@ function MessageFields(props: {
     <>
       <Field label={t('campaigns.channel')} className="max-w-md">
         {(id) => (
-          <Select id={id} value={step.channel} disabled>
+          <Select
+            id={id}
+            value={step.channel}
+            disabled={props.disabled}
+            onChange={(e) =>
+              props.onChange({ ...step, channel: e.target.value === 'test' ? 'test' : 'email' })
+            }
+          >
+            <option value="email">{t('campaigns.channels.email')}</option>
             <option value="test">{t('campaigns.channels.test')}</option>
           </Select>
         )}

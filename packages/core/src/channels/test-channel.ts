@@ -15,6 +15,7 @@ export type TestOutcome =
  */
 export class TestChannel implements MessageChannel {
   readonly channel = 'test';
+  readonly accountId = null;
   private readonly forced: TestOutcome[] = [];
 
   constructor(
@@ -65,6 +66,6 @@ export class TestChannel implements MessageChannel {
     const row = this.db
       .prepare('SELECT id FROM test_channel_deliveries WHERE idempotency_key = ?')
       .get(idempotencyKey) as { id: string } | undefined;
-    return row ? 'completed' : 'not_sent';
+    return row ? { status: 'completed', externalRefs: { deliveryId: row.id } } : { status: 'not_sent' };
   }
 }

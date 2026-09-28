@@ -32,6 +32,24 @@ describe('migrate', () => {
     db.close();
   });
 
+  it('upgrades a previous-version database with data (v8 → current)', async () => {
+    const db = openDatabase(join(dir, 'app.db'));
+    await migrate(db, migrations.slice(0, 8), { backupDir: backupDir() });
+    const ts = '2026-09-28T10:00:00.000Z';
+    db.prepare(
+      `INSERT INTO side_effects (id, idempotency_key, scope_id, step_position, channel, action_type, target_normalized,
+                                 status, created_at, updated_at)
+       VALUES ('se-1', 'k', 'e', 1, 'test', 'send_message', 'a@b.test', 'completed', ?, ?)`,
+    ).run(ts, ts);
+    const report = await migrate(db, migrations, { backupDir: backupDir() });
+    expect(report).toMatchObject({ fromVersion: 8, toVersion: migrations.length });
+    expect(report.backupPath).not.toBeNull();
+    expect(db.prepare('SELECT status, channel_account_id FROM side_effects').all()).toEqual([
+      { status: 'completed', channel_account_id: null },
+    ]);
+    db.close();
+  });
+
   it('is a no-op on an up-to-date database', async () => {
     const db = openDatabase(join(dir, 'app.db'));
     await migrate(db, migrations, { backupDir: backupDir() });

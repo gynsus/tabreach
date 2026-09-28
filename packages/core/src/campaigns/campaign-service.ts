@@ -12,7 +12,7 @@ import {
   type EnrollReport,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
-import type { MessageChannel } from '../channels/channel.js';
+import type { ChannelResolver } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
 import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
@@ -41,7 +41,7 @@ export class CampaignService {
     private readonly audit: AuditLog,
     private readonly engine: CampaignEngine,
     private readonly jobs: JobQueue,
-    private readonly channels: ReadonlyMap<string, MessageChannel>,
+    private readonly channels: ChannelResolver,
     private readonly now: () => Date,
   ) {}
 
@@ -269,7 +269,11 @@ export class CampaignService {
     if (config.timezone !== null && !isValidTimeZone(config.timezone)) fields.timezone = 'timezone.invalid';
     config.steps.forEach((step, i) => {
       if (step.type !== 'send_message') return;
-      if (!this.channels.has(step.channel)) fields[`steps.${i}.channel`] = 'channel.unavailable';
+      if (step.channel === 'email' && !config.emailAccountId) fields.emailAccountId = 'account.required';
+      else if (!this.channels(step.channel, config)) {
+        if (step.channel === 'email') fields.emailAccountId = 'account.unavailable';
+        else fields[`steps.${i}.channel`] = 'channel.unavailable';
+      }
       if (!step.body.trim()) fields[`steps.${i}.body`] = 'body.required';
       if (unknownPlaceholders(step.subject).length > 0)
         fields[`steps.${i}.subject`] = 'template.unknownField';

@@ -14,7 +14,7 @@ import {
 } from '@tabreach/protocol';
 import { z } from 'zod';
 import type { AuditLog } from '../audit/audit-log.js';
-import type { MessageChannel } from '../channels/channel.js';
+import type { ChannelResolver, MessageChannel } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
 import {
   PermanentError,
@@ -128,7 +128,7 @@ export interface CampaignEngineDeps {
   jobs: JobQueue;
   ledger: SideEffectLedger;
   policy: ContactPolicy;
-  channels: ReadonlyMap<string, MessageChannel>;
+  channels: ChannelResolver;
   logger: Logger;
   changed: (entities: ChangedEntity[]) => void;
 }
@@ -402,8 +402,7 @@ export class CampaignEngine {
           this.updateRun(run, { current_state: 'CHECK_APPROVAL' });
           return 'next';
         }
-        const channel = this.d.channels.get(step.channel);
-        if (!channel) throw new PermanentError('channel_unavailable');
+        const channel = this.channelFor(e, step);
         const pacing = this.d.policy.checkChannel(channel, this.intentKeyFor(e, run, step, target as string));
         if (pacing.kind === 'defer') return { continueAt: pacing.until };
         this.updateRun(run, { current_state: 'SEND' });
@@ -420,8 +419,7 @@ export class CampaignEngine {
     step: SendStep,
     ctx: JobContext,
   ): Promise<'next' | 'done' | { continueAt: Date }> {
-    const channel = this.d.channels.get(step.channel);
-    if (!channel) throw new PermanentError('channel_unavailable');
+    const channel = this.channelFor(e, step);
     const draft = this.latestDraft(run.id);
     const facts = this.contact(e.contact_id);
     const approval = this.currentApproval(run.id);
@@ -465,7 +463,13 @@ export class CampaignEngine {
         channel,
         intent,
         workflowRunId: run.id,
-        message: { target, subject: draft.subject, body: draft.body, contentHash: hash },
+        message: {
+          target,
+          recipientName: templateValues(facts).fullName,
+          subject: draft.subject,
+          body: draft.body,
+          contentHash: hash,
+        },
         signal: ctx.signal,
         guard: () => {
           // Final pre-send check, in the reserving transaction (ADR 021 §6).
@@ -498,6 +502,23 @@ export class CampaignEngine {
       });
     }
 
+    if (outcome.outcome === 'pending') {
+      // Reconciliation cannot tell yet (the Sent search lags): look again later, not a failure.
+      return { continueAt: outcome.retryAt };
+    }
+    if (outcome.outcome === 'not_sent' && outcome.permanent) {
+      return transaction(this.d.db, () => {
+        this.recordSendAttempt(run.id, ctx.attempt, outcome);
+        audit('failed', { errorClass: outcome.errorClass, permanent: true });
+        const fresh = this.enrollment(e.id);
+        if (fresh && (fresh.status === 'active' || fresh.status === 'paused')) {
+          this.stopEnrollment(fresh, 'send_failed', run.correlation_id, 'system', {
+            errorClass: outcome.errorClass,
+          });
+        }
+        return 'done';
+      });
+    }
     if (outcome.outcome !== 'completed') {
       transaction(this.d.db, () => {
         this.recordSendAttempt(run.id, ctx.attempt, outcome);
@@ -783,6 +804,12 @@ export class CampaignEngine {
       timeZone: this.timeZoneFor(e, facts),
       window: this.windowFor(e.campaign_version_id),
     });
+  }
+
+  private channelFor(e: EnrollmentRow, step: SendStep): MessageChannel {
+    const channel = this.d.channels(step.channel, this.versionConfig(e.campaign_version_id));
+    if (!channel) throw new PermanentError('channel_unavailable');
+    return channel;
   }
 
   private intentKeyFor(e: EnrollmentRow, run: RunRow, step: SendStep, target: string): string {

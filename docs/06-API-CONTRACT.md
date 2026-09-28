@@ -148,11 +148,13 @@ Keys, not sentences: the renderer translates them (`errors.*` in the i18n catalo
 ## Channel accounts
 
 ```text
-query   channelAccounts.list
-command channelAccounts.connectGmail   # { clientId, clientSecret? } -> starts OAuth via main
-command channelAccounts.connectImap    # { host, port, security, username, auth }
-command channelAccounts.test
-command channelAccounts.disconnect
+query   accounts.list                  # email accounts; never includes secrets
+command accounts.connectImap           # { address, smtp, imap, username, password, limits } — tested before saving
+command accounts.update                # name, sender name, limits, new password (tested before saving)
+command accounts.test                  # SMTP + IMAP check, reports the Sent folder
+command accounts.disconnect            # deletes the stored password
+command accounts.connectGmail          # Phase 3b: { clientId, clientSecret? } -> OAuth loopback via main
+command sideEffects.resolve            # { id, outcome: completed | not_sent } — a person settles an unknown send
 ```
 
 ## Inbox

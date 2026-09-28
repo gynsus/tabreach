@@ -135,6 +135,14 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
 - `TestChannel` stands in for the outside world in tests and can simulate rejection, an unconfirmed
   send and a crash before or after delivery.
 
+## Email
+
+- Core talks SMTP (nodemailer's `SMTPConnection`, driven stage by stage) and IMAP (imapflow). Both are
+  behind `MailClients` (`packages/core/src/email/transport.ts`); tests use `FakeMail`, and the SMTP
+  outcome rules are also tested against a local `smtp-server` (plaintext on 127.0.0.1 only through
+  `createImapSmtpClients({ plaintextLoopback: true })` — the product always requires TLS).
+- Passwords are stored with `SecretStore` (encrypted by main); account DTOs and logs never contain them.
+
 ## User interface
 
 Screens: Contacts, Companies, Do not contact, Campaigns (editor, schedule, people), Approvals

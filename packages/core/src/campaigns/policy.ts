@@ -101,17 +101,23 @@ export class ContactPolicy {
 
   /** Pacing of a channel account: minimum spacing between sends and a rolling 24-hour limit. */
   checkChannel(
-    channel: { channel: string; minSpacingMs: number; dailyLimit: number | null },
+    channel: { channel: string; accountId: string | null; minSpacingMs: number; dailyLimit: number | null },
     idempotencyKey: string,
   ): PolicyVerdict {
     const now = this.now();
     const recent = this.db
       .prepare(
         `SELECT updated_at FROM side_effects
-         WHERE channel = ? AND status IN ${TOUCH} AND idempotency_key != ? AND updated_at > ?
+         WHERE channel = ? AND channel_account_id IS ? AND status IN ${TOUCH} AND idempotency_key != ?
+           AND updated_at > ?
          ORDER BY updated_at`,
       )
-      .all(channel.channel, idempotencyKey, new Date(now.getTime() - DAY_MS).toISOString()) as {
+      .all(
+        channel.channel,
+        channel.accountId,
+        idempotencyKey,
+        new Date(now.getTime() - DAY_MS).toISOString(),
+      ) as {
       updated_at: string;
     }[];
     const last = recent.at(-1);

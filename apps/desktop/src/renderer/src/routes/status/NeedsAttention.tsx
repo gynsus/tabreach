@@ -48,6 +48,12 @@ function JobRow({ job }: { job: Job }) {
     onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
+  const resolve = useMutation({
+    mutationFn: (outcome: 'completed' | 'not_sent') =>
+      call('sideEffects.resolve', { id: job.unknownSideEffectId as string, outcome }),
+    onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
   const reason = job.lastErrorClass
     ? translateKey(t, `attention.errors.${job.lastErrorClass}`, job.lastErrorClass)
     : t('attention.errors.unexpected');
@@ -61,14 +67,28 @@ function JobRow({ job }: { job: Job }) {
           </Badge>
         </span>
         <span className="text-soft">{reason}</span>
+        {job.unknownSideEffectId ? (
+          <span className="text-xs text-faint">{t('attention.resolveHint')}</span>
+        ) : null}
         <span className="font-mono text-[11px] text-faint">
           {formatDateTime(job.updatedAt, i18n.language)}
         </span>
       </span>
       <span className="flex gap-1">
-        <Button size="sm" onClick={() => act.mutate('jobs.retry')} disabled={act.isPending}>
-          {t('attention.retry')}
-        </Button>
+        {job.unknownSideEffectId ? (
+          <>
+            <Button size="sm" onClick={() => resolve.mutate('completed')} disabled={resolve.isPending}>
+              {t('attention.wasSent')}
+            </Button>
+            <Button size="sm" onClick={() => resolve.mutate('not_sent')} disabled={resolve.isPending}>
+              {t('attention.wasNotSent')}
+            </Button>
+          </>
+        ) : (
+          <Button size="sm" onClick={() => act.mutate('jobs.retry')} disabled={act.isPending}>
+            {t('attention.retry')}
+          </Button>
+        )}
         <Button size="sm" variant="ghost" onClick={() => act.mutate('jobs.dismiss')} disabled={act.isPending}>
           {t('attention.dismiss')}
         </Button>

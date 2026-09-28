@@ -31,6 +31,7 @@ export interface SideEffectRow {
   external_refs: string;
   reconciled_by: ReconciledBy | null;
   error_class: string | null;
+  channel_account_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,7 +69,14 @@ export class SideEffectLedger {
    * final pre-send checks (suppression, caps, approval hash) and the reservation commit together
    * (ADR 021 §6). A guard that throws leaves the ledger unchanged.
    */
-  reserve(parts: IntentParts, workflowRunId: string, contentHash: string, guard?: () => void): Reservation {
+  reserve(
+    parts: IntentParts,
+    workflowRunId: string,
+    contentHash: string,
+    guard?: () => void,
+    /** The channel account that will send (not part of the key: the intent is the same). */
+    channelAccountId: string | null = null,
+  ): Reservation {
     return transaction(this.db, () => {
       const key = intentKey(parts);
       const existing = this.byKey(key);
@@ -78,8 +86,9 @@ export class SideEffectLedger {
         this.db
           .prepare(
             `INSERT INTO side_effects (id, idempotency_key, scope_id, step_position, channel, action_type,
-                                       target_normalized, workflow_run_id, status, content_hash, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?, ?)`,
+                                       target_normalized, workflow_run_id, status, content_hash, channel_account_id,
+                                       created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'reserved', ?, ?, ?, ?)`,
           )
           .run(
             uuidv7(),
@@ -91,6 +100,7 @@ export class SideEffectLedger {
             parts.target,
             workflowRunId,
             contentHash,
+            channelAccountId,
             ts,
             ts,
           );
@@ -105,7 +115,12 @@ export class SideEffectLedger {
         case 'reserved':
         case 'not_sent':
           // Reserved but never marked executing: the irreversible call was not made.
-          this.update(existing.id, { status: 'reserved', content_hash: contentHash, error_class: null });
+          this.update(existing.id, {
+            status: 'reserved',
+            content_hash: contentHash,
+            error_class: null,
+            channel_account_id: channelAccountId,
+          });
           return { action: 'execute', effect: this.byKey(key) as SideEffectRow };
       }
     });
@@ -144,6 +159,15 @@ export class SideEffectLedger {
   byKey(key: string): SideEffectRow | undefined {
     return this.db.prepare('SELECT * FROM side_effects WHERE idempotency_key = ?').get(key) as
       SideEffectRow | undefined;
+  }
+
+  /** An uncertain entry first reserved by this run (for "Needs attention"). */
+  unknownForRun(workflowRunId: string): SideEffectRow | undefined {
+    return this.db
+      .prepare(
+        `SELECT * FROM side_effects WHERE workflow_run_id = ? AND status IN ('unknown', 'executing') LIMIT 1`,
+      )
+      .get(workflowRunId) as SideEffectRow | undefined;
   }
 
   /** The ledger rows of one enrollment step, whatever their target. */
