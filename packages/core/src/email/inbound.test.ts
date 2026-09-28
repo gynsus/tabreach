@@ -102,7 +102,7 @@ describe('parseInbound', () => {
       outOfOffice: false,
       bounce: null,
     });
-    expect(m.text).toContain("Sounds good, let's talk.");
+    expect(m.text).toBe("Sounds good, let's talk."); // the quoted "> Hello Bob" is not kept
   });
 
   it('recognises out-of-office and list mail as automatic', async () => {
