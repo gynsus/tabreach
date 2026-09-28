@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Approval } from '@tabreach/protocol';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
@@ -49,8 +49,13 @@ export function ApprovalsPage() {
     },
   });
 
+  // The listener is attached once, on mount, and reads the latest state through a ref: a key pressed
+  // right after an approval appears must not fall between two re-attachments.
+  const latest = useRef({ current, decide, editing, count: items.length });
+  latest.current = { current, decide, editing, count: items.length };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const { current, decide, editing, count } = latest.current;
       if (editing || !current || decide.isPending) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
@@ -60,14 +65,14 @@ export function ApprovalsPage() {
       else if (key === 's') decide.mutate({ decision: 'skip', approval: current });
       else if (key === 'r') decide.mutate({ decision: 'reject', approval: current });
       else if (key === 'e') setEditing(true);
-      else if (key === 'j' || e.key === 'ArrowDown') setIndex((i) => Math.min(i + 1, items.length - 1));
+      else if (key === 'j' || e.key === 'ArrowDown') setIndex((i) => Math.min(i + 1, count - 1));
       else if (key === 'k' || e.key === 'ArrowUp') setIndex((i) => Math.max(i - 1, 0));
       else return;
       e.preventDefault();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [current, decide, editing, items.length]);
+  }, []);
 
   return (
     <>
