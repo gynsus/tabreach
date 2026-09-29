@@ -275,6 +275,43 @@ export const en = {
     importSummary: '{{inserted}} new, {{updated}} updated, {{skipped}} unchanged, {{invalid}} not imported',
   },
   campaigns: {
+    mode: 'How the message is written',
+    modes: {
+      template: { name: 'Template', description: 'The same text for everyone, with placeholders.' },
+      ai: {
+        name: 'Written by AI',
+        description: 'Researches each company’s website, then writes a personal message from verified facts.',
+      },
+    },
+    openAiSettings: 'Open AI settings',
+    instructions: 'Instructions for AI',
+    instructionsHint:
+      'What the message should say and achieve: your offer, tone, call to action, language. AI uses only facts found on the company’s website and the contact’s fields.',
+    instructionsPlaceholder:
+      'We build custom warehouse software. Offer a 20-minute call next week. Friendly, short, no buzzwords. Write in English.',
+    signature: 'Signature',
+    signatureHint: 'Added below the message exactly as written; AI never writes it. Placeholders work here.',
+    approval: 'Approval and checks',
+    approvalMode: 'Approval',
+    approvalModes: {
+      approve_each: 'Approve each message',
+      approve_campaign: 'Approve a sample, then automatically',
+    },
+    approvalModeHints: {
+      approve_each: 'Every message waits for you in Approvals.',
+      approve_campaign:
+        'You approve the first {{n}} messages yourself. After that a message is approved automatically only if it passes every check below; any other waits for you. Edited messages always do.',
+    },
+    sampleSize: 'Messages to approve first',
+    checks: 'Checks for every message',
+    checksHint:
+      'Always checked: names and numbers must come from verified facts or the contact’s data, the signature is present, the address is still the contact’s.',
+    maxLength: 'Maximum length, characters',
+    forbiddenPhrases: 'Forbidden phrases',
+    onePerLine: 'One per line.',
+    allowedLinkDomains: 'Allowed link domains',
+    allowedLinkDomainsHint:
+      'One per line. Links and email addresses to any other domain fail the check (the signature is exempt).',
     title: 'Campaigns',
     subtitle: 'Sequences of messages. Nothing is sent without your approval.',
     new: 'New campaign',
@@ -386,6 +423,26 @@ export const en = {
     confirmStop: 'Stop?',
   },
   approvals: {
+    origins: { template: 'Template', ai: 'AI', user: 'Edited' },
+    checksPassed: 'All checks passed',
+    checksFailed_one: '{{count}} check failed — this message was not approved automatically',
+    checksFailed_other: '{{count}} checks failed — this message was not approved automatically',
+    checks: {
+      grounding: 'Names and numbers come from facts',
+      length: 'Length',
+      forbidden_phrases: 'No forbidden phrases',
+      links: 'Only allowed links',
+      signature: 'Signature present',
+      target: 'Address unchanged',
+    },
+    passed: 'passed',
+    failed: 'failed',
+    groundingHint:
+      'Listed words and numbers were not found in the facts, the contact’s data or your instructions. Check them, edit if needed, then approve.',
+    factsUsed_one: '{{count}} fact used',
+    factsUsed_other: '{{count}} facts used',
+    showHistory: 'Show earlier versions',
+    hideHistory: 'Hide earlier versions',
     title: 'Approvals',
     subtitle: 'Every message waits here until you approve it.',
     emptyTitle: 'Nothing to approve',
@@ -672,6 +729,7 @@ export const en = {
     },
   },
   errors: {
+    instructions: { required: 'Write instructions for AI.' },
     research: {
       failed: 'Research stopped because of an unexpected error. Try again.',
       noWebsite: 'Add the company’s website to research it.',
@@ -679,6 +737,7 @@ export const en = {
       notFound: 'This research no longer exists.',
     },
     ai: {
+      keyRequired: 'AI messages need an AI key in Settings → AI.',
       no_key: 'Add an AI provider key in Settings → AI.',
       auth: 'The AI provider refused the API key.',
       budget: 'The monthly AI budget is reached.',

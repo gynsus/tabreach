@@ -9,6 +9,7 @@ import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 import { statusTone } from './CampaignsPage';
+import { ApprovalSection } from './ApprovalSection';
 import { PeopleSection } from './PeopleSection';
 import { SequenceEditor } from './SequenceEditor';
 
@@ -202,6 +203,8 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
             ) : null}
           </section>
 
+          <ApprovalSection config={config} disabled={archived || busy} onChange={edit} />
+
           <PeopleSection campaign={campaign} />
         </div>
       </div>
@@ -249,7 +252,7 @@ function SendingSection(props: {
         )}
       </Field>
       {accounts.isSuccess && items.length === 0 ? (
-        <Link to="/settings" className="text-[13px] text-accent hover:underline">
+        <Link to="/settings/email" className="text-[13px] text-accent hover:underline">
           {t('accounts.connect')}
         </Link>
       ) : null}
