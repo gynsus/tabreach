@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
+import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
 import {
   conversationListRequestSchema,
@@ -331,10 +331,15 @@ export const requests = {
   'ai.setKey': {
     channel: 'app',
     kind: 'command',
-    request: z.object({ apiKey: z.string().trim().min(10).max(500) }),
+    request: z.object({ provider: aiProviderSchema, apiKey: z.string().trim().min(10).max(500) }),
     response: ok,
   },
-  'ai.removeKey': { channel: 'app', kind: 'command', request: z.object({}), response: ok },
+  'ai.removeKey': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ provider: aiProviderSchema }),
+    response: ok,
+  },
   /** One minimal call with the stored key and the classification model. */
   'ai.testKey': {
     channel: 'app',

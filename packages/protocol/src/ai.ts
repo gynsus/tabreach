@@ -2,6 +2,10 @@ import { z } from 'zod';
 
 /** AI gateway settings and usage (docs/15). The API key itself never appears here. */
 
+/** Anthropic directly, OpenRouter (many models, one key), or OpenAI. */
+export const aiProviderSchema = z.enum(['anthropic', 'openrouter', 'openai']);
+export type AiProviderName = z.infer<typeof aiProviderSchema>;
+
 export const aiUseCaseSchema = z.enum(['classification', 'research', 'drafting']);
 export type AiUseCase = z.infer<typeof aiUseCaseSchema>;
 
@@ -9,7 +13,7 @@ const model = z.string().trim().min(1).max(100);
 const price = z.number().min(0).max(1_000);
 
 export const aiSettingsInputSchema = z.object({
-  provider: z.literal('anthropic'),
+  provider: aiProviderSchema,
   /** Model per use case: a small one for classification, a stronger one for research and drafting. */
   models: z.object({ classification: model, research: model, drafting: model }),
   /** USD per million tokens, as the provider publishes them; without a price, cost is not estimated. */
@@ -20,18 +24,31 @@ export const aiSettingsInputSchema = z.object({
 export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>;
 
 export const aiSettingsSchema = aiSettingsInputSchema.extend({
-  /** Whether an API key is stored (encrypted). */
+  /** Whether an API key is stored (encrypted) for the selected provider. */
   keySet: z.boolean(),
+  /** Which providers have a stored key; switching provider keeps the others' keys. */
+  keys: z.object({ anthropic: z.boolean(), openrouter: z.boolean(), openai: z.boolean() }),
 });
 export type AiSettings = z.infer<typeof aiSettingsSchema>;
 
-export const DEFAULT_AI_SETTINGS: AiSettingsInput = {
-  provider: 'anthropic',
-  models: {
+/** Suggested models per provider; the user can change them (names differ per provider). */
+export const DEFAULT_AI_MODELS: Record<AiProviderName, AiSettingsInput['models']> = {
+  anthropic: {
     classification: 'claude-haiku-4-5-20251001',
     research: 'claude-sonnet-5',
     drafting: 'claude-sonnet-5',
   },
+  openrouter: {
+    classification: 'deepseek/deepseek-v4.1-flash',
+    research: 'deepseek/deepseek-v4.1-flash',
+    drafting: 'deepseek/deepseek-v4.1-flash',
+  },
+  openai: { classification: 'gpt-4.1-mini', research: 'gpt-4.1', drafting: 'gpt-4.1' },
+};
+
+export const DEFAULT_AI_SETTINGS: AiSettingsInput = {
+  provider: 'anthropic',
+  models: DEFAULT_AI_MODELS.anthropic,
   prices: {},
   monthlyBudgetUsd: null,
 };

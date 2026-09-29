@@ -516,12 +516,29 @@ export const ru: Catalog = {
   ai: {
     title: 'AI',
     subtitle:
-      'TabReach использует ваш собственный ключ Anthropic API. Без ключа ничего не отправляется AI-провайдеру.',
+      'TabReach использует ваш собственный ключ выбранного провайдера. Без ключа ничего не отправляется AI-провайдеру.',
+    provider: 'Провайдер',
+    hasKey: 'Ключ сохранён',
+    providers: {
+      anthropic: { name: 'Anthropic', description: 'Модели Claude напрямую от Anthropic.' },
+      openrouter: {
+        name: 'OpenRouter',
+        description:
+          'Один ключ для многих моделей (DeepSeek, Claude, GPT, …). Сообщает стоимость каждого вызова.',
+      },
+      openai: { name: 'OpenAI', description: 'Модели GPT напрямую от OpenAI.' },
+    },
+    keyHints: {
+      anthropic: 'console.anthropic.com → API keys. Хранится в связке ключей macOS и больше не показывается.',
+      openrouter: 'openrouter.ai/keys. Хранится в связке ключей macOS и больше не показывается.',
+      openai: 'platform.openai.com/api-keys. Хранится в связке ключей macOS и больше не показывается.',
+    },
+    pricesHintOpenRouter:
+      'OpenRouter сам сообщает стоимость каждого вызова, поэтому цены здесь необязательны. Введённая цена важнее.',
     key: 'Ключ API',
     keySet: 'Сохранён зашифрованным',
     keyMissing: 'Не задан',
     newKey: 'Новый ключ API',
-    keyHint: 'console.anthropic.com → API keys. Хранится в связке ключей macOS и больше не показывается.',
     testKey: 'Проверить ключ',
     removeKey: 'Удалить ключ',
     keyWorks: 'Ключ работает.',
@@ -547,11 +564,12 @@ export const ru: Catalog = {
     failedCalls_many: '{{count}} вызовов не удались',
     failedCalls_other: '{{count}} вызова не удались',
     errors: {
+      payment: 'На счёте провайдера нет средств. Пополните его и попробуйте снова.',
       no_key: 'Ключ API не задан.',
-      auth: 'Anthropic не принял ключ.',
-      rate_limited: 'Anthropic перегружен или достигнут лимит запросов. Попробуйте позже.',
-      unavailable: 'Не удалось связаться с Anthropic.',
-      rejected: 'Anthropic отклонил запрос. Проверьте названия моделей.',
+      auth: 'Провайдер не принял ключ.',
+      rate_limited: 'Провайдер перегружен или достигнут лимит запросов. Попробуйте позже.',
+      unavailable: 'Не удалось связаться с AI-провайдером.',
+      rejected: 'Провайдер отклонил запрос. Проверьте названия моделей.',
       invalid_output: 'Модель вернула неожиданный ответ.',
       budget: 'Месячный бюджет AI исчерпан.',
     },
@@ -665,6 +683,7 @@ export const ru: Catalog = {
     },
   },
   settings: {
+    tabs: { general: 'Общие', email: 'Почтовые ящики', ai: 'AI', policy: 'Контактная политика' },
     title: 'Настройки',
     language: 'Язык',
     languageHint: 'Язык интерфейса TabReach.',
@@ -689,13 +708,14 @@ export const ru: Catalog = {
       notFound: 'Этого research больше нет.',
     },
     ai: {
-      no_key: 'Добавьте ключ Anthropic API в Настройки → AI.',
-      auth: 'Anthropic не принял ключ API.',
+      no_key: 'Добавьте ключ AI-провайдера в Настройки → AI.',
+      auth: 'AI-провайдер не принял ключ API.',
       budget: 'Месячный бюджет AI исчерпан.',
-      rejected: 'Anthropic отклонил запрос. Проверьте названия моделей в Настройки → AI.',
+      rejected: 'AI-провайдер отклонил запрос. Проверьте названия моделей в Настройки → AI.',
       invalid_output: 'Модель вернула неожиданный ответ. Попробуйте ещё раз.',
-      rate_limited: 'Anthropic перегружен. Попробуйте позже.',
-      unavailable: 'Не удалось связаться с Anthropic.',
+      rate_limited: 'AI-провайдер перегружен. Попробуйте позже.',
+      unavailable: 'Не удалось связаться с AI-провайдером.',
+      payment: 'На счёте AI-провайдера нет средств. Пополните его.',
     },
     oauth: {
       notCompleted: 'Вход не завершён. Попробуйте ещё раз.',

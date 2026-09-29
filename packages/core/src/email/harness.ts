@@ -10,7 +10,7 @@ import { migrations } from '../db/migrations.js';
 import { fakeClock } from '../db/test-db.js';
 import { Dispatcher } from '../jobs/dispatcher.js';
 import type { SecretCipher } from '../secrets/secrets.js';
-import { FakeAnthropic } from '../ai/fake-anthropic.js';
+import { FakeAnthropic, FakeChatCompletions } from '../ai/fake-anthropic.js';
 import type { Http } from './gmail.js';
 import { FakeGoogle } from './fake-google.js';
 import { FakeMail } from './fake-mail.js';
@@ -50,6 +50,7 @@ export class Harness {
   readonly mail = new FakeMail();
   readonly google = new FakeGoogle();
   readonly anthropic = new FakeAnthropic();
+  readonly chat = new FakeChatCompletions();
   /** HTTP for research fetching; tests point it at the fixture site. */
   webHttp: Http = () => Promise.reject(new Error('no web in this test'));
   readonly logs: string[] = [];
@@ -70,7 +71,10 @@ export class Harness {
       cipher,
       mailClients: this.mail,
       gmail: this.google.deps,
-      aiHttp: this.anthropic.http,
+      aiHttp: (url, init) =>
+        url.startsWith('https://api.anthropic.com')
+          ? this.anthropic.http(url, init)
+          : this.chat.http(url, init),
       webHttp: (url, init) => this.webHttp(url, init),
       sleep: async () => {},
       logger: capturingLogger(this.logs),

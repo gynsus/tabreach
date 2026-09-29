@@ -37,7 +37,8 @@ const router = createHashRouter([
       { path: 'inbox', element: <InboxPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'status', element: <StatusPage /> },
-      { path: 'settings', element: <SettingsPage /> },
+      { path: 'settings', element: <Navigate to="/settings/general" replace /> },
+      { path: 'settings/:tab', element: <SettingsPage /> },
     ],
   },
 ]);

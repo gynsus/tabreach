@@ -33,7 +33,7 @@ describe('AI gateway', () => {
   });
 
   it('stores the key encrypted, sends it only to the provider, and never logs or returns it', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     expect(h.services.ai.settings().keySet).toBe(true);
     h.anthropic.answer({ input: { summary: 's', score: 0.5 } });
     await call();
@@ -47,13 +47,13 @@ describe('AI gateway', () => {
     expect(dump).not.toContain(KEY);
     expect(h.logs.join('\n')).not.toContain(KEY);
     expect(JSON.stringify(h.services.ai.settings())).not.toContain(KEY);
-    h.services.ai.removeKey(ctx());
+    h.services.ai.removeKey('anthropic', ctx());
     expect(h.services.ai.settings().keySet).toBe(false);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM secrets').get()).toEqual({ n: 0 });
   });
 
   it('asks for the template schema as a forced tool and returns validated data', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     h.anthropic.answer({ input: { summary: 'ok', score: 0.9 } });
     expect(await call()).toEqual({ summary: 'ok', score: 0.9 });
     expect(h.anthropic.requests[0]?.schema).toMatchObject({
@@ -64,7 +64,7 @@ describe('AI gateway', () => {
   });
 
   it('repairs an invalid answer once, then gives up', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     h.anthropic.answer({ input: { summary: 'x', score: 7 } }, { input: { summary: 'x', score: 0.7 } });
     expect(await call()).toEqual({ summary: 'x', score: 0.7 });
     expect(h.anthropic.requests[1]?.user).toMatch(/did not match the required structure/);
@@ -73,7 +73,7 @@ describe('AI gateway', () => {
   });
 
   it('records every call with tokens and, when a price is set, cost; enforces the monthly budget', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     h.anthropic.answer({ input: { summary: 'a', score: 0 }, inputTokens: 2_000_000, outputTokens: 100_000 });
     await call();
     expect(h.services.ai.usage()).toMatchObject({
@@ -100,7 +100,7 @@ describe('AI gateway', () => {
   });
 
   it('maps provider errors: auth, rate limit (retryable), rejection', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     h.anthropic.answer(
       { status: 401, body: { error: { type: 'authentication_error', message: `bad key ${KEY}` } } },
       { status: 529, body: { error: { type: 'overloaded_error' } } },
@@ -116,7 +116,7 @@ describe('AI gateway', () => {
   });
 
   it('test key makes one small call with the classification model', async () => {
-    await h.services.ai.setKey(KEY, ctx());
+    await h.services.ai.setKey('anthropic', KEY, ctx());
     expect(await h.services.ai.testKey('c')).toEqual({ ok: true });
     expect(h.anthropic.requests[0]?.model).toBe('claude-haiku-4-5-20251001');
     h.anthropic.answer({ status: 401, body: { error: { type: 'authentication_error' } } });

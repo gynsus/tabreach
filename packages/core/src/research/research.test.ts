@@ -70,7 +70,7 @@ describe('research runs on the fixture site', () => {
         return copy;
       });
     };
-    await h.services.ai.setKey('sk-ant-test-0123456789abcdef', ctx());
+    await h.services.ai.setKey('anthropic', 'sk-ant-test-0123456789abcdef', ctx());
   });
   afterEach(() => h.close());
 
@@ -198,7 +198,7 @@ describe('research runs on the fixture site', () => {
     const run = h.services.research.start({ companyId: other }, ctx());
     await h.run();
     expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'research.noPages' });
-    h.services.ai.removeKey(ctx());
+    h.services.ai.removeKey('anthropic', ctx());
     expect(() => h.services.research.start({ companyId: company() }, ctx())).toThrow(
       expect.objectContaining({ problem: expect.objectContaining({ detail: 'ai.no_key' }) }),
     );

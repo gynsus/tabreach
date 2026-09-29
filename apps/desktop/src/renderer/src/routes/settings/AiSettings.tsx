@@ -1,11 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AiSettings as Settings, AiUseCase } from '@tabreach/protocol';
+import {
+  DEFAULT_AI_MODELS,
+  type AiProviderName,
+  type AiSettings as Settings,
+  type AiUseCase,
+} from '@tabreach/protocol';
 import { useEffect, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
 import { Alert, Badge, Button, Field, Input } from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
+import { cn } from '../../lib/cn';
 import { invalidateEntities } from '../../lib/live';
 
 const USE_CASES: AiUseCase[] = ['classification', 'research', 'drafting'];
@@ -24,27 +30,78 @@ export function AiSettings() {
         </h2>
         <p className="text-[13px] text-soft">{t('ai.subtitle')}</p>
       </div>
-      <ApiKey keySet={settings.data.keySet} />
+      <ProviderPicker settings={settings.data} />
+      <ApiKey key={settings.data.provider} provider={settings.data.provider} keySet={settings.data.keySet} />
       <ModelsAndBudget initial={settings.data} />
       <Usage />
     </section>
   );
 }
 
-function ApiKey({ keySet }: { keySet: boolean }) {
+const PROVIDERS: AiProviderName[] = ['anthropic', 'openrouter', 'openai'];
+const KEY_PREFIX: Record<AiProviderName, string> = {
+  anthropic: 'sk-ant-…',
+  openrouter: 'sk-or-v1-…',
+  openai: 'sk-…',
+};
+
+/** Which provider TabReach calls; switching also suggests that provider's models. */
+function ProviderPicker({ settings }: { settings: Settings }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const choose = useMutation({
+    mutationFn: (provider: AiProviderName) =>
+      call('ai.settings.update', {
+        provider,
+        models: DEFAULT_AI_MODELS[provider],
+        prices: settings.prices,
+        monthlyBudgetUsd: settings.monthlyBudgetUsd,
+      }),
+    onSuccess: () => invalidateEntities(qc, ['settings', 'activity']),
+  });
+  return (
+    <div role="radiogroup" aria-label={t('ai.provider')} className="grid grid-cols-3 gap-2">
+      {PROVIDERS.map((p) => {
+        const selected = settings.provider === p;
+        return (
+          <button
+            key={p}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            disabled={choose.isPending}
+            onClick={() => !selected && choose.mutate(p)}
+            className={cn(
+              'grid gap-1 rounded-md border px-3 py-2.5 text-left text-[13px]',
+              selected ? 'border-accent bg-accent-soft' : 'border-rule bg-raised hover:border-accent',
+            )}
+          >
+            <span className="flex items-center gap-2 font-medium">
+              {t(`ai.providers.${p}.name`)}
+              {settings.keys[p] ? <Badge tone="ok">{t('ai.hasKey')}</Badge> : null}
+            </span>
+            <span className="text-xs text-soft">{t(`ai.providers.${p}.description`)}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ApiKey({ provider, keySet }: { provider: AiProviderName; keySet: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const [key, setKey] = useState('');
   const refresh = () => invalidateEntities(qc, ['settings', 'activity']);
   const save = useMutation({
-    mutationFn: () => call('ai.setKey', { apiKey: key }),
+    mutationFn: () => call('ai.setKey', { provider, apiKey: key }),
     onSuccess: async () => {
       setKey('');
       await refresh();
     },
   });
-  const remove = useMutation({ mutationFn: () => call('ai.removeKey', {}), onSuccess: refresh });
+  const remove = useMutation({ mutationFn: () => call('ai.removeKey', { provider }), onSuccess: refresh });
   const test = useMutation({
     mutationFn: () => call('ai.testKey', {}),
     onSuccess: (r) =>
@@ -68,7 +125,7 @@ function ApiKey({ keySet }: { keySet: boolean }) {
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
         <Field
           label={t('ai.newKey')}
-          hint={t('ai.keyHint')}
+          hint={t(`ai.keyHints.${provider}`)}
           errorKey={fieldErrors(save.error).apiKey}
           className="w-96"
         >
@@ -77,7 +134,7 @@ function ApiKey({ keySet }: { keySet: boolean }) {
               id={id}
               type="password"
               autoComplete="off"
-              placeholder="sk-ant-…"
+              placeholder={KEY_PREFIX[provider]}
               value={key}
               aria-describedby={describedBy}
               onChange={(e) => setKey(e.target.value)}
@@ -151,7 +208,9 @@ function ModelsAndBudget({ initial }: { initial: Settings }) {
       </div>
       <div className="grid gap-2">
         <p className="text-xs font-medium text-soft">{t('ai.prices')}</p>
-        <p className="text-xs text-faint">{t('ai.pricesHint')}</p>
+        <p className="text-xs text-faint">
+          {value.provider === 'openrouter' ? t('ai.pricesHintOpenRouter') : t('ai.pricesHint')}
+        </p>
         {models.map((model) => (
           <div key={model} className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="w-64 truncate font-mono text-xs">{model}</span>
