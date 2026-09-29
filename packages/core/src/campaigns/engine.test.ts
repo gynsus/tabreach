@@ -235,7 +235,7 @@ describe('campaign engine', () => {
     const [old] = h.pending();
     if (!old) throw new Error('no approval');
 
-    const revised = h.services.approvals.revise(old.draftId, 'Hello Ann', 'Edited body', ctx());
+    const revised = h.services.approvals.revise(old.draftId, 'Hello Ann', 'Edited body', ctx())!;
     expect(revised.draftVersion).toBe(2);
     expect(revised.contentHash).not.toBe(old.contentHash);
     expect(() => h.services.approvals.approve(old.id, old.contentHash, ctx())).toThrow(

@@ -31,6 +31,43 @@ export interface BrowserActionSpec {
   mode: BrowserExecutionMode;
 }
 
+/** How a send reaches the worker: one task that ends in the checkpoint and one press. */
+export interface BrowserDispatch {
+  packId: string;
+  packVersion: string;
+  /** Assisted waits for the person: a longer timeout. */
+  assisted: (message: OutgoingMessage, workflowRunId: string) => boolean;
+  run: (
+    worker: Pick<RpcPeer, 'request'>,
+    task: { taskId: string; sessionId: string; message: OutgoingMessage; workflowRunId: string },
+    options: { timeoutMs: number; correlationId: string },
+  ) => Promise<TaskResult>;
+}
+
+/** A pack action as the dispatch (Phase 5c `commit` task). */
+export function packActionDispatch(spec: BrowserActionSpec): BrowserDispatch {
+  return {
+    packId: spec.packId,
+    packVersion: spec.packVersion,
+    assisted: () => spec.mode === 'assisted',
+    run: (worker, task, options) =>
+      worker.request(
+        'task.run',
+        {
+          taskId: task.taskId,
+          sessionId: task.sessionId,
+          taskType: 'commit',
+          packId: spec.packId,
+          url: spec.url(task.message),
+          actionId: spec.actionId,
+          params: spec.params(task.message),
+          mode: spec.mode,
+        },
+        options,
+      ),
+  };
+}
+
 /**
  * A channel whose send is one critical browser action (docs/07, Phase 5c): the pack action runs in
  * a profile under automation, and the ledger turns `executing` only at the worker's
@@ -50,7 +87,7 @@ export class BrowserActionChannel implements MessageChannel {
     readonly channel: string,
     /** The browser profile that acts (the channel identity). */
     readonly accountId: string,
-    private readonly spec: BrowserActionSpec,
+    private readonly dispatch: BrowserDispatch,
     private readonly d: {
       db: DatabaseSync;
       now: () => Date;
@@ -79,10 +116,16 @@ export class BrowserActionChannel implements MessageChannel {
     // The run's correlation id follows the action into the worker's logs (CLAUDE.md §5).
     const correlationId = effect.correlation_id ?? uuidv7();
     let sessionId: string;
+    const live = this.d.browser.liveSessionOf(this.accountId);
+    // The person holds the profile's window: it is theirs (docs/11); the send waits for it.
+    if (live && live.controlMode !== 'automation')
+      return { outcome: 'not_sent', errorClass: 'profile.inUseByYou' };
     try {
-      sessionId = await this.d.browser.openSession(this.accountId, 'automation', null, correlationId);
+      // A window already under automation is reused (the worker runs one task at a time in it).
+      sessionId =
+        live?.id ?? (await this.d.browser.openSession(this.accountId, 'automation', null, correlationId));
     } catch (error) {
-      // The person holds the window, or Chrome did not start: nothing was done.
+      // Chrome did not start, or the profile is busy: nothing was done.
       if (error instanceof RpcError)
         return { outcome: 'not_sent', errorClass: error.problem.detail ?? 'profile' };
       throw error;
@@ -100,8 +143,8 @@ export class BrowserActionChannel implements MessageChannel {
         effect.workflow_run_id,
         this.accountId,
         sessionId,
-        this.spec.packId,
-        this.spec.packVersion,
+        this.dispatch.packId,
+        this.dispatch.packVersion,
         this.d.now().toISOString(),
       );
     this.d.checkpoints.expect(taskId, hooks.beforeCommit);
@@ -110,19 +153,15 @@ export class BrowserActionChannel implements MessageChannel {
       result = await untilAborted(
         signal,
         () => this.cancel(worker, taskId, correlationId),
-        worker.request(
-          'task.run',
+        this.dispatch.run(
+          worker,
+          { taskId, sessionId, message, workflowRunId: effect.workflow_run_id },
           {
-            taskId,
-            sessionId,
-            taskType: 'commit',
-            packId: this.spec.packId,
-            url: this.spec.url(message),
-            actionId: this.spec.actionId,
-            params: this.spec.params(message),
-            mode: this.spec.mode,
+            timeoutMs: this.dispatch.assisted(message, effect.workflow_run_id)
+              ? ASSISTED_TIMEOUT_MS
+              : TASK_TIMEOUT_MS,
+            correlationId,
           },
-          { timeoutMs: this.spec.mode === 'assisted' ? ASSISTED_TIMEOUT_MS : TASK_TIMEOUT_MS, correlationId },
         ),
       );
     } catch (error) {
@@ -141,7 +180,7 @@ export class BrowserActionChannel implements MessageChannel {
     const reached = this.d.checkpoints.reached(taskId);
     this.d.checkpoints.forget(taskId);
     this.finishTask(taskId, result.status, result);
-    const refs = { taskId, stateId: result.stateId, pack: `${this.spec.packId}@${result.packVersion}` };
+    const refs = { taskId, stateId: result.stateId, pack: `${this.dispatch.packId}@${result.packVersion}` };
 
     const close = () =>
       this.quietly(this.d.browser.closeSession(sessionId), 'browser.close_failed', correlationId);
@@ -183,7 +222,7 @@ export class BrowserActionChannel implements MessageChannel {
     await close();
     return {
       outcome: 'not_sent',
-      errorClass: result.status === 'failed' ? (result.errorKey ?? 'task.failed') : result.status,
+      errorClass: result.errorKey ?? result.status,
       // A page outside the pack's allowlist does not change by retrying (docs/07).
       permanent: result.status === 'unsupported_state',
     };

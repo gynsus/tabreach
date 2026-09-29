@@ -439,6 +439,88 @@ test('pause all shows a banner on every screen; emergency stop asks first; resum
   await expect(control.getByRole('button', { name: 'Pause all' })).toBeVisible();
 });
 
+test('a campaign writes through a website contact form: prepared, approved as shown, sent once', async () => {
+  test.setTimeout(240_000); // Chrome opens twice: to prepare the form and to send it
+  // The sender: a browser profile and the details that go into forms.
+  await go('#/browser');
+  await page.getByRole('button', { name: 'New profile' }).click();
+  const create = page.getByRole('dialog', { name: 'New profile' });
+  await create.getByLabel('Name').fill('Forms E2E');
+  await create.getByRole('button', { name: 'Create' }).click();
+  await go('#/settings/forms');
+  await page.getByLabel('Browser profile').selectOption({ label: 'Forms E2E' });
+  await page.getByLabel('Your name').fill('Sam Sender');
+  await page.getByLabel('Your email').fill('sam@sender.test');
+  await page.getByLabel('Your company').fill('Sender Co');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Form sender saved' })).toBeVisible();
+
+  // A company whose website has a contact page (the local fixture site), and a contact there.
+  // Chrome sends any *.localhost to this machine; a website needs a host name, not an IP.
+  const site = fixtures.url.replace('127.0.0.1', 'fixtures.localhost');
+  const ids = await page.evaluate(async (website) => {
+    const bridge = (
+      window as unknown as {
+        tabreach: { invoke(t: string, p: unknown): Promise<{ ok: boolean; data?: { id: string } }> };
+      }
+    ).tabreach;
+    const company = await bridge.invoke('companies.create', { name: 'Fixture Forms', website });
+    const contact = await bridge.invoke('contacts.create', {
+      firstName: 'Fiona',
+      companyId: company.data?.id,
+    });
+    return { company: company.data?.id, contact: contact.data?.id };
+  }, `${site}forms/index.html`);
+  expect(ids.company).toBeTruthy();
+  expect(ids.contact).toBeTruthy();
+
+  await go('#/campaigns');
+  await page.getByRole('button', { name: 'New campaign' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'New campaign' });
+  await dialog.getByLabel('Name').fill('Form campaign');
+  await dialog.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Add message' }).click();
+  const step = page.getByRole('region', { name: 'Message 1' });
+  await step.getByLabel('Channel').selectOption('web_form');
+  await expect(step.getByLabel('Who presses Send')).toHaveValue('auto');
+  await step.getByLabel('Subject', { exact: true }).fill('Hello {{companyName}}');
+  await step.getByLabel('Message', { exact: true }).fill('We build robots for {{companyName}}.');
+  await page.getByLabel('Fallback time zone').fill('UTC');
+  await page.getByLabel('Use the default sending hours from Settings').uncheck();
+  await page.getByRole('button', { name: 'Sat' }).click();
+  await page.getByRole('button', { name: 'Sun' }).click();
+  await page.getByLabel('From', { exact: true }).fill('00:00');
+  await page.getByLabel('Until', { exact: true }).fill('23:59');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'Campaign launched: version 1' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add contacts' }).click();
+  const add = page.getByRole('dialog', { name: 'Add contacts' });
+  await add.getByRole('searchbox', { name: 'Search contacts' }).fill('Fiona');
+  await add.getByRole('checkbox').first().check();
+  await add.getByRole('button', { name: 'Add 1 contact' }).click();
+
+  // The approval shows the form found behind the site's "Contact us" link, exactly as it will be sent.
+  await go('#/approvals');
+  const preview = page.getByTestId('form-preview');
+  await expect(preview).toBeVisible({ timeout: 90_000 });
+  await expect(preview).toContainText(`${site}forms/contact.html`);
+  await expect(preview.getByRole('row', { name: /Your name/ })).toContainText('Sam Sender');
+  await expect(preview.getByRole('row', { name: /Message/ })).toContainText(
+    'We build robots for Fixture Forms.',
+  );
+  await expect(preview.getByRole('row', { name: /marketing emails/ })).toContainText(
+    'Never ticked by TabReach',
+  );
+  await expect(preview.getByRole('img', { name: 'The filled form' })).toBeVisible();
+  await page.getByRole('button', { name: 'Approve' }).click();
+
+  await go('#/campaigns');
+  await page.getByRole('link', { name: /Form campaign/ }).click();
+  await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
+    timeout: 90_000,
+  });
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

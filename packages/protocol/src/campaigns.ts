@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { browserExecutionModeSchema, formFieldSchema } from './browser.js';
 
 /** DTOs for campaigns, enrollments, approvals, contact policy and jobs (docs/06, docs/17, ADR 021). */
 
@@ -55,8 +56,11 @@ export const templateFields = [
 ] as const;
 export type TemplateField = (typeof templateFields)[number];
 
-/** Channels a message step can use: email (through the campaign's email account) or the local test channel. */
-export const messageChannelSchema = z.enum(['email', 'test']);
+/**
+ * Channels a message step can use: email (through the campaign's email account), a company's
+ * website contact form (through the form sender's browser profile, Phase 6) or the local test channel.
+ */
+export const messageChannelSchema = z.enum(['email', 'test', 'web_form']);
 
 /** Fields a condition step can test (ADR 021 §7). */
 export const conditionFieldSchema = z.enum([
@@ -85,8 +89,11 @@ const delaySeconds = z.number().int().min(0).max(MAX_DELAY_SECONDS);
 export const sendMessageStepSchema = z.object({
   type: z.literal('send_message'),
   channel: messageChannelSchema,
-  /** Only `auto` exists before browser channels (Phase 5+). */
-  executionMode: z.literal('auto'),
+  /**
+   * Website forms: `auto` sends after approval; `assisted` fills the form and the person presses
+   * Send (docs/01 "Execution modes"). Email and the test channel are always `auto`.
+   */
+  executionMode: browserExecutionModeSchema.default('auto'),
   delaySeconds,
   /** template: subject and body with placeholders. ai: written per recipient from research facts. */
   mode: z.enum(['template', 'ai']).default('template'),
@@ -204,6 +211,8 @@ export const stopReasonSchema = z.enum([
   'bounced',
   /** AI could not write the message (no key, budget, provider refusal, invalid answers). */
   'draft_failed',
+  /** No contact form on the company's website (Phase 6). */
+  'no_contact_form',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
@@ -263,6 +272,18 @@ export const draftFactSchema = z.object({
 });
 export type DraftFact = z.infer<typeof draftFactSchema>;
 
+/** The prepared form an approval covers (Phase 6). */
+export const approvalFormSchema = z.object({
+  formUrl: z.string(),
+  fields: z.array(formFieldSchema),
+  /** assisted: the person presses Send (always when a field, a consent or a CAPTCHA needs them). */
+  mode: browserExecutionModeSchema,
+  /** Why the person is needed: `form.unmappedRequired`, `form.consentRequired`, `form.challenge`. */
+  reason: z.string().nullable(),
+  hasScreenshot: z.boolean(),
+});
+export type ApprovalForm = z.infer<typeof approvalFormSchema>;
+
 export const approvalSchema = z.object({
   id,
   campaignId: id,
@@ -283,6 +304,8 @@ export const approvalSchema = z.object({
   checks: z.array(draftCheckSchema),
   /** The research facts the draft says it used, with their quotes and sources. */
   facts: z.array(draftFactSchema),
+  /** Website forms: exactly what goes into the form (FR-FRM-003); null for other channels. */
+  form: approvalFormSchema.nullable().default(null),
   createdAt: z.iso.datetime(),
 });
 export type Approval = z.infer<typeof approvalSchema>;
@@ -334,3 +357,17 @@ export const draftVersionSchema = z.object({
   createdAt: z.iso.datetime(),
 });
 export type DraftVersion = z.infer<typeof draftVersionSchema>;
+
+// Website form sender (Phase 6) ------------------------------------------------------------
+
+/** Who writes to companies through their contact forms: these details go into the forms. */
+export const formSenderSchema = z.object({
+  /** The browser profile that fills and sends forms (a general profile, not research). */
+  profileId: id.nullable(),
+  name: text(200),
+  email: z.union([z.literal(''), z.email().max(320)]),
+  phone: text(50),
+  company: text(200),
+  website: text(300),
+});
+export type FormSender = z.infer<typeof formSenderSchema>;

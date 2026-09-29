@@ -691,4 +691,30 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX human_interventions_open ON human_interventions (status, requested_at);
     `,
   },
+  {
+    version: 18,
+    name: 'form_preparations',
+    sql: `
+      -- A contact form found, mapped and filled for one draft of a message step (Phase 6): what the
+      -- approval shows, and exactly what the send writes into the form.
+      CREATE TABLE form_preparations (
+        id               TEXT PRIMARY KEY,
+        workflow_run_id  TEXT NOT NULL REFERENCES workflow_runs (id),
+        message_draft_id TEXT NOT NULL REFERENCES message_drafts (id),
+        status           TEXT NOT NULL CHECK (status IN ('ready', 'needs_human')),
+        reason           TEXT,
+        form_url         TEXT NOT NULL,
+        opener           TEXT,
+        signature        TEXT NOT NULL,
+        fields           TEXT NOT NULL CHECK (json_valid(fields)),
+        challenge        TEXT,
+        -- auto or assisted: a person presses Send when a field, a consent or a challenge needs them.
+        mode             TEXT NOT NULL CHECK (mode IN ('auto', 'assisted')),
+        screenshot       BLOB,
+        pack_version     TEXT NOT NULL,
+        prepared_at      TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX form_preparations_run ON form_preparations (workflow_run_id, prepared_at);
+    `,
+  },
 ];

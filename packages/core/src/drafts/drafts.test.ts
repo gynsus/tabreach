@@ -202,7 +202,7 @@ describe('AI drafts', () => {
       'Hello',
       `${grounded} Edited.\n\nBest,\nBob`,
       ctx(),
-    );
+    )!;
     expect(revised.origin).toBe('user');
     expect(revised.facts).toHaveLength(1);
     expect(h.services.approvals.history(revised.draftId).map((v) => [v.version, v.origin])).toEqual([

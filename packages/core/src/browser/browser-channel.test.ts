@@ -9,7 +9,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { executeSideEffect } from '../ledger/execute.js';
 import { ctx, testServices } from '../prospects/test-helpers.js';
-import { BrowserActionChannel } from './browser-channel.js';
+import { BrowserActionChannel, packActionDispatch } from './browser-channel.js';
 
 /** What the worker does with the next commit task. */
 type Script =
@@ -81,14 +81,14 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
     channel = new BrowserActionChannel(
       'web_form',
       profile.id,
-      {
+      packActionDispatch({
         packId: 'site',
         packVersion: '1.0.0',
         actionId: 'site.send',
         url: (m) => m.target,
         params: (m) => ({ body: m.body }),
         mode: 'auto',
-      },
+      }),
       {
         db: env.db,
         now: () => new Date(),

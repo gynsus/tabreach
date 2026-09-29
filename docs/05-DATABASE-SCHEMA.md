@@ -368,6 +368,23 @@ started_at, ended_at
 heartbeat_at
 ```
 
+### `form_preparations` (migration 18, Phase 6b)
+
+```text
+id pk
+workflow_run_id fk
+message_draft_id fk       -- the draft the form was filled with
+status check in ('ready','needs_human')
+reason null               -- form.unmappedRequired | form.consentRequired | form.challenge
+form_url, opener null     -- the page, and the button that opens a dialog form
+signature                 -- hash of the form's fields: sending refuses a changed form
+fields json               -- [{ ref, kind, label, required, meaning, value }]
+challenge null
+mode check in ('auto','assisted')
+screenshot blob null      -- PNG of the filled form, shown in the approval
+pack_version, prepared_at
+```
+
 ### `human_interventions` (migration 16: `browser_profile_id`, `browser_task_id`; reason `security_challenge | login_required | unsupported_state`, migration 17 adds `user_control`; status `open | resolved | cancelled`)
 
 ```text

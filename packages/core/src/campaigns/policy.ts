@@ -20,6 +20,8 @@ export type PolicyVerdict =
   | { kind: 'defer'; until: Date; rule: string };
 
 export interface PolicyTarget {
+  /** The step's channel: an email's bounce says nothing about a website form. */
+  channel?: string;
   contactId: string;
   /** The contact's current company (not the one at enrollment time). */
   companyId: string | null;
@@ -67,7 +69,8 @@ export class ContactPolicy {
       | undefined;
     if (!contact || contact.status !== 'active')
       return { kind: 'stop', reason: 'invalid_target', rule: 'contact.inactive' };
-    if (contact.email_status === 'bounced' || contact.email_status === 'invalid') {
+    const byEmail = target.channel === undefined || target.channel === 'email' || target.channel === 'test';
+    if (byEmail && (contact.email_status === 'bounced' || contact.email_status === 'invalid')) {
       return { kind: 'stop', reason: 'invalid_target', rule: `email.${contact.email_status}` };
     }
     const suppressed = this.suppressionRule(target, contact.email_normalized, contact.domain_normalized);
