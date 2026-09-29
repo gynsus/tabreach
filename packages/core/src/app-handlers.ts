@@ -70,6 +70,12 @@ export interface AppServicesOptions {
   sleep?: (ms: number) => Promise<void>;
   /** DNS for research fetching (tests map fixture hosts to a public address). */
   resolveHost?: (host: string) => Promise<string[]>;
+  /**
+   * Website forms may open sites on this machine or the local network. Off in the app (a company
+   * website from a CSV must not lead into the user's network); on only for tests against the
+   * local fixture site (TABREACH_ALLOW_LOCAL_SITES=1).
+   */
+  allowLocalSites?: boolean;
   /** The browser worker's channel, when one is attached (it restarts independently). */
   worker?: () => Pick<RpcPeer, 'request'> | null;
   /** `chromium` for profiles in tests; the user's Google Chrome otherwise. */
@@ -199,6 +205,8 @@ export class AppServices {
     this.forms = new FormService({
       db,
       now,
+      allowLocalSites: options.allowLocalSites ?? false,
+      ...(options.resolveHost ? { resolveHost: options.resolveHost } : {}),
       audit: this.audit,
       settings: this.settings,
       browser: this.browser,
@@ -437,7 +445,11 @@ export class AppServices {
       )
       .handle('forms.sender.get', () => this.forms.sender())
       .handle('forms.sender.update', (p, c) =>
-        mutate(['settings', 'activity'], () => this.forms.updateSender(p, ctx(c))),
+        mutate(['settings', 'activity', 'approval'], () => {
+          const sender = this.forms.updateSender(p, ctx(c));
+          this.engine.reprepareForms(c.correlationId);
+          return sender;
+        }),
       )
       .handle('forms.screenshot', ({ approvalId }) => ({ png: this.forms.screenshotOf(approvalId) }))
       .handle('policy.settings.get', () => this.policy.current())
@@ -552,8 +564,12 @@ export class AppServices {
       .handle('profiles.list', (p) => ({ items: this.browser.list(p.includeArchived) }))
       .handle('profiles.create', (p, c) => this.browser.create(p, ctx(c)))
       .handle('profiles.update', (p, c) => this.browser.rename(p.id, p.name, ctx(c)))
-      .handle('profiles.archive', (p, c) => this.browser.archive(p.id, ctx(c)))
+      .handle('profiles.archive', (p, c) => {
+        this.requireNotFormSender(p.id);
+        return this.browser.archive(p.id, ctx(c));
+      })
       .handle('profiles.delete', async (p, c) => {
+        this.requireNotFormSender(p.id);
         await this.browser.delete(p.id, p.confirmName, ctx(c));
         return { ok: true as const };
       })
@@ -590,6 +606,13 @@ export class AppServices {
       correlationId,
     });
     return { ok: true };
+  }
+
+  /** The profile website forms are sent from stays until another is chosen (audit 6.5). */
+  private requireNotFormSender(profileId: string): void {
+    if (this.forms.sender().profileId === profileId) {
+      throw new RpcError('CONFLICT', 'Used for website forms', 'profile.formSender');
+    }
   }
 
   /**

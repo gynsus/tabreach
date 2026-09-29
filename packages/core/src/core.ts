@@ -48,6 +48,7 @@ export class CoreService {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
     this.services = new AppServices(db, {
       logger: options.logger,
+      allowLocalSites: process.env.TABREACH_ALLOW_LOCAL_SITES === '1',
       worker: () => this.workerPeer,
       keepAwake: (on) => {
         this.hostPeer

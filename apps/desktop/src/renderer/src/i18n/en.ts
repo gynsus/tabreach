@@ -399,7 +399,7 @@ export const en = {
         skipped: 'Message skipped',
         auto_approved: 'Approved by the campaign policy',
       },
-      form: { prepared: 'Contact form prepared' },
+      form: { prepared: 'Contact form prepared', already_sent: 'Contact form already sent to this company' },
       forms: { sender_updated: 'Form sender changed' },
       draft: { revised: 'Message edited', generated: 'Message written by AI' },
       message: {
@@ -594,10 +594,16 @@ export const en = {
       value: 'What goes in',
       unlabelled: 'Unnamed field',
       byAi: 'recognized by AI — check it',
+      sendsTo: 'Sends to:',
+      crossSite:
+        'This form sends to another site than the company’s own. It is never approved automatically.',
+      untickedByUs: 'Ticked by the site — TabReach unticks it',
+      tickedBySite: 'Ticked by the site — sent as it is',
+      prefilled: 'Filled in by the site: {{value}}',
       neverTicked: 'Never ticked by TabReach',
       youFill: 'You fill this in',
       leftEmpty: 'Left empty',
-      screenshot: 'The filled form',
+      screenshot: 'The form as the site shows it',
     },
     confirmReject: 'Reject and stop the sequence?',
     origins: { template: 'Template', ai: 'AI', user: 'Edited' },
@@ -831,7 +837,7 @@ export const en = {
     wasNotSent: 'It was not sent',
     confirmNotSent: 'Send it again?',
     browserHint:
-      'Done in the browser: look at the site in its window (it stays open). If you are not sure, leave it — nothing is repeated.',
+      'Done in the browser: look at the site in its window. It stays open, and other website forms wait until you close it. If you are not sure, leave it — nothing is repeated.',
     resolveHint: 'Check the Sent folder of the account. If it was not sent, TabReach sends it now.',
     attempts_one: '{{count}} attempt',
     attempts_other: '{{count}} attempts',
@@ -965,6 +971,7 @@ export const en = {
       notAutomation: 'The window is not under TabReach’s control.',
     },
     profile: {
+      formSender: 'This profile sends website forms. Choose another in Settings → Website forms first.',
       inUseByYou: 'You have this profile open. Close its window first.',
       checking: 'TabReach is already checking this profile.',
       research: 'The research profile never signs in anywhere; check another profile.',

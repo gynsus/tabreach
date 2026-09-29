@@ -60,7 +60,7 @@ export function intentKey(parts: IntentParts): string {
  */
 export class SideEffectLedger {
   constructor(
-    private readonly db: DatabaseSync,
+    readonly db: DatabaseSync,
     private readonly now: () => Date,
   ) {}
 

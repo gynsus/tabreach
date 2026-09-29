@@ -1,9 +1,13 @@
+import { lookup } from 'node:dns/promises';
+import { isIP } from 'node:net';
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
   formFieldSchema,
   formSenderSchema,
+  isPublicAddress,
   RpcError,
+  sameSite,
   uuidv7,
   type ApprovalForm,
   type BrowserExecutionMode,
@@ -50,6 +54,8 @@ export interface FormPreparationRow {
   screenshot: Uint8Array | null;
   pack_version: string;
   prepared_at: string;
+  sender_key: string;
+  action: string | null;
 }
 
 export type PrepareOutcome =
@@ -78,8 +84,26 @@ export class FormService {
       checkpoints: BrowserCheckpoints;
       worker: () => Worker | null;
       logger: Logger;
+      /** Tests against the local fixture site only (see AppServicesOptions). */
+      allowLocalSites?: boolean;
+      resolveHost?: (host: string) => Promise<string[]>;
     },
   ) {}
+
+  /** A company website on this machine or the local network is never opened (audit 6.5). */
+  private async publicSite(url: string): Promise<boolean> {
+    if (this.d.allowLocalSites) return true;
+    const host = new URL(url).hostname.replace(/^\[|\]$/g, '');
+    if (isIP(host)) return isPublicAddress(host);
+    try {
+      const addresses = this.d.resolveHost
+        ? await this.d.resolveHost(host)
+        : (await lookup(host, { all: true })).map((a) => a.address);
+      return addresses.length > 0 && addresses.every(isPublicAddress);
+    } catch {
+      return false;
+    }
+  }
 
   sender(): FormSender {
     return this.d.settings.get(SENDER_KEY, formSenderSchema) ?? EMPTY_SENDER;
@@ -109,11 +133,16 @@ export class FormService {
     website: string;
     subject: string | null;
     body: string;
+    /** The step's choice; a person is needed anyway for a field, a consent or a challenge. */
+    stepMode: BrowserExecutionMode;
+    /** Prepared several times already (a form that keeps changing): the person sends it. */
+    forceAssisted: boolean;
     signal: AbortSignal;
     correlationId: string;
   }): Promise<PrepareOutcome> {
     const sender = this.sender();
     if (!sender.profileId) return { kind: 'no_sender' };
+    if (!(await this.publicSite(req.website))) return { kind: 'no_form' };
     const worker = this.d.worker();
     if (!worker) throw new RpcError('UNAVAILABLE', 'Browser worker not running', 'worker.notRunning');
     const live = this.d.browser.liveSessionOf(sender.profileId);
@@ -124,7 +153,11 @@ export class FormService {
         live?.id ??
         (await this.d.browser.openSession(sender.profileId, 'automation', null, req.correlationId));
     } catch (error) {
-      if (error instanceof RpcError && error.problem.code === 'CONFLICT') return { kind: 'busy' };
+      // Busy only while someone else uses the window; an archived sender profile cannot send.
+      const detail = error instanceof RpcError ? error.problem.detail : undefined;
+      if (detail === 'profile.alreadyOpen' || detail === 'session.busy' || detail === 'profile.inUse')
+        return { kind: 'busy' };
+      if (detail === 'profile.archived' || detail === 'profile.notFound') return { kind: 'no_sender' };
       throw error;
     }
     const [first, ...rest] = sender.name.trim().split(/\s+/);
@@ -174,8 +207,9 @@ export class FormService {
     this.d.db
       .prepare(
         `INSERT INTO form_preparations (id, workflow_run_id, message_draft_id, status, reason, form_url, opener,
-                                        signature, fields, challenge, mode, screenshot, pack_version, prepared_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                        signature, fields, challenge, mode, screenshot, pack_version, prepared_at,
+                                        sender_key, action)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -189,12 +223,47 @@ export class FormService {
         JSON.stringify(result.fields),
         result.challenge,
         // A person is needed for a field, a consent or a challenge: they press Send (FR-FRM-004).
-        result.status === 'needs_human' ? 'assisted' : 'auto',
+        result.status === 'needs_human' || req.stepMode === 'assisted' || req.forceAssisted
+          ? 'assisted'
+          : 'auto',
         result.screenshot ? Buffer.from(result.screenshot, 'base64') : null,
         result.packVersion,
         this.d.now().toISOString(),
+        this.senderKey(),
+        result.action,
       );
+    this.prune(req.workflowRunId, id);
     return { kind: 'prepared', preparation: this.preparation(id) as FormPreparationRow };
+  }
+
+  /** Screenshots hold the sender's form page: kept for the latest preparation, for 30 days. */
+  private prune(runId: string, keepId: string): void {
+    const cutoff = new Date(this.d.now().getTime() - 30 * 24 * 60 * 60_000).toISOString();
+    this.d.db
+      .prepare(
+        `UPDATE form_preparations SET screenshot = NULL
+         WHERE screenshot IS NOT NULL AND ((workflow_run_id = ? AND id != ?) OR prepared_at < ?)`,
+      )
+      .run(runId, keepId, cutoff);
+  }
+
+  /** Identifies the sender's settings: a preparation for other settings is prepared again. */
+  senderKey(): string {
+    return createHash('sha256').update(JSON.stringify(this.sender())).digest('hex').slice(0, 32);
+  }
+
+  isCurrent(p: FormPreparationRow): boolean {
+    return p.sender_key === this.senderKey();
+  }
+
+  /** The form sends somewhere else than the company's site (a form service, say): shown, never auto-approved. */
+  crossSite(p: FormPreparationRow): boolean {
+    if (!p.action) return false;
+    try {
+      return !sameSite(new URL(p.action).hostname, new URL(p.form_url).hostname);
+    } catch {
+      return true;
+    }
   }
 
   latestFor(runId: string): FormPreparationRow | undefined {
@@ -222,7 +291,19 @@ export class FormService {
   approvalHash(draftHash: string, p: FormPreparationRow): string {
     const values = fieldsOf(p).map((f) => [f.ref, f.value]);
     return createHash('sha256')
-      .update(JSON.stringify(['form-v1', draftHash, p.form_url, p.opener, p.signature, p.mode, values]))
+      .update(
+        JSON.stringify([
+          'form-v2',
+          draftHash,
+          p.form_url,
+          p.opener,
+          p.signature,
+          p.mode,
+          p.action,
+          p.sender_key,
+          values,
+        ]),
+      )
       .digest('hex');
   }
 
@@ -233,17 +314,21 @@ export class FormService {
       mode: p.mode,
       reason: p.reason,
       hasScreenshot: p.screenshot !== null,
+      action: p.action,
+      crossSite: this.crossSite(p),
     };
   }
 
   screenshotOf(approvalId: string): string | null {
     const row = this.d.db
       .prepare(
-        `SELECT p.screenshot FROM approvals a JOIN form_preparations p ON p.workflow_run_id = a.workflow_run_id
+        `SELECT p.screenshot FROM approvals a
+         JOIN form_preparations p ON p.workflow_run_id = a.workflow_run_id AND p.message_draft_id = a.message_draft_id
+                                 AND p.prepared_at <= a.created_at
          WHERE a.id = ? ORDER BY p.prepared_at DESC, p.id DESC LIMIT 1`,
       )
       .get(approvalId) as { screenshot: Uint8Array | null } | undefined;
-    if (!row) throw new RpcError('NOT_FOUND', 'Approval not found', 'approval.notFound');
+    if (!row) return null;
     return row.screenshot ? Buffer.from(row.screenshot).toString('base64') : null;
   }
 

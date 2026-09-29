@@ -6,6 +6,7 @@ import {
   stepSchema,
   uuidv7,
   type ActiveWindow,
+  type BrowserExecutionMode,
   type CampaignStep,
   type ChangedEntity,
   type Condition,
@@ -173,10 +174,14 @@ export interface CampaignEngineDeps {
       website: string;
       subject: string | null;
       body: string;
+      stepMode: BrowserExecutionMode;
+      forceAssisted: boolean;
       signal: AbortSignal;
       correlationId: string;
     }): Promise<PrepareOutcome>;
     latestFor(runId: string): FormPreparationRow | undefined;
+    isCurrent(preparation: FormPreparationRow): boolean;
+    crossSite(preparation: FormPreparationRow): boolean;
     approvalHash(draftHash: string, preparation: FormPreparationRow): string;
     requireAssisted(preparationId: string): void;
   };
@@ -229,8 +234,9 @@ export class CampaignEngine {
       type: JOB_RUN,
       payload: z.object({ runId: z.uuid() }),
       sideEffecting: true,
-      // One send at a time keeps channel pacing exact; there is one test channel account in Phase 2.
-      concurrency: 1,
+      // Two at a time: a form waiting for the person to press Send must not hold up email. Each
+      // channel account still sends one at a time (the lock in send()), so pacing stays exact.
+      concurrency: 2,
       maxAttempts: 6,
       maxAgeMs: 7 * 24 * 60 * 60_000,
       handler: ({ runId }, ctx) => this.runStep(runId, ctx),
@@ -449,7 +455,10 @@ export class CampaignEngine {
           return 'next';
         }
         const preparation = step.channel === 'web_form' ? this.d.forms?.latestFor(run.id) : undefined;
-        if (step.channel === 'web_form' && preparation?.message_draft_id !== draft.id) {
+        if (
+          step.channel === 'web_form' &&
+          (!preparation || preparation.message_draft_id !== draft.id || !this.d.forms?.isCurrent(preparation))
+        ) {
           // A form is prepared for exactly this draft before anyone approves it (FR-FRM-003).
           this.updateRun(run, { current_state: 'PREPARE_FORM' });
           return 'next';
@@ -462,7 +471,10 @@ export class CampaignEngine {
         ) {
           if (approval) this.closeApprovals(run.id, 'superseded');
           // A form a person must finish (a field, a consent, a CAPTCHA) is never approved by policy.
-          if (this.autoApprovable(e, draft) && (!preparation || preparation.mode === 'auto')) {
+          if (
+            this.autoApprovable(e, draft) &&
+            (!preparation || (preparation.mode === 'auto' && !this.d.forms?.crossSite(preparation)))
+          ) {
             this.requestApproval(run, e, draft, correlationId, true);
             this.updateRun(run, { current_state: 'FINAL_PRE_SEND_CHECK' });
             return 'next';
@@ -569,6 +581,103 @@ export class CampaignEngine {
         correlationId: run.correlation_id,
       });
 
+    // Final pre-send check (ADR 021 §6): in the reserving transaction, and for a browser channel
+    // again at the checkpoint. Everything is read again: reconciliation may have awaited, and a
+    // reply, a stop, a pause, an edit or a rejection may have arrived meanwhile (audit 3.5, 6.5).
+    const finalCheck = (): void => {
+      if (this.d.paused?.()) {
+        throw new PolicyBlocked({
+          kind: 'defer',
+          until: new Date(this.d.now().getTime() + 60_000),
+          rule: 'app.paused',
+        });
+      }
+      const freshRun = this.run(run.id);
+      const freshE = this.enrollment(e.id);
+      if (
+        !freshRun ||
+        freshRun.status !== 'running' ||
+        freshRun.current_state !== 'SEND' ||
+        !freshE ||
+        freshE.status !== 'active' ||
+        this.campaignStatus(freshE.campaign_id) !== 'active'
+      ) {
+        throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'run.changed' });
+      }
+      // The address may have been edited while the inbox was read (audit 4.5): never the old one.
+      const freshFacts = this.contact(e.contact_id);
+      const freshApproval = this.currentApproval(run.id);
+      if (
+        !freshFacts ||
+        this.targetFor(step.channel, freshFacts) !== target ||
+        !freshApproval ||
+        freshApproval.status !== 'approved' ||
+        freshApproval.content_hash !== hash
+      ) {
+        throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'approval.stale' });
+      }
+      if (this.earlierAttempt(e, run, intentKey(intent)))
+        throw new PermanentError('earlier_attempt_unresolved');
+      const verdict = this.policyVerdict(e, run, step, freshFacts, target);
+      if (verdict.kind !== 'ok') throw new PolicyBlocked(verdict);
+      const pacing = this.d.policy.checkChannel(channel, intentKey(intent));
+      if (pacing.kind !== 'ok') throw new PolicyBlocked(pacing);
+      const shared = this.companyForm(e, run, step);
+      if (shared === 'sent')
+        throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'company.form.sent' });
+      if (shared === 'pending') {
+        throw new PolicyBlocked({
+          kind: 'defer',
+          until: new Date(this.d.now().getTime() + 30 * 60_000),
+          rule: 'company.form',
+        });
+      }
+    };
+    // One send at a time per channel account (pacing stays exact); other channels go on.
+    const lock = `${channel.channel}:${channel.accountId ?? ''}`;
+    const before = this.sending.get(lock) ?? Promise.resolve();
+    let release: () => void = () => {};
+    const mine = new Promise<void>((r) => (release = r));
+    const tail = before.then(() => mine);
+    this.sending.set(lock, tail);
+    await before;
+    try {
+      return await this.sendLocked(
+        run,
+        e,
+        step,
+        ctx,
+        channel,
+        draft,
+        facts,
+        target,
+        intent,
+        hash,
+        audit,
+        finalCheck,
+      );
+    } finally {
+      release();
+      if (this.sending.get(lock) === tail) this.sending.delete(lock);
+    }
+  }
+
+  private readonly sending = new Map<string, Promise<void>>();
+
+  private async sendLocked(
+    run: RunRow,
+    e: EnrollmentRow,
+    step: SendStep,
+    ctx: JobContext,
+    channel: MessageChannel,
+    draft: DraftRow,
+    facts: ContactFacts,
+    target: string,
+    intent: IntentParts,
+    hash: string,
+    audit: (status: 'planned' | 'completed' | 'failed' | 'unknown', extra?: Record<string, unknown>) => void,
+    finalCheck: () => void,
+  ): Promise<'next' | 'done' | { continueAt: Date }> {
     await this.d.beforeSend?.(channel, ctx.signal, run.correlation_id);
     let outcome;
     try {
@@ -595,47 +704,9 @@ export class CampaignEngine {
             reconciled: true,
             ...(settled === 'not_sent' ? { errorClass: 'reconciled_not_sent' } : {}),
           }),
+        recheck: () => finalCheck(),
         guard: () => {
-          // Final pre-send check, in the reserving transaction (ADR 021 §6). Everything is read
-          // again here: reconciliation may have awaited for a while, and a reply, a stop, a pause
-          // or a rejection may have arrived meanwhile (audit 3.5).
-          if (this.d.paused?.()) {
-            throw new PolicyBlocked({
-              kind: 'defer',
-              until: new Date(this.d.now().getTime() + 60_000),
-              rule: 'app.paused',
-            });
-          }
-          const freshRun = this.run(run.id);
-          const freshE = this.enrollment(e.id);
-          if (
-            !freshRun ||
-            freshRun.status !== 'running' ||
-            freshRun.current_state !== 'SEND' ||
-            !freshE ||
-            freshE.status !== 'active' ||
-            this.campaignStatus(freshE.campaign_id) !== 'active'
-          ) {
-            throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'run.changed' });
-          }
-          // The address may have been edited while the inbox was read (audit 4.5): never the old one.
-          const freshFacts = this.contact(e.contact_id);
-          const freshApproval = this.currentApproval(run.id);
-          if (
-            !freshFacts ||
-            this.targetFor(step.channel, freshFacts) !== target ||
-            !freshApproval ||
-            freshApproval.status !== 'approved' ||
-            freshApproval.content_hash !== hash
-          ) {
-            throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'approval.stale' });
-          }
-          if (this.earlierAttempt(e, run, intentKey(intent)))
-            throw new PermanentError('earlier_attempt_unresolved');
-          const verdict = this.policyVerdict(e, run, step, freshFacts, target);
-          if (verdict.kind !== 'ok') throw new PolicyBlocked(verdict);
-          const pacing = this.d.policy.checkChannel(channel, intentKey(intent));
-          if (pacing.kind !== 'ok') throw new PolicyBlocked(pacing);
+          finalCheck();
           audit('planned');
         },
       });
@@ -651,6 +722,10 @@ export class CampaignEngine {
           return 'done';
         }
         if (v.rule === 'run.changed') return 'next'; // the next pass sees the stop, pause or cancel
+        if (v.rule === 'company.form.sent') {
+          this.companyFormDone(fresh, freshEnrollment);
+          return 'done';
+        }
         if (v.rule === 'approval.stale') {
           this.updateRun(fresh, { current_state: 'FINAL_PRE_SEND_CHECK' });
           return 'next';
@@ -665,7 +740,16 @@ export class CampaignEngine {
     }
     if (outcome.outcome === 'not_sent' && step.channel === 'web_form') {
       const handled = this.formNotSent(run, outcome.errorClass);
-      if (handled) return handled;
+      if (handled) {
+        // Nothing was sent; the attempt is recorded all the same (CLAUDE.md §3.5).
+        const notSent = outcome;
+        transaction(this.d.db, () => {
+          this.recordSendAttempt(run.id, ctx.attempt, notSent);
+          audit('failed', { errorClass: notSent.errorClass });
+        });
+        this.d.changed(['activity']);
+        return handled;
+      }
     }
     if (outcome.outcome === 'not_sent' && outcome.permanent) {
       return transaction(this.d.db, () => {
@@ -1003,6 +1087,8 @@ export class CampaignEngine {
     const preparation = this.d.forms?.latestFor(runId);
     if (!preparation || preparation.message_draft_id !== draft.id || !this.d.forms)
       return `unprepared:${base}`;
+    // Prepared for other sender settings: never matches, so it is prepared and approved again.
+    if (!this.d.forms.isCurrent(preparation)) return `stale-sender:${base}`;
     return this.d.forms.approvalHash(base, preparation);
   }
 
@@ -1016,6 +1102,12 @@ export class CampaignEngine {
     const later = (ms: number) => ({ continueAt: new Date(this.d.now().getTime() + ms) });
     // Opening a site is browser work: none starts while the app is paused (docs/19).
     if (this.d.paused?.()) return later(60_000);
+    const shared = this.companyForm(e, run, step);
+    if (shared === 'pending') return later(30 * 60_000);
+    if (shared === 'sent') {
+      transaction(this.d.db, () => this.companyFormDone(run, e));
+      return 'done';
+    }
     const draft = this.latestDraft(run.id);
     const facts = this.contact(e.contact_id);
     const website = facts ? this.targetFor(step.channel, facts) : null;
@@ -1032,6 +1124,9 @@ export class CampaignEngine {
         website,
         subject: draft.subject,
         body: draft.body,
+        stepMode: step.executionMode,
+        // A form prepared three times already keeps changing (audit 6.5): the person sends it.
+        forceAssisted: this.preparationCount(run.id) >= 3,
         signal: ctx.signal,
         correlationId: run.correlation_id,
       });
@@ -1082,7 +1177,7 @@ export class CampaignEngine {
         this.updateRun(fresh, { current_state: 'PREPARE_FORM' });
         return 'next';
       }
-      if (errorClass === 'needs_human') {
+      if (errorClass === 'needs_human' || errorClass === 'form.invalid') {
         const preparation = this.d.forms?.latestFor(run.id);
         if (preparation && preparation.mode === 'auto') {
           this.d.forms?.requireAssisted(preparation.id);
@@ -1090,6 +1185,9 @@ export class CampaignEngine {
           return 'next';
         }
       }
+      // Refused at the checkpoint (a stop, pause, reply or edit arrived while the form was filled):
+      // the next pass runs the final checks again and acts on what changed; no attempt is used.
+      if (errorClass === 'task.checkpointRefused') return 'next';
       if (
         ['profile.inUseByYou', 'user_control', 'session.busy', 'profile.alreadyOpen'].includes(errorClass)
       ) {
@@ -1097,6 +1195,81 @@ export class CampaignEngine {
       }
       return null;
     });
+  }
+
+  /**
+   * The form sender changed: forms waiting for approval were prepared with the old details, so
+   * they are prepared again (with the new ones) and a new approval follows (audit 6.5).
+   */
+  reprepareForms(correlationId: string): number {
+    const runs = this.d.db
+      .prepare(
+        `SELECT r.* FROM workflow_runs r
+         WHERE r.workflow_type = 'campaign_message' AND r.status = 'waiting_approval'
+           AND EXISTS (SELECT 1 FROM form_preparations p WHERE p.workflow_run_id = r.id)`,
+      )
+      .all() as unknown as RunRow[];
+    transaction(this.d.db, () => {
+      for (const run of runs) {
+        this.closeApprovals(run.id, 'superseded');
+        this.updateRun(run, { status: 'running', current_state: 'PREPARE_FORM' });
+        this.wakeRun(run.id, correlationId);
+      }
+    });
+    if (runs.length > 0) this.d.changed(['approval', 'enrollment']);
+    return runs.length;
+  }
+
+  private preparationCount(runId: string): number {
+    return (
+      this.d.db
+        .prepare('SELECT COUNT(*) AS n FROM form_preparations WHERE workflow_run_id = ?')
+        .get(runId) as {
+        n: number;
+      }
+    ).n;
+  }
+
+  /**
+   * A company's contact form is written to once per campaign step, however many of its people are
+   * enrolled (audit 6.5): `sent` when another enrollment's form send completed, `pending` while one
+   * may be under way or is unresolved.
+   */
+  private companyForm(e: EnrollmentRow, run: RunRow, step: SendStep): 'sent' | 'pending' | null {
+    if (step.channel !== 'web_form') return null;
+    const facts = this.contact(e.contact_id);
+    const target = facts ? this.targetFor(step.channel, facts) : null;
+    if (!target) return null;
+    const rows = this.d.db
+      .prepare(
+        `SELECT se.status FROM side_effects se JOIN campaign_enrollments o ON o.id = se.scope_id
+         WHERE se.channel = 'web_form' AND se.target_normalized = ? AND se.step_position = ?
+           AND o.campaign_id = ? AND se.scope_id != ?
+           AND se.status IN ('reserved', 'executing', 'completed', 'unknown')`,
+      )
+      .all(target, run.step_position, e.campaign_id, e.id) as { status: string }[];
+    if (rows.some((r) => r.status === 'completed')) return 'sent';
+    return rows.length > 0 ? 'pending' : null;
+  }
+
+  /** The company's form already went out for this step: this contact's step is done, nothing sent. */
+  private companyFormDone(run: RunRow, e: EnrollmentRow): void {
+    const fresh = this.run(run.id);
+    if (!fresh || TERMINAL.has(fresh.status)) return;
+    this.closeApprovals(run.id, 'superseded');
+    this.updateRun(fresh, { status: 'completed', current_state: 'COMPLETE' });
+    this.d.audit.record({
+      actorType: 'system',
+      actionType: 'form.already_sent',
+      objectType: 'enrollment',
+      objectId: e.id,
+      payload: { runId: run.id, step: run.step_position },
+      correlationId: run.correlation_id,
+    });
+    const freshE = this.enrollment(e.id);
+    if (freshE?.status === 'active' || freshE?.status === 'paused')
+      this.finishStep(freshE, run.correlation_id);
+    this.d.changed(['enrollment', 'activity']);
   }
 
   private async generate(
@@ -1298,8 +1471,17 @@ export class CampaignEngine {
     facts: ContactFacts,
     target: string | null,
   ): PolicyVerdict {
+    let websiteHost: string | null = null;
+    if (step.channel === 'web_form' && target) {
+      try {
+        websiteHost = new URL(target).hostname;
+      } catch {
+        websiteHost = null;
+      }
+    }
     return this.d.policy.check({
       channel: step.channel,
+      websiteHost,
       contactId: e.contact_id,
       companyId: facts.company_id,
       idempotencyKey: this.intentKeyFor(e, run, step, target ?? ''),

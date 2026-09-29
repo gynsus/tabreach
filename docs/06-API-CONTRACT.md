@@ -188,7 +188,7 @@ query   interventions.list             # open requests to the person, with diagn
 command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
 ```
 
-`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `profile.inUseByYou`, `profile.checking`, `profile.research`, `session.nothingToReturn`, `session.notOpen`, `session.busy`, `intervention.notFound`, `intervention.closed`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
+`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `profile.inUseByYou`, `profile.checking`, `profile.research`, `profile.formSender`, `session.nothingToReturn`, `session.notOpen`, `session.busy`, `intervention.notFound`, `intervention.closed`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
 
 ## Jobs and diagnostics
 

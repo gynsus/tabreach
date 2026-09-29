@@ -277,4 +277,49 @@ describe('website forms (Phase 6)', () => {
       'Log in',
     ]);
   }, 120_000);
+
+  it('audit 6.5: nothing is typed into the site before approval', async () => {
+    await prepare('forms/contact.html');
+    const typed = await page.evaluate(
+      "Array.from(document.querySelectorAll('#contact input:not([type=checkbox]), #contact textarea')).map((e) => e.value).join('')",
+    );
+    expect(typed).toBe('');
+  }, 90_000);
+
+  it('audit 6.5: honeypots stay empty, a box the page ticked is unticked, old marks and footers prove nothing', async () => {
+    const r = await prepare('forms/traps.html?result=silent');
+    expect(r.fields.map((f) => f.label)).toEqual([
+      'Name',
+      'Email',
+      'Phone',
+      'Message',
+      'Send me marketing emails',
+    ]);
+    expect(r.fields.find((f) => f.meaning === 'consent')).toMatchObject({ checked: true, value: null });
+    // A footer saying "we will get back" and a field marked invalid before the press: neither a
+    // success nor a refusal — the silent site stays unknown.
+    expect(await submit(r)).toMatchObject({ status: 'unknown', committed: true });
+    const [sent] = await submissions();
+    expect(sent?.values).toMatchObject({
+      name: 'Anna Test',
+      website: '',
+      email2: '',
+      url: '',
+      marketing: false,
+    });
+  }, 120_000);
+
+  it('audit 6.5: a blog comment form is not a contact form', async () => {
+    expect(await prepare('forms/blog.html')).toMatchObject({ status: 'no_form' });
+  }, 90_000);
+
+  it('audit 6.5: assisted mode lets the person fill what TabReach could not, then press', async () => {
+    const r = await prepare('forms/unmapped.html?result=inline');
+    expect(r.status).toBe('needs_human');
+    const sending = submit(r, { mode: 'assisted' });
+    await expect.poll(() => checkpoints, { timeout: 30_000 }).toBe(1);
+    await page.getByLabel('Order number').fill('A-17'); // the person
+    await page.getByRole('button', { name: 'Send' }).click();
+    expect(await sending).toMatchObject({ status: 'succeeded', committed: true });
+  }, 120_000);
 });

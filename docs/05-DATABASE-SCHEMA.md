@@ -383,6 +383,8 @@ challenge null
 mode check in ('auto','assisted')
 screenshot blob null      -- PNG of the filled form, shown in the approval
 pack_version, prepared_at
+sender_key                -- migration 19: the sender settings it was prepared for
+action null               -- migration 19: where the form sends
 ```
 
 ### `human_interventions` (migration 16: `browser_profile_id`, `browser_task_id`; reason `security_challenge | login_required | unsupported_state`, migration 17 adds `user_control`; status `open | resolved | cancelled`)

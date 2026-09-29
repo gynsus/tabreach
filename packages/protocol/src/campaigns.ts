@@ -281,6 +281,9 @@ export const approvalFormSchema = z.object({
   /** Why the person is needed: `form.unmappedRequired`, `form.consentRequired`, `form.challenge`. */
   reason: z.string().nullable(),
   hasScreenshot: z.boolean(),
+  /** Where the form sends; `crossSite` when that is not the company's own site. */
+  action: z.string().nullable().default(null),
+  crossSite: z.boolean().default(false),
 });
 export type ApprovalForm = z.infer<typeof approvalFormSchema>;
 

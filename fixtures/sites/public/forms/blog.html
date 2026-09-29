@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Our blog</title>
+  </head>
+  <body>
+    <!-- A comment form would publish the message: never taken for a contact form (audit 6.5). -->
+    <article>
+      <h1>News</h1>
+      <p>We moved.</p>
+    </article>
+    <form id="commentform" action="/wp-comments-post.php" method="post">
+      <label>Name <input name="author" required /></label>
+      <label>Email <input type="email" name="email" required /></label>
+      <label>Comment <textarea name="comment" required></textarea></label>
+      <button type="submit">Post comment</button>
+    </form>
+  </body>
+</html>
