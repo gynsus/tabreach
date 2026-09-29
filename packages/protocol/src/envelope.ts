@@ -33,6 +33,8 @@ export const errorCodeSchema = z.enum([
   'UNAVAILABLE',
   'INTERNAL',
   'BROWSER_CHROME_NOT_FOUND',
+  /** Chrome did not start with a profile (docs/08); the detail says why. */
+  'BROWSER_LAUNCH_FAILED',
   'NOT_FOUND',
   /** The action does not fit the current state (e.g. launching an archived campaign). */
   'CONFLICT',

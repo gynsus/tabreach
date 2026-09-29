@@ -592,4 +592,40 @@ export const migrations: readonly Migration[] = [
       ) STRICT, WITHOUT ROWID;
     `,
   },
+  {
+    version: 15,
+    name: 'browser_profiles',
+    sql: `
+      -- Browser profiles (docs/08) and their sessions (docs/11), Phase 5a. The profile directory is
+      -- derived from the id (<data>/profiles/<id>); no path is stored.
+      CREATE TABLE browser_profiles (
+        id                   TEXT PRIMARY KEY,
+        name                 TEXT NOT NULL,
+        purpose              TEXT NOT NULL CHECK (purpose IN ('channel_identity', 'research', 'general')),
+        channel_account_id   TEXT REFERENCES channel_accounts (id),
+        status               TEXT NOT NULL CHECK (status IN ('ready', 'open', 'needs_login', 'unhealthy', 'archived')),
+        browser_channel      TEXT NOT NULL DEFAULT 'chrome' CHECK (browser_channel IN ('chrome', 'chromium')),
+        locale               TEXT,
+        timezone             TEXT,
+        health               TEXT CHECK (health IS NULL OR json_valid(health)),
+        last_opened_at       TEXT,
+        last_health_check_at TEXT,
+        created_at           TEXT NOT NULL,
+        updated_at           TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE browser_sessions (
+        id                 TEXT PRIMARY KEY,
+        browser_profile_id TEXT NOT NULL REFERENCES browser_profiles (id) ON DELETE CASCADE,
+        control_mode       TEXT NOT NULL CHECK (control_mode IN ('automation', 'paused', 'human')),
+        status             TEXT NOT NULL CHECK (status IN ('opening', 'open', 'closed', 'interrupted')),
+        current_url        TEXT,
+        started_at         TEXT NOT NULL,
+        ended_at           TEXT,
+        heartbeat_at       TEXT
+      ) STRICT;
+      CREATE INDEX browser_sessions_profile ON browser_sessions (browser_profile_id, started_at);
+      CREATE INDEX browser_sessions_live ON browser_sessions (status);
+    `,
+  },
 ];

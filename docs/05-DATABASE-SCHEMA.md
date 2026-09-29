@@ -337,7 +337,7 @@ created_at                -- pruned after 7 days
 
 Exactly-once execution of creating commands from the UI (ADR 020). Not used for external side effects.
 
-### `browser_profiles`
+### `browser_profiles` (migration 15)
 
 ```text
 id pk
@@ -356,7 +356,7 @@ created_at, updated_at
 
 The directory is derived from the profile ID (`profiles/{id}`); no path is stored.
 
-### `browser_sessions`
+### `browser_sessions` (migration 15; `status` opening | open | closed | interrupted, `ended_at`)
 
 ```text
 id pk

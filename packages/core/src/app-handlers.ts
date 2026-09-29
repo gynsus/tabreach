@@ -12,6 +12,7 @@ import {
 import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
 import { TimelineService } from './audit/timeline.js';
+import { BrowserService } from './browser/browser-service.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
@@ -62,6 +63,10 @@ export interface AppServicesOptions {
   sleep?: (ms: number) => Promise<void>;
   /** DNS for research fetching (tests map fixture hosts to a public address). */
   resolveHost?: (host: string) => Promise<string[]>;
+  /** The browser worker's channel, when one is attached (it restarts independently). */
+  worker?: () => Pick<RpcPeer, 'request'> | null;
+  /** `chromium` for profiles in tests; the user's Google Chrome otherwise. */
+  browserChannel?: 'chrome' | 'chromium';
 }
 
 const noCipher: SecretCipher = {
@@ -94,6 +99,7 @@ export class AppServices {
   readonly research: ResearchService;
   readonly drafts: DraftWriter;
   readonly timeline: TimelineService;
+  readonly browser: BrowserService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -107,6 +113,15 @@ export class AppServices {
     this.changed = options.onChanged ?? (() => {});
     this.audit = new AuditLog(db, now);
     this.timeline = new TimelineService(db);
+    this.browser = new BrowserService({
+      db,
+      now,
+      audit: this.audit,
+      worker: options.worker ?? (() => null),
+      changed: (entities) => this.changed(entities),
+      logger: logger.child({ component: 'browser' }),
+      ...(options.browserChannel ? { browserChannel: options.browserChannel } : {}),
+    });
     this.commands = new CommandLog(db, now);
     this.jobs = new JobQueue(db, now, options.onJobEnqueued);
     this.ledger = new SideEffectLedger(db, now);
@@ -447,7 +462,22 @@ export class AppServices {
       .handle('jobs.dismiss', ({ id }, c) =>
         mutate(['job'], () => this.jobAction(id, 'dismiss', c.correlationId)),
       )
-      .handle('activity.list', (p) => this.timeline.list(p));
+      .handle('activity.list', (p) => this.timeline.list(p))
+      .handle('profiles.list', (p) => ({ items: this.browser.list(p.includeArchived) }))
+      .handle('profiles.create', (p, c) => this.browser.create(p, ctx(c)))
+      .handle('profiles.update', (p, c) => this.browser.rename(p.id, p.name, ctx(c)))
+      .handle('profiles.archive', (p, c) => this.browser.archive(p.id, ctx(c)))
+      .handle('profiles.delete', async (p, c) => {
+        await this.browser.delete(p.id, p.confirmName, ctx(c));
+        return { ok: true as const };
+      })
+      .handle('profiles.open', (p, c) => this.browser.open(p.id, p.startUrl, ctx(c)))
+      .handle('profiles.close', (p, c) => this.browser.close(p.id, ctx(c)))
+      .handle('profiles.focus', async (p) => {
+        await this.browser.focus(p.id);
+        return { ok: true as const };
+      })
+      .handle('profiles.check', (p) => this.browser.check(p.id));
   }
 
   private jobAction(id: string, action: 'retry' | 'dismiss', correlationId: string): { ok: true } {

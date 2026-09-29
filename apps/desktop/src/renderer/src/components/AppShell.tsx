@@ -3,6 +3,7 @@ import {
   Building2,
   CheckCheck,
   Gauge,
+  Globe,
   Inbox,
   Megaphone,
   Settings,
@@ -102,6 +103,7 @@ export function AppShell() {
         </NavGroup>
         <div className="mt-auto">
           <NavGroup label={t('nav.system')}>
+            <NavItem to="/browser" icon={Globe} label={t('nav.browser')} />
             <NavItem to="/status" icon={Gauge} label={t('nav.status')} />
             <NavItem to="/settings" icon={Settings} label={t('nav.settings')} />
           </NavGroup>

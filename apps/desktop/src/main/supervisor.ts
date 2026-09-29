@@ -11,6 +11,8 @@ export class Supervised {
   state: CoreState = 'starting';
   onSpawn: (proc: UtilityProcess) => void = () => {};
   onState: (state: CoreState) => void = () => {};
+  /** After the process exited, whatever the reason (e.g. to clean up what it left running). */
+  onExit: () => void = () => {};
   private readonly policy = new RestartPolicy();
   private stopping = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
@@ -38,6 +40,7 @@ export class Supervised {
     });
     proc.once('exit', (code) => {
       if (this.process === proc) this.process = null;
+      this.onExit();
       if (this.stopping) return;
       const decision = this.policy.onCrash();
       this.logger.error({ event: 'process.exited', name: this.name, code, ...decision }, 'process exited');

@@ -47,6 +47,7 @@ export class CoreService {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
     this.services = new AppServices(db, {
       logger: options.logger,
+      worker: () => this.workerPeer,
       onChanged: (entities) => this.announce(entities),
       // Deferred: the enqueuing transaction must commit before the dispatcher looks.
       onJobEnqueued: () => queueMicrotask(() => this.dispatcher.wake()),
@@ -135,9 +136,15 @@ export class CoreService {
     this.workerPeer?.close();
     const peer = new RpcPeer(endpoint, this.peerOptions('browser'));
     this.workerPeer = peer;
+    peer.on('session.changed', (change) => this.services.browser.onSessionChanged(change));
+    peer.on('worker.heartbeat', ({ sessions }) => this.services.browser.onHeartbeat(sessions));
     return () => {
       peer.close();
-      if (this.workerPeer === peer) this.workerPeer = null;
+      if (this.workerPeer === peer) {
+        this.workerPeer = null;
+        // Its Chrome windows went with it (main cleans up any that survived).
+        this.services.browser.onWorkerDetached();
+      }
     };
   }
 

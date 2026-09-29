@@ -13,3 +13,4 @@ export * from './accounts.js';
 export * from './inbox.js';
 export * from './ai.js';
 export * from './research.js';
+export * from './browser.js';

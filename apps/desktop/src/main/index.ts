@@ -16,6 +16,7 @@ import { installMenu } from './menu';
 import { runLoopback } from './oauth-loopback';
 import { registerSaveFile } from './save-file';
 import { parseSelfCheck, runSelfCheck } from './self-check';
+import { killOrphanChrome } from './orphan-chrome';
 import { Supervised } from './supervisor';
 
 const isDev = !app.isPackaged;
@@ -76,6 +77,9 @@ function main(): void {
     connectWorker();
     startSelfCheck();
   };
+  // A worker that crashed or was killed may leave Chrome running on a profile, holding its lock.
+  const profilesRoot = join(app.getPath('userData'), 'profiles');
+  worker.onExit = () => void killOrphanChrome(profilesRoot, logger);
 
   const stopChildren = () => Promise.all([core.stop(), worker.stop()]);
 
@@ -200,7 +204,8 @@ function main(): void {
       powerMonitor.on('suspend', () => power('power.suspend'));
       powerMonitor.on('resume', () => power('power.resume'));
       core.start();
-      worker.start();
+      // Chrome left over from a previous run (the app crashed) would keep its profile locked.
+      void killOrphanChrome(profilesRoot, logger).finally(() => worker.start());
       if (selfCheck.enabled) {
         setTimeout(() => {
           process.stderr.write('TABREACH_SELF_CHECK timed out\n');
@@ -222,7 +227,9 @@ function main(): void {
     // Let core close the database cleanly before the app exits (bounded by the supervisor).
     event.preventDefault();
     quitting = true;
-    void stopChildren().finally(() => app.quit());
+    void stopChildren()
+      .then(() => killOrphanChrome(profilesRoot, logger))
+      .finally(() => app.quit());
   });
 }
 

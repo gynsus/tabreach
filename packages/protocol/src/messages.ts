@@ -1,4 +1,15 @@
 import { z } from 'zod';
+import {
+  browserProfileSchema,
+  profileCreateSchema,
+  profileDeleteSchema,
+  profileUpdateSchema,
+  workerProfileHealthSchema,
+  workerProfileOpenResultSchema,
+  workerProfileOpenSchema,
+  workerProfileRefSchema,
+  workerSessionRefSchema,
+} from './browser.js';
 import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
 import {
@@ -436,6 +447,53 @@ export const requests = {
     request: launchCheckRequestSchema,
     response: launchCheckResultSchema,
   },
+  // Browser profiles (Phase 5a): the app asks core; core owns the records and asks the worker.
+  'profiles.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ includeArchived: z.boolean().default(false) }),
+    response: z.object({ items: z.array(browserProfileSchema) }),
+  },
+  'profiles.create': {
+    channel: 'app',
+    kind: 'command',
+    request: profileCreateSchema,
+    response: browserProfileSchema,
+  },
+  'profiles.update': {
+    channel: 'app',
+    kind: 'command',
+    request: profileUpdateSchema,
+    response: browserProfileSchema,
+  },
+  'profiles.archive': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
+  'profiles.delete': { channel: 'app', kind: 'command', request: profileDeleteSchema, response: ok },
+  /** Opens the profile in a visible Chrome window, under the user's control. */
+  'profiles.open': {
+    channel: 'app',
+    kind: 'command',
+    request: byId.extend({ startUrl: z.url().nullable().default(null) }),
+    response: browserProfileSchema,
+  },
+  'profiles.close': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
+  'profiles.focus': { channel: 'app', kind: 'command', request: byId, response: ok },
+  'profiles.check': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
+  'profile.open': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerProfileOpenSchema,
+    response: workerProfileOpenResultSchema,
+  },
+  'profile.close': { channel: 'browser', kind: 'command', request: workerSessionRefSchema, response: ok },
+  'profile.healthCheck': {
+    channel: 'browser',
+    kind: 'query',
+    request: workerProfileRefSchema,
+    response: workerProfileHealthSchema,
+  },
+  /** Removes the profile's directory (credential-equivalent data, docs/08); the profile must be closed. */
+  'profile.delete': { channel: 'browser', kind: 'command', request: workerProfileRefSchema, response: ok },
+  'session.focus': { channel: 'browser', kind: 'command', request: workerSessionRefSchema, response: ok },
   /** Core → main: one OAuth authorization through the system browser and a loopback redirect. */
   'oauth.loopback': {
     channel: 'host',

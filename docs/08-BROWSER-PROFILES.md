@@ -6,6 +6,14 @@ A browser profile is a durable, isolated browser identity owned by the applicati
 
 It preserves legitimate session state such as cookies and local storage while avoiding the fragility and security problems of automating the user's everyday Chrome profile.
 
+## Implementation status (Phase 5a, 2026-09-29)
+
+- Tables `browser_profiles` and `browser_sessions` (migration 15). Profiles are created as `general` or `research` in the app (Browser profiles screen); `channel_identity` comes with channel accounts (Phase 7). The directory is `<app data>/profiles/<id>`; ids are UUIDs, so a directory can never be outside that folder.
+- Opening from the app starts the user's Google Chrome visibly (`launchPersistentContext`, `viewport: null`) with control mode `human`: nothing automated may act in it. Closing the last window ends the session (Chrome on macOS would otherwise keep running without windows).
+- The worker keeps its running profiles across core restarts and reports them every 10 s (`worker.heartbeat`); core ends any session the worker no longer has (`interrupted`) and every session when the worker goes away. Main ends Chrome processes of our profiles folder left behind by a crashed worker, on worker exit, app start and quit.
+- Health check: folder writable, not locked by another Chrome (`SingletonLock`), busy while open. Login state (`needs_login`) needs adapter-pack states (Phase 5b).
+- Deleting requires the profile closed and its exact name typed; the worker removes the directory; only the audit record (ids) remains.
+
 ## Browser
 
 Profiles run in the user's installed Google Chrome (`channel: 'chrome'`). The app does not download or bundle a browser in the MVP. The setup wizard and health checks detect Chrome and report its version; if Chrome is missing, browser features are disabled with instructions to install it.

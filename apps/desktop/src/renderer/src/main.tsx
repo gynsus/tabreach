@@ -14,6 +14,7 @@ import { CompaniesPage } from './routes/companies/CompaniesPage';
 import { CompanyPage } from './routes/companies/CompanyPage';
 import { ContactPage } from './routes/contacts/ContactPage';
 import { ContactsPage } from './routes/contacts/ContactsPage';
+import { BrowserPage } from './routes/browser/BrowserPage';
 import { SettingsPage } from './routes/settings/SettingsPage';
 import { StatusPage } from './routes/status/StatusPage';
 import { SuppressionsPage } from './routes/suppressions/SuppressionsPage';
@@ -37,6 +38,7 @@ const router = createHashRouter([
       { path: 'inbox', element: <InboxPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'status', element: <StatusPage /> },
+      { path: 'browser', element: <BrowserPage /> },
       { path: 'settings', element: <Navigate to="/settings/general" replace /> },
       { path: 'settings/:tab', element: <SettingsPage /> },
     ],

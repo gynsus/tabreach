@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture Account</title>
+  </head>
+  <body>
+    <h1 id="status">Not signed in</h1>
+    <a href="index.html">Sign in</a>
+    <script>
+      const match = document.cookie.match(/(?:^|; )fixture_session=([^;]*)/);
+      if (match)
+        document.getElementById('status').textContent = `Signed in as ${decodeURIComponent(match[1])}`;
+    </script>
+  </body>
+</html>

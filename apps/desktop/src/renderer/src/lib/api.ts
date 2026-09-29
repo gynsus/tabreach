@@ -45,13 +45,13 @@ export function errorMessage(t: TFunction, error: unknown): string {
     const fields = Object.values(error.problem.fields ?? {});
     if (fields.length > 0)
       return fields.map((k) => translateKey(t, `errors.${k}`, t('errors.generic'))).join(' ');
-    if (error.problem.code === 'UNAVAILABLE' || error.problem.code === 'TIMEOUT')
-      return t('errors.unavailable');
-    // State errors (CONFLICT, NOT_FOUND, APPROVAL_STALE) carry a key such as `approval.stale`.
+    // Errors carry a key such as `approval.stale` or `worker.notRunning`; a known one says most.
     if (error.problem.detail) {
       const message = translateKey(t, `errors.${error.problem.detail}`, '');
       if (message) return message;
     }
+    if (error.problem.code === 'UNAVAILABLE' || error.problem.code === 'TIMEOUT')
+      return t('errors.unavailable');
   }
   return t('errors.generic');
 }

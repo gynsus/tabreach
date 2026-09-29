@@ -1,6 +1,7 @@
 // English is the source catalog; every other language must have the same shape (see ru.ts).
 export const en = {
   nav: {
+    browser: 'Browser profiles',
     prospects: 'Prospects',
     contacts: 'Contacts',
     companies: 'Companies',
@@ -74,6 +75,52 @@ export const en = {
     timezone: 'Time zone',
     timezoneHint: 'Sending hours follow it. Empty: the company’s, else the campaign’s.',
     companyTimezoneHint: 'Sending hours follow it for contacts without their own.',
+  },
+  browser: {
+    title: 'Browser profiles',
+    subtitle:
+      'Separate Chrome identities. Sign in to sites yourself in the window; each profile remembers it.',
+    new: 'New profile',
+    create: 'Create',
+    name: 'Name',
+    purpose: 'Used for',
+    purposes: { general: 'General', research: 'Research', channel_identity: 'Channel account' },
+    purposeHints: {
+      general: 'For your own use and, later, website forms.',
+      research: 'For reading company websites that need a real browser. Never sign in to your accounts here.',
+    },
+    statuses: {
+      ready: 'Ready',
+      open: 'Open',
+      needs_login: 'Needs sign-in',
+      unhealthy: 'Problem',
+      archived: 'Archived',
+    },
+    controlModes: { automation: 'TabReach in control', paused: 'Paused', human: 'You are in control' },
+    open: 'Open',
+    opening: 'Opening Chrome…',
+    close: 'Close',
+    showWindow: 'Show window',
+    check: 'Check',
+    rename: 'Rename',
+    delete: 'Delete',
+    deleted: 'Profile deleted',
+    deleteTitle: 'Delete “{{name}}”?',
+    deleteWarning:
+      'Everything this profile remembers — sign-ins, cookies, saved site data — is destroyed. This cannot be undone.',
+    typeName: 'Type “{{name}}” to confirm',
+    lastOpened: 'Last opened {{when}}',
+    neverOpened: 'Never opened',
+    emptyTitle: 'No browser profiles yet',
+    emptyBody: 'Create a profile, open it and sign in to the sites you work with.',
+    privacy:
+      'Profiles live on this Mac only. TabReach never asks for or stores your site passwords, and never copies profiles into logs or backups.',
+    health: {
+      profile_inUse: 'Another Chrome is using this profile. Close it and check again.',
+      profile_notWritable: 'The profile folder cannot be written.',
+      profile_open: 'Open now.',
+      profile_new: 'Not opened yet.',
+    },
   },
   companies: {
     suppress: 'Do not contact',
@@ -241,6 +288,15 @@ export const en = {
       channel_adapter: 'Channel',
     },
     actions: {
+      profile: {
+        created: 'Browser profile created',
+        updated: 'Browser profile renamed',
+        archived: 'Browser profile archived',
+        deleted: 'Browser profile deleted',
+        opened: 'Browser profile opened',
+        closed: 'Browser profile closed',
+      },
+      session: { interrupted: 'Browser window closed unexpectedly' },
       research: { started: 'Research started', completed: 'Research done', failed: 'Research failed' },
       ai: { settings_updated: 'AI settings changed', key_set: 'AI key saved', key_removed: 'AI key removed' },
       account: {
@@ -769,6 +825,19 @@ export const en = {
     },
   },
   errors: {
+    profile: {
+      alreadyOpen: 'This profile is already open.',
+      open: 'Close the profile first.',
+      inUse: 'Another Chrome window is using this profile. Close it and try again.',
+      openFailed: 'Chrome could not open this profile.',
+      notOpen: 'The profile is not open.',
+      archived: 'This profile is archived.',
+      nameMismatch: 'The name does not match.',
+      notFound: 'This profile no longer exists.',
+      invalidId: 'Invalid profile.',
+    },
+    chrome: { missing: 'Google Chrome is not installed. Install it to use browser profiles.' },
+    worker: { notRunning: 'The browser process is not running. TabReach restarts it automatically.' },
     instructions: { required: 'Write instructions for AI.' },
     research: {
       failed: 'Research stopped because of an unexpected error. Try again.',
