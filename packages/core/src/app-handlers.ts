@@ -11,6 +11,7 @@ import {
 } from '@tabreach/protocol';
 import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
+import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
 import { CampaignService } from './campaigns/campaign-service.js';
@@ -53,6 +54,10 @@ export interface AppServicesOptions {
   gmail?: GmailDeps;
   /** HTTPS for AI providers; tests replace it. */
   aiHttp?: Http;
+  /** HTTP for research page fetching; tests replace it. */
+  webHttp?: Http;
+  /** Waiting between requests to the same site (research pacing); tests skip it. */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 const noCipher: SecretCipher = {
@@ -82,6 +87,7 @@ export class AppServices {
   readonly inbox: InboxService;
   readonly ai: AiGateway;
   readonly classifier: ReplyClassifier;
+  readonly research: ResearchService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -155,6 +161,17 @@ export class AppServices {
       audit: this.audit,
       logger: logger.child({ component: 'ai' }),
       changed: (entities) => this.changed(entities),
+    });
+    this.research = new ResearchService({
+      db,
+      now,
+      audit: this.audit,
+      ai: this.ai,
+      jobs: this.jobs,
+      http: options.webHttp ?? ((url, init) => fetch(url, init)),
+      logger: logger.child({ component: 'research' }),
+      changed: (entities) => this.changed(entities),
+      ...(options.sleep ? { sleep: options.sleep } : {}),
     });
     this.inbox = new InboxService({
       db,
@@ -342,6 +359,9 @@ export class AppServices {
           return { ok: true as const };
         }),
       )
+      .handle('research.start', (p, c) => mutate(['research'], () => this.research.start(p, ctx(c))))
+      .handle('research.list', ({ companyId }) => ({ items: this.research.list(companyId) }))
+      .handle('research.get', ({ id }) => this.research.get(id))
       .handle('ai.settings.get', () => this.ai.settings())
       .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
       .handle('ai.setKey', async ({ apiKey }, c) => {

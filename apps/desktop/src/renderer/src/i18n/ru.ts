@@ -225,6 +225,7 @@ export const ru: Catalog = {
       channel_adapter: 'Канал',
     },
     actions: {
+      research: { started: 'Research запущен', completed: 'Research готов', failed: 'Research не удался' },
       ai: {
         settings_updated: 'Настройки AI изменены',
         key_set: 'Ключ AI сохранён',
@@ -555,6 +556,34 @@ export const ru: Catalog = {
       budget: 'Месячный бюджет AI исчерпан.',
     },
   },
+  research: {
+    title: 'Research',
+    criteria: 'Кого вы ищете (необязательно)',
+    criteriaHint: 'Регион, тип компании, сигналы, исключения. Используется для квалификации.',
+    start: 'Исследовать компанию',
+    running: 'Идёт research…',
+    statuses: { pending: 'В очереди', running: 'Идёт', completed: 'Готово', failed: 'Ошибка' },
+    qualifications: {
+      match: 'Подходит',
+      possible_match: 'Возможно подходит',
+      not_match: 'Не подходит',
+      insufficient_data: 'Недостаточно данных',
+    },
+    reasonToContact: 'Повод для контакта',
+    facts_one: '{{count}} подтверждённый факт',
+    facts_few: '{{count}} подтверждённых факта',
+    facts_many: '{{count}} подтверждённых фактов',
+    facts_other: '{{count}} подтверждённого факта',
+    inferences: 'Интерпретация (не факты)',
+    unsupported: 'Не подтверждено источниками',
+    unsupportedHint:
+      'Модель процитировала текст, которого нет на странице. Эти утверждения нигде не используются.',
+    missing: 'Не нашлось на сайте',
+    sources_one: 'Прочитана {{count}} страница, пропущено {{skipped}}',
+    sources_few: 'Прочитано {{count}} страницы, пропущено {{skipped}}',
+    sources_many: 'Прочитано {{count}} страниц, пропущено {{skipped}}',
+    sources_other: 'Прочитано {{count}} страницы, пропущено {{skipped}}',
+  },
   attention: {
     title: 'Требует внимания',
     subtitle: 'Фоновые задачи, которые несколько раз не удались. Повторите, когда причина устранена.',
@@ -654,6 +683,20 @@ export const ru: Catalog = {
     },
   },
   errors: {
+    research: {
+      noWebsite: 'Укажите сайт компании, чтобы её исследовать.',
+      noPages: 'Не удалось прочитать ни одной страницы сайта.',
+      notFound: 'Этого research больше нет.',
+    },
+    ai: {
+      no_key: 'Добавьте ключ Anthropic API в Настройки → AI.',
+      auth: 'Anthropic не принял ключ API.',
+      budget: 'Месячный бюджет AI исчерпан.',
+      rejected: 'Anthropic отклонил запрос. Проверьте названия моделей в Настройки → AI.',
+      invalid_output: 'Модель вернула неожиданный ответ. Попробуйте ещё раз.',
+      rate_limited: 'Anthropic перегружен. Попробуйте позже.',
+      unavailable: 'Не удалось связаться с Anthropic.',
+    },
     oauth: {
       notCompleted: 'Вход не завершён. Попробуйте ещё раз.',
       denied: 'В Google доступ не был предоставлен.',

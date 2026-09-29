@@ -276,15 +276,23 @@ test('the Gmail wizard explains the setup and checks the client ID before openin
 test('stores an AI key encrypted without showing it again, and removes it', async () => {
   await go('#/settings');
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible();
-  await expect(page.getByText('Not set')).toBeVisible();
+  await expect(page.getByText('Not set', { exact: true })).toBeVisible();
   // A made-up key: nothing is called with it (no "Test key" here — that would reach the real API).
   await page.getByLabel('New API key').fill('sk-ant-e2e-not-a-real-key-000000');
   await page.getByRole('button', { name: 'Save' }).first().click();
-  await expect(page.getByText('Stored encrypted')).toBeVisible();
+  await expect(page.getByText('Stored encrypted', { exact: true })).toBeVisible();
   await expect(page.getByLabel('New API key')).toHaveValue('');
   await expect(page.getByTestId('ai-usage')).toContainText('0 calls');
   await page.getByRole('button', { name: 'Remove key' }).click();
-  await expect(page.getByText('Not set')).toBeVisible();
+  await expect(page.getByText('Not set', { exact: true })).toBeVisible();
+});
+
+test('a company page offers research, which needs an AI key', async () => {
+  await go('#/companies');
+  await page.getByRole('link', { name: 'Acme' }).first().click();
+  await expect(page.getByRole('heading', { name: 'Research', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Research company' }).click();
+  await expect(page.getByText('Add an Anthropic API key in Settings → AI.')).toBeVisible();
 });
 
 test('the inbox opens with its filters and says when there are no replies', async () => {

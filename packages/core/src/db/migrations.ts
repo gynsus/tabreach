@@ -514,4 +514,61 @@ export const migrations: readonly Migration[] = [
       ALTER TABLE messages ADD COLUMN ai_template TEXT;
     `,
   },
+  {
+    version: 13,
+    name: 'research',
+    sql: `
+      -- Research (docs/16). Evidence is stored once per content hash and linked to runs.
+      CREATE TABLE research_runs (
+        id                   TEXT PRIMARY KEY,
+        company_id           TEXT NOT NULL REFERENCES companies (id),
+        status               TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+        error                TEXT,
+        criteria             TEXT,
+        summary              TEXT,
+        qualification        TEXT CHECK (qualification IN ('match', 'possible_match', 'not_match', 'insufficient_data')),
+        qualification_reason TEXT,
+        reason_to_contact    TEXT,
+        missing_information  TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(missing_information)),
+        template             TEXT,
+        model                TEXT,
+        pages_fetched        INTEGER NOT NULL DEFAULT 0,
+        pages_skipped        INTEGER NOT NULL DEFAULT 0,
+        correlation_id       TEXT NOT NULL,
+        started_at           TEXT NOT NULL,
+        finished_at          TEXT
+      ) STRICT;
+      CREATE INDEX research_runs_company ON research_runs (company_id, started_at);
+
+      CREATE TABLE evidence (
+        id           TEXT PRIMARY KEY,
+        url          TEXT NOT NULL,
+        title        TEXT,
+        content_hash TEXT NOT NULL UNIQUE,
+        text         TEXT NOT NULL,
+        extractor    TEXT NOT NULL,
+        captured_at  TEXT NOT NULL
+      ) STRICT;
+
+      CREATE TABLE research_run_evidence (
+        research_run_id TEXT NOT NULL REFERENCES research_runs (id) ON DELETE CASCADE,
+        evidence_id     TEXT NOT NULL REFERENCES evidence (id),
+        PRIMARY KEY (research_run_id, evidence_id)
+      ) STRICT, WITHOUT ROWID;
+
+      CREATE TABLE research_facts (
+        id              TEXT PRIMARY KEY,
+        research_run_id TEXT NOT NULL REFERENCES research_runs (id) ON DELETE CASCADE,
+        position        INTEGER NOT NULL,
+        kind            TEXT NOT NULL CHECK (kind IN ('fact', 'inference')),
+        claim           TEXT NOT NULL,
+        evidence_id     TEXT REFERENCES evidence (id),
+        quote           TEXT,
+        verified        INTEGER NOT NULL CHECK (verified IN (0, 1)),
+        based_on        TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(based_on)),
+        created_at      TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX research_facts_run ON research_facts (research_run_id, position);
+    `,
+  },
 ];

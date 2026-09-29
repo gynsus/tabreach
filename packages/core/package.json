@@ -10,14 +10,17 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@mozilla/readability": "0.6.0",
     "@tabreach/protocol": "workspace:*",
     "imapflow": "2.1.2",
+    "linkedom": "0.18.13",
     "mailparser": "3.9.31",
     "nodemailer": "10.0.12",
     "papaparse": "5.7.0",
     "zod": "4.6.5"
   },
   "devDependencies": {
+    "@tabreach/fixture-sites": "workspace:*",
     "@types/mailparser": "3.4.6",
     "@types/papaparse": "5.5.2",
     "@types/smtp-server": "3.5.13",

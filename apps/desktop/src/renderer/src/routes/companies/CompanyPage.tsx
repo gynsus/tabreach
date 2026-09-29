@@ -8,6 +8,7 @@ import { Alert, Badge, Button, DetailList, PageHeader, Tags } from '../../compon
 import { call, errorMessage } from '../../lib/api';
 import { ContactForm } from '../contacts/ContactForm';
 import { CompanyForm } from './CompanyForm';
+import { ResearchSection } from './ResearchSection';
 
 export function CompanyPage() {
   const { id = '' } = useParams();
@@ -96,6 +97,7 @@ export function CompanyPage() {
             )}
           </section>
         </div>
+        <ResearchSection companyId={c.id} hasWebsite={Boolean(c.domain || c.websiteUrl)} />
         <Timeline objectType="company" objectId={c.id} />
       </div>
       {editing ? <CompanyForm open company={c} onClose={() => setEditing(false)} /> : null}
