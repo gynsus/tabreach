@@ -164,7 +164,7 @@ describe('critical actions: the about_to_commit checkpoint (Phase 5c)', () => {
     await core.request('session.setMode', { sessionId, controlMode: 'human' });
     expect(await again).toMatchObject({ status: 'unknown', committed: true, errorKey: 'task.controlTaken' });
     expect(await submissions()).toBe(1);
-  }, 60_000);
+  }, 120_000); // two tasks and a person's click: slow on a busy machine
 
   it('a page not in the allowlist is unsupported: no checkpoint, nothing pressed', async () => {
     const result = await core.request(

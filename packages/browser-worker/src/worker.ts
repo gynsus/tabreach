@@ -10,6 +10,7 @@ import { version as playwrightVersion } from 'playwright-core/package.json';
 import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
 import type { ProfileManager } from './profiles.js';
+import { prepareForm, submitForm } from './forms.js';
 import { renderForResearch, type RenderEnvironment } from './render.js';
 import {
   ASSISTED_WAIT_MS,
@@ -110,6 +111,41 @@ export class BrowserWorker {
               { generic: this.taskEnv.pack('generic'), ...this.options.render },
               AbortSignal.any([task.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]),
             );
+          } finally {
+            task.end();
+          }
+        })
+        .handle('form.prepare', async (req) => {
+          const context = profiles.automationContext(req.sessionId);
+          const task = profiles.beginTask(req.sessionId, req.taskId);
+          try {
+            const page = context.pages()[0] ?? (await context.newPage());
+            return await prepareForm(
+              page,
+              req,
+              this.taskEnv,
+              AbortSignal.any([task.signal, AbortSignal.timeout(TASK_TIMEOUT_MS)]),
+            );
+          } finally {
+            task.end();
+          }
+        })
+        .handle('form.submit', async (req) => {
+          const context = profiles.automationContext(req.sessionId);
+          const task = profiles.beginTask(req.sessionId, req.taskId);
+          const timeoutMs = TASK_TIMEOUT_MS + (req.mode === 'assisted' ? ASSISTED_WAIT_MS : 0);
+          const signal = AbortSignal.any([task.signal, AbortSignal.timeout(timeoutMs)]);
+          try {
+            const page = context.pages()[0] ?? (await context.newPage());
+            return await submitForm(page, req, this.taskEnv, signal, () =>
+              this.checkpoint(req.taskId, signal),
+            );
+          } catch (error) {
+            // Stopped before the checkpoint (a submit past it reports that itself): nothing sent.
+            if (task.signal.aborted) {
+              return profiles.modeOf(req.sessionId) === 'automation' ? cancelled() : controlTaken();
+            }
+            throw error;
           } finally {
             task.end();
           }

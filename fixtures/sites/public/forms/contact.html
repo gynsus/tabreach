@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact Acme</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Contact us</h1>
+      <!-- A login form on the same page must never be taken for the contact form. -->
+      <form id="login">
+        <label>Username <input name="user" /></label
+        ><label>Password <input type="password" name="pass" /></label><button>Log in</button>
+      </form>
+      <form id="contact" onsubmit="fixtureSubmit(this, event)">
+        <label>Your name <input name="your-name" autocomplete="name" required /></label>
+        <label>Email <input type="email" name="your-email" required /></label>
+        <label>Company <input name="company" /></label>
+        <label>Subject <input name="subject" /></label>
+        <label>Message <textarea name="your-message" required></textarea></label>
+        <label><input type="checkbox" name="newsletter" /> Send me marketing emails and news</label>
+        <button type="submit">Send message</button>
+      </form>
+    </main>
+  </body>
+</html>

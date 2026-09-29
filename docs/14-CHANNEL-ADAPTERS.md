@@ -143,6 +143,15 @@ consent
 
 Consent/marketing checkboxes must not be ticked without an explicit configured meaning. Unmapped required fields → `needs_human`.
 
+### Implementation status (Phase 6a, 2026-09-29)
+
+Worker side (`packages/browser-worker/src/forms.ts`), with the generic knowledge as data in the `web-form` pack (`forms`: contact link texts, contact paths, EN/RU phrases per field meaning, success and refusal texts; ADR 017):
+
+- `form.prepare` (PrepareFormSubmission): opens the website; the contact form is the visible form with something to write in and an email, without a password or search field (a login form is never taken); otherwise it follows up to three same-site links whose text or path says "contact", or the pack's contact paths, and then buttons that open a dialog. Fields are described by a page script (labels, `aria-label`, placeholders, names, `autocomplete`, types) and mapped by `autocomplete`, then type, then phrases matched from the start of a word, most specific first. Invisible fields (honeypots) are never filled; check boxes are consent or nothing and are never ticked; selects and radios are left alone. The form is filled and photographed for approval; nothing is sent. `needs_human` for a required field without a value (`form.unmappedRequired`), a required consent (`form.consentRequired`) or a challenge (`form.challenge`).
+- `form.submit` (ExecuteFormSubmission): opens the same form (and its dialog), refuses it if its field signature changed since approval (`form.changed`), writes exactly the approved values and checks them, refuses what the page itself would refuse (`checkValidity`), needs exactly one visible submit button in `auto`, then the `about_to_commit` checkpoint, a re-check, and one press. In `auto` a challenge means nothing is pressed (`needs_human`); in `assisted` the person solves it and presses. Success needs the site's success text after a navigation, the form's removal or a new message; a field marked invalid or a refusal alert on the form is a verified "not sent" (`task.rejected`); anything else is `unknown`.
+- Fixtures (`fixtures/sites/public/forms`): link discovery with a login form beside the contact form, a form drawn by a script with placeholders only, a required unknown field, a Russian form with a required consent, a reCAPTCHA form, a dialog form, and site reactions thank-you page / inline message / refusal / silence.
+- Core integration, approval preview and semantic resolution: Phase 6b and 6c.
+
 ## LinkedIn browser adapter
 
 Isolated module with a kill switch (setting, fails closed).

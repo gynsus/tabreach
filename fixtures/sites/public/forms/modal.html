@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Beta Logistics</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <!-- The form lives in a dialog opened by a "Contact us" button (no contact page). -->
+    <main>
+      <h1>Beta Logistics</h1>
+      <button id="open" type="button">Contact us</button>
+    </main>
+    <dialog id="dlg" aria-label="Contact us">
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>Name <input name="name" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Message <textarea name="message" required></textarea></label>
+        <button type="submit">Send</button>
+      </form>
+    </dialog>
+    <script>
+      document.getElementById('open').onclick = () => document.getElementById('dlg').showModal();
+    </script>
+  </body>
+</html>

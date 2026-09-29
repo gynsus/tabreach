@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact (protected)</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Contact us</h1>
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>Name <input name="name" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Message <textarea name="message" required></textarea></label>
+        <iframe title="reCAPTCHA" src="../captcha/recaptcha/anchor.html" width="300" height="80"></iframe>
+        <button type="submit">Send</button>
+      </form>
+    </main>
+  </body>
+</html>

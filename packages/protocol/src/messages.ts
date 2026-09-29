@@ -12,6 +12,9 @@ import {
   workerSetModeSchema,
   workerTaskRunSchema,
   workerRenderSchema,
+  workerFormPrepareSchema,
+  formPrepareResultSchema,
+  workerFormSubmitSchema,
   renderResultSchema,
   taskCheckpointSchema,
   taskCheckpointAckSchema,
@@ -566,6 +569,20 @@ export const requests = {
     kind: 'command',
     request: z.object({ taskId: z.uuid() }),
     response: ok,
+  },
+  /** PrepareFormSubmission (docs/14, Phase 6): nothing is sent. */
+  'form.prepare': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerFormPrepareSchema,
+    response: formPrepareResultSchema,
+  },
+  /** ExecuteFormSubmission: sends through the `about_to_commit` checkpoint; results as `task.run`. */
+  'form.submit': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerFormSubmitSchema,
+    response: taskResultSchema,
   },
   /** RenderPageForResearch (docs/16, ADR 027). */
   'task.render': {

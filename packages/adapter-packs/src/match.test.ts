@@ -17,7 +17,7 @@ const states = [...bundledPack('generic')!.states, ...bundledPack('linkedin')!.s
 
 describe('page state matching', () => {
   it('bundled packs are valid', () => {
-    expect(bundledPacks.map((p) => p.id)).toEqual(['generic', 'linkedin']);
+    expect(bundledPacks.map((p) => p.id)).toEqual(['generic', 'linkedin', 'web-form']);
   });
 
   it('globs match the whole URL', () => {
