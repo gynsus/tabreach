@@ -17,6 +17,7 @@ const result = (over: Partial<TaskResult>): TaskResult => ({
   url: 'https://www.linkedin.com/feed/',
   diagnostics: null,
   errorKey: null,
+  committed: false,
   ...over,
 });
 

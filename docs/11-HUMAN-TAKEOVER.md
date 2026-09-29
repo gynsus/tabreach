@@ -23,7 +23,11 @@ Human involvement is a first-class runtime state, used when:
 - **Take control** (Browser profiles, on a window under automation or paused) sets the session to `human`; the worker aborts the running task at once (`task.controlTaken`), and the work waits with a `user_control` request (migration 17). **Return control** resolves that request: the session goes back to automation and the work checks the page again first (for a sign-in check the check itself is the revalidation). A window the person opened has nothing to return to (`session.nothingToReturn`).
 - The overlay's **Pause** (docs/12) and an emergency stop pause the session in the worker, which reports `session.modeChanged`; core records `session.paused` and asks the person.
 - Every request to the person also sends a native notification; the tray menu offers Show, Pause all, Resume and Emergency stop.
-- Outcome confirmation ("Did you send it?") and the `about_to_commit` checkpoint come with 5c-2, together with the first critical browser action.
+- Outcome confirmation and the `about_to_commit` checkpoint: Phase 5c-2 (below).
+
+## Implementation status (Phase 5c-2, 2026-09-29)
+
+A browser action whose result is not recognized after the checkpoint is `unknown`. The window stays open and paused, and the send is listed under **Status → Needs attention → Unconfirmed sends** with "It was sent" / "It was not sent" (ADR 018 `user_confirmation`). "Not sure" is leaving it undecided: the step waits and nothing is pressed again. "It was not sent" asks first and then lets the step run again from the start, re-validating the page.
 
 ## Session control modes
 

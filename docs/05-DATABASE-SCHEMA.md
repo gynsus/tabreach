@@ -244,7 +244,7 @@ error_code, error_message_redacted
 
 Unique `(workflow_run_id, state, attempt)`.
 
-### `browser_tasks` (migration 16; statuses also `unsupported_state`, `needs_human`)
+### `browser_tasks` (migration 16; statuses also `unsupported_state`, `needs_human`; no `checkpointed` status — a reached `about_to_commit` checkpoint is the `checkpoint` JSON `{ phase, at }` on a `running` task, Phase 5c)
 
 ```text
 id pk

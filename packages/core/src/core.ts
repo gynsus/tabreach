@@ -163,6 +163,7 @@ export class CoreService {
     peer.on('session.changed', (change) => this.services.browser.onSessionChanged(change));
     peer.on('worker.heartbeat', ({ sessions }) => this.services.browser.onHeartbeat(sessions));
     peer.on('session.modeChanged', (change) => this.services.signInChecks.onModeChanged(change));
+    peer.handle('task.checkpoint', (req) => this.services.checkpoints.reach(req));
     return () => {
       peer.close();
       if (this.workerPeer === peer) {

@@ -15,7 +15,8 @@ export type ExecutionOutcome =
  *
  * 1. reserve the logical intent;
  * 2. if an earlier attempt may have gone out, reconcile with the channel instead of sending;
- * 3. mark `executing` (committed) BEFORE the irreversible call;
+ * 3. mark `executing` (committed) BEFORE the irreversible call — for a browser channel, at the
+ *    worker's `about_to_commit` checkpoint (docs/07), so the page work before it stays retryable;
  * 4. send, then record completed / not_sent / unknown.
  *
  * A crash after step 3 leaves `executing`; the next run lands in step 2 and never sends twice.
@@ -73,15 +74,29 @@ export async function executeSideEffect(opts: {
   }
 
   const id = reservation.effect.id;
-  ledger.markExecuting(id);
+  const atCheckpoint = channel.commitsAtCheckpoint === true;
+  if (!atCheckpoint) ledger.markExecuting(id);
+  // Still `reserved`: the channel never reached its commit point, so nothing went out.
+  const neverCommitted = () => ledger.get(id)?.status === 'reserved';
   let result;
   try {
-    result = await channel.send({ ...opts.message, idempotencyKey: key }, signal);
+    result = await channel.send(
+      { ...opts.message, idempotencyKey: key },
+      signal,
+      atCheckpoint ? { beforeCommit: () => ledger.markExecuting(id) } : undefined,
+    );
   } catch (error) {
-    // We cannot tell whether it left; treat as possibly sent.
     opts.onSendError?.(error);
+    if (neverCommitted()) {
+      settle(() => ledger.markNotSent(id, 'failed_before_commit'));
+      return { outcome: 'not_sent', sideEffectId: id, errorClass: 'failed_before_commit', permanent: false };
+    }
+    // We cannot tell whether it left; treat as possibly sent.
     settle(() => ledger.markUnknown(id, 'send_threw'));
     return { outcome: 'unknown', sideEffectId: id, errorClass: 'send_threw' };
+  }
+  if (result.outcome === 'unknown' && neverCommitted()) {
+    result = { outcome: 'not_sent', errorClass: 'not_committed' } as const;
   }
   switch (result.outcome) {
     case 'completed':

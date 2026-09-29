@@ -30,8 +30,19 @@ export type ReconcileResult =
   /** Too early to tell (the Sent search index lags, say): ask again at `retryAt`. */
   | { status: 'pending'; retryAt: Date };
 
+/** Browser channels (docs/07 "Checkpoint rule"): the moment the irreversible part begins. */
+export interface SendHooks {
+  /** Records "executing" in the ledger; throws when the action must not happen after all. */
+  beforeCommit(): void;
+}
+
 /** Channel adapter, sending side (docs/14-CHANNEL-ADAPTERS.md). */
 export interface MessageChannel {
+  /**
+   * The channel reports its own commit point through `hooks.beforeCommit` (browser channels): the
+   * ledger stays `reserved` until then, so a failure before it is a verified "not sent".
+   */
+  readonly commitsAtCheckpoint?: boolean;
   readonly channel: string;
   /** The channel account that sends; pacing is per account. Null for the test channel. */
   readonly accountId: string | null;
@@ -39,7 +50,7 @@ export interface MessageChannel {
   readonly minSpacingMs: number;
   /** Most sends in any 24 hours through this channel account; null = no limit. */
   readonly dailyLimit: number | null;
-  send(message: OutgoingMessage, signal: AbortSignal): Promise<SendResult>;
+  send(message: OutgoingMessage, signal: AbortSignal, hooks?: SendHooks): Promise<SendResult>;
   /**
    * Finds out whether an attempt with this key reached the outside world (the Sent folder by
    * Message-ID, say). `attemptStartedAt` is when the attempt was marked executing.

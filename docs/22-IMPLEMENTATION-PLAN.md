@@ -147,7 +147,7 @@ Order (decided in the 4.5 audit, 2026-09-29), each a working slice:
 - **5b — adapter packs and page states**: pack format, loader and schema validation, allowlist state matching, deterministic primitives inside tasks, diagnostics, challenge detection and `human_interventions`. Exit: fake CAPTCHA → `WAITING_FOR_HUMAN`.
 - **5c — overlay and human control**: overlay (pause only), take/return control, revalidation, outcome confirmation, the `about_to_commit` checkpoint; app-wide **Pause all** and **Emergency stop** (docs/11, FR-BRA-008) and **keep-awake** (FR-APP-004); tray and native notifications for interventions. Exit: automation blocked during human control; worker crash after `about_to_commit` → `unknown`.
   - **5c-1 (done 2026-09-29)**: overlay (pause only), take/return control with re-check, Pause all / Emergency stop / keep-awake, tray and notifications.
-  - **5c-2**: the `about_to_commit` checkpoint, a critical browser action through the side-effect ledger, worker crash after the checkpoint → `unknown`, outcome confirmation.
+  - **5c-2 (done 2026-09-29)**: the `about_to_commit` checkpoint, a critical browser action through the side-effect ledger, worker crash after the checkpoint → `unknown`, outcome confirmation.
 - **5d — browser research**: `RenderPageForResearch` in the research profile for pages the static fetcher cannot read.
 
 ---

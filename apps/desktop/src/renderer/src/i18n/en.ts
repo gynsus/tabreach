@@ -794,6 +794,8 @@ export const en = {
     wasSent: 'It was sent',
     wasNotSent: 'It was not sent',
     confirmNotSent: 'Send it again?',
+    browserHint:
+      'Done in the browser: look at the site in its window (it stays open). If you are not sure, leave it — nothing is repeated.',
     resolveHint: 'Check the Sent folder of the account. If it was not sent, TabReach sends it now.',
     attempts_one: '{{count}} attempt',
     attempts_other: '{{count}} attempts',

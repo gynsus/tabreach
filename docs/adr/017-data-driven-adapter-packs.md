@@ -35,3 +35,8 @@ Post-MVP: packs may be delivered independently as Ed25519-signed files verified 
 - URLs are https only; `http://127.0.0.1` is allowed for fixture packs in tests.
 - Bundled packs: `generic` 1.0.0 (challenges) and `linkedin` 0.1.0 (sign-in states only; the adapter's action states come with Phase 7). The matcher (`matchState`) is pure and tested without a browser; the worker implements its page probe with Playwright.
 
+
+## Implementation (Phase 5c-2, 2026-09-29)
+
+- Packs gain `actions[]`: a critical action as data — `from` states, `fill` (a control by role and accessible names, with UI-language variants, and the task parameter that fills it), one `commit` control, `success` and `rejected` states. Every state an action names must exist in the same pack. Controls are found by role and exact accessible name and must be unique and visible; otherwise the task is `unsupported_state` and nothing is pressed.
+- The worker's `commit` task executes an action with the `about_to_commit` checkpoint (docs/07). Web-form and LinkedIn packs will define their actions in Phases 6 and 7.

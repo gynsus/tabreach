@@ -68,4 +68,28 @@ describe('adapter pack schema', () => {
       }).success,
     ).toBe(false);
   });
+
+  it('an action refers only to states of its pack', () => {
+    const base = {
+      id: 'forms',
+      version: '1.0.0',
+      channel: 'web_form',
+      states: [
+        { id: 'site.form', url: ['https://x.test/*'], requires: [{ role: 'form' }] },
+        { id: 'site.thanks', url: ['https://x.test/*'], requires: [{ textAny: ['Thank you'] }] },
+      ],
+    };
+    const action = {
+      id: 'site.send',
+      from: ['site.form'],
+      fill: [{ control: { role: 'textbox', nameAny: ['Message'] }, param: 'body' }],
+      commit: { role: 'button', nameAny: ['Send'] },
+      success: ['site.thanks'],
+    };
+    expect(parseAdapterPack({ ...base, actions: [action] }).actions[0]?.rejected).toEqual([]);
+    expect(() => parseAdapterPack({ ...base, actions: [{ ...action, success: ['site.nowhere'] }] })).toThrow(
+      /Unknown state site.nowhere/,
+    );
+    expect(() => parseAdapterPack({ ...base, actions: [action, action] })).toThrow(/Duplicate action/);
+  });
 });
