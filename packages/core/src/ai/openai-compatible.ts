@@ -84,7 +84,12 @@ export class OpenAiCompatibleProvider implements AiProvider {
     }
     const json = (await res.json().catch(() => ({}))) as {
       choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        cost?: number;
+        completion_tokens_details?: { reasoning_tokens?: number };
+      };
       error?: { code?: number | string; type?: string };
     };
     if (!res.ok) {
@@ -99,6 +104,9 @@ export class OpenAiCompatibleProvider implements AiProvider {
       inputTokens: json.usage?.prompt_tokens ?? 0,
       outputTokens: json.usage?.completion_tokens ?? 0,
       ...(typeof json.usage?.cost === 'number' ? { costUsd: json.usage.cost } : {}),
+      ...(typeof json.usage?.completion_tokens_details?.reasoning_tokens === 'number'
+        ? { reasoningTokens: json.usage.completion_tokens_details.reasoning_tokens }
+        : {}),
     };
     const content = json.choices?.[0]?.message?.content;
     if (json.choices?.[0]?.finish_reason === 'length')

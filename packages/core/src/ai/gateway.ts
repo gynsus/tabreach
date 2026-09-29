@@ -298,6 +298,7 @@ export class AiGateway {
         status: r.status,
         inputTokens: r.usage.inputTokens,
         outputTokens: r.usage.outputTokens,
+        reasoningTokens: r.usage.reasoningTokens,
         latencyMs: r.latencyMs,
       },
       'AI call',
