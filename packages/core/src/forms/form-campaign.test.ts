@@ -22,6 +22,8 @@ const fields = (message: string) => [
     meaning: 'name' as const,
     source: 'pack' as const,
     value: 'Sam Sender',
+    checked: false,
+    prefilled: null,
   },
   {
     ref: 1,
@@ -31,6 +33,8 @@ const fields = (message: string) => [
     meaning: 'email' as const,
     source: 'pack' as const,
     value: 'sam@sender.test',
+    checked: false,
+    prefilled: null,
   },
   {
     ref: 2,
@@ -40,6 +44,8 @@ const fields = (message: string) => [
     meaning: 'message' as const,
     source: 'pack' as const,
     value: message,
+    checked: false,
+    prefilled: null,
   },
   {
     ref: 3,
@@ -49,6 +55,8 @@ const fields = (message: string) => [
     meaning: 'consent' as const,
     source: 'pack' as const,
     value: null,
+    checked: false,
+    prefilled: null,
   },
 ];
 
@@ -57,6 +65,7 @@ describe('website forms in campaigns (Phase 6b)', () => {
   const prepares: Prepare[] = [];
   const submits: Submit[] = [];
   const calls: { type: string; payload: unknown }[] = [];
+  let beforePress: (() => void) | null = null;
   const worker = {
     request<T extends RequestType>(type: T, payload: RequestOf<T>): Promise<ResponseOf<T>> {
       calls.push({ type, payload });
@@ -76,6 +85,7 @@ describe('website forms in campaigns (Phase 6b)', () => {
                 fields: [],
                 challenge: null,
                 screenshot: null,
+                action: null,
                 packVersion: '1.0.0',
               }
             : {
@@ -87,6 +97,7 @@ describe('website forms in campaigns (Phase 6b)', () => {
                 fields: fields(req.values.message ?? ''),
                 challenge: kind === 'ready' ? null : 'generic.captcha.recaptcha',
                 screenshot: Buffer.from('png').toString('base64'),
+                action: `${req.url}/contact`,
                 packVersion: '1.0.0',
               };
         return Promise.resolve(result as ResponseOf<T>);
@@ -116,6 +127,7 @@ describe('website forms in campaigns (Phase 6b)', () => {
             status: 'needs_human',
             errorKey: 'form.challenge',
           } as ResponseOf<T>);
+        beforePress?.(); // something happens while the form is being filled
         const { proceed } = h.services.checkpoints.reach({ taskId: req.taskId, phase: 'about_to_commit' });
         if (!proceed)
           return Promise.resolve({
@@ -135,6 +147,7 @@ describe('website forms in campaigns (Phase 6b)', () => {
     prepares.length = 0;
     submits.length = 0;
     calls.length = 0;
+    beforePress = null;
   });
   afterEach(() => h.close());
 
@@ -170,15 +183,21 @@ describe('website forms in campaigns (Phase 6b)', () => {
     window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
     approvalMode: 'approve_each',
   });
-  const start = async (website: string | null = 'acme.test') => {
-    const campaign = s().campaigns.create({ name: 'Forms', config: config() }, ctx()).id;
+  const start = async (
+    website: string | null = 'acme.test',
+    over: Partial<CampaignConfigInput['steps'][number]> = {},
+    people = ['Ann'],
+  ) => {
+    const campaign = s().campaigns.create({ name: 'Forms', config: config(over) }, ctx()).id;
     s().campaigns.launch(campaign, ctx());
     const companyId = s().prospects.createCompany(
       { name: 'Acme', ...(website ? { website } : {}) },
       ctx(),
     ).id;
-    const contact = s().prospects.createContact({ firstName: 'Ann', companyId }, ctx()).id;
-    s().campaigns.enroll(campaign, [contact], ctx());
+    const contacts = people.map(
+      (firstName) => s().prospects.createContact({ firstName, companyId }, ctx()).id,
+    );
+    s().campaigns.enroll(campaign, contacts, ctx());
     await h.run();
     return campaign;
   };
@@ -305,5 +324,86 @@ describe('website forms in campaigns (Phase 6b)', () => {
     sender();
     const noSite = await start(null);
     expect(h.status(noSite)).toMatchObject({ status: 'stopped', stopReason: 'invalid_target' });
+  });
+
+  it('audit 6.5: an assisted step is always pressed by the person, even for a clean form', async () => {
+    sender();
+    await start('acme.test', { executionMode: 'assisted' });
+    const [approval] = s().approvals.pending();
+    expect(approval?.form).toMatchObject({ mode: 'assisted', reason: null });
+    h.approve();
+    await h.run();
+    expect(submitsSent()[0]).toMatchObject({ mode: 'assisted' });
+  });
+
+  it('audit 6.5: a stop that arrives while the form is filled is honoured at the checkpoint', async () => {
+    sender();
+    const campaign = await start();
+    beforePress = () => {
+      const [enrollment] = s().campaigns.listEnrollments(campaign, { limit: 1, offset: 0 }).items;
+      s().campaigns.stopEnrollment(enrollment!.id, ctx());
+    };
+    h.approve();
+    await h.run();
+    expect(h.ledger()).toMatchObject([{ status: 'not_sent' }]);
+    expect(h.status(campaign)).toMatchObject({ status: 'stopped' });
+  });
+
+  it('audit 6.5: a company’s form is written to once per step, however many of its people are enrolled', async () => {
+    sender();
+    const campaign = await start('acme.test', {}, ['Ann', 'Bob']);
+    // The second contact waits while the first one's form may be under way.
+    expect(s().approvals.pending()).toHaveLength(2);
+    for (const a of s().approvals.pending()) s().approvals.approve(a.id, a.contentHash, ctx());
+    await h.run();
+    h.clock.advance(31 * 60_000);
+    await h.run();
+    expect(submitsSent()).toHaveLength(1);
+    const statuses = s()
+      .campaigns.listEnrollments(campaign, { limit: 5, offset: 0 })
+      .items.map((i) => i.status);
+    expect(statuses).toEqual(['completed', 'completed']);
+    const shared = h.db
+      .prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'form.already_sent'`)
+      .get();
+    expect(shared).toEqual({ n: 1 });
+  });
+
+  it('audit 6.5: another sender after the form was prepared means preparing and approving again', async () => {
+    sender();
+    await start();
+    const [first] = s().approvals.pending();
+    s().forms.updateSender({ ...s().forms.sender(), name: 'Other Person' }, ctx());
+    expect(() => s().approvals.approve(first!.id, first!.contentHash, ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'approval.stale' }) }),
+    );
+    // What the settings screen does: waiting forms are prepared again with the new details.
+    expect(s().engine.reprepareForms('test')).toBe(1);
+    await h.run();
+    const [again] = s().approvals.pending();
+    expect(again?.id).not.toBe(first?.id);
+    const prepared = calls.filter((c) => c.type === 'form.prepare').at(-1)
+      ?.payload as RequestOf<'form.prepare'>;
+    expect(prepared.values).toMatchObject({ name: 'Other Person' });
+    h.approve();
+    await h.run();
+    expect(submitsSent()).toHaveLength(1);
+  });
+
+  it('audit 6.5: a website in the local network is never opened', async () => {
+    sender();
+    const outcome = await s().forms.prepare({
+      workflowRunId: 'r',
+      draftId: 'd',
+      website: 'http://192.168.1.1/contact',
+      subject: null,
+      body: 'Hi',
+      stepMode: 'auto',
+      forceAssisted: false,
+      signal: new AbortController().signal,
+      correlationId: 'c',
+    });
+    expect(outcome).toEqual({ kind: 'no_form' });
+    expect(calls.some((c) => c.type === 'profile.open' || c.type === 'form.prepare')).toBe(false);
   });
 });

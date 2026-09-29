@@ -156,6 +156,14 @@ Worker side (`packages/browser-worker/src/forms.ts`), with the generic knowledge
 
 `FormService` (core) keeps the form sender, runs `form.prepare` in the sender's profile before approval and stores the preparation; the `web_form` channel is a `BrowserActionChannel` whose dispatch is `form.submit` with the run's latest preparation, so the ledger turns `executing` only at the checkpoint. The approval (`approval.form`) lists every field with the value TabReach writes, what stays empty, required fields the person fills, consent boxes it never ticks, who presses Send, and the photo of the filled form. See docs/13 and docs/17 for the state machine and campaign rules. Per-contact channel eligibility is derived (a form step needs the company's website); a separate eligibility table was not needed.
 
+### Audit 6.5 (2026-09-29)
+
+- PrepareFormSubmission no longer types anything into the site: scripts on the page (session recorders, lead capture) would see the sender's details and the message before approval, and a person could press Send in the visible window. The approval shows the values in the app beside a photo of the form as the site shows it.
+- A field counts as visible only when it is laid out on the page, not transparent, not clipped away and not inside `aria-hidden`/`hidden`/`inert`; a field out of the tab order with autofill off is a honeypot too.
+- The signature covers the form's action and method and what the page itself put in its fields (ticked boxes, prefilled text); the approval shows both, and a form sending to another site is never approved automatically. A consent the page ticked by itself is unticked when sending.
+- Verification compares with the page before the press: success needs a success phrase that was not there before (or a new page saying so); a refusal needs a new visible error mark or alert, twice, with the values intact, in `auto` only. Otherwise `unknown` — a wrong "not sent" could let the message go out again.
+- Blog comment forms are never contact forms; a submit button of another form is never clicked to open one; a redirect off the company's site, before preparing or when sending, means no form / form changed.
+
 ### Implementation status (Phase 6c, 2026-09-29)
 
 Fields the phrases miss and a contact page no link names are resolved by AI from a closed list (ADR 013, docs/15), once per preparation; without AI they go to the person. Fixtures: a form with unfamiliar labels, and a site whose form is behind "Talk to sales". A page answering 4xx/5xx is not searched for a form.

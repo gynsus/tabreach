@@ -331,6 +331,12 @@ function FormPreview({ approval: a }: { approval: Approval }) {
         {t('approvals.form.title')}
       </h3>
       <p className="truncate font-mono text-[11px] text-soft">{form.formUrl}</p>
+      {form.action ? (
+        <p className="text-xs text-soft">
+          {t('approvals.form.sendsTo')} <span className="font-mono">{form.action}</span>
+        </p>
+      ) : null}
+      {form.crossSite ? <Alert tone="warn">{t('approvals.form.crossSite')}</Alert> : null}
       {form.mode === 'assisted' ? (
         <Alert tone="warn">
           {t('approvals.form.assisted')}{' '}
@@ -360,6 +366,14 @@ function FormPreview({ approval: a }: { approval: Approval }) {
               <td className="py-1.5 whitespace-pre-wrap">
                 {f.value !== null ? (
                   f.value
+                ) : f.kind === 'checkbox' && f.checked ? (
+                  <span className="text-warn">
+                    {f.meaning === 'consent'
+                      ? t('approvals.form.untickedByUs')
+                      : t('approvals.form.tickedBySite')}
+                  </span>
+                ) : f.prefilled ? (
+                  <span className="text-soft">{t('approvals.form.prefilled', { value: f.prefilled })}</span>
                 ) : (
                   <span className={f.required ? 'text-warn' : 'text-faint'}>
                     {f.meaning === 'consent'

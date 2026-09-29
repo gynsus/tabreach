@@ -14,11 +14,20 @@ const field = (over: Partial<Parameters<typeof mapForm>[0]['fields'][number]>) =
   label: '',
   required: false,
   visible: true,
+  checked: false,
+  value: '',
   ...over,
 });
 const map = (fields: ReturnType<typeof field>[]) =>
   mapForm(
-    { visible: true, role: '', fields: fields.map((f, ref) => ({ ...f, ref })) },
+    {
+      visible: true,
+      role: '',
+      action: '',
+      method: 'post',
+      comment: false,
+      fields: fields.map((f, ref) => ({ ...f, ref })),
+    },
     { name: 'Anna Test', email: 'a@s.test', company: 'S', message: 'Hi' },
     knowledge,
   ).map((f) => [f.label, f.meaning, f.value]);

@@ -22,6 +22,8 @@ export type PolicyVerdict =
 export interface PolicyTarget {
   /** The step's channel: an email's bounce says nothing about a website form. */
   channel?: string;
+  /** A website form's host: a suppressed domain covers it too (audit 6.5). */
+  websiteHost?: string | null;
   contactId: string;
   /** The contact's current company (not the one at enrollment time). */
   companyId: string | null;
@@ -182,7 +184,11 @@ export class ContactPolicy {
   ): string | null {
     const checks: [string, string, string[]][] = [];
     if (email) checks.push(['email', 'suppression.email', [email]]);
-    const domains = [...domainAndParents(email?.split('@')[1] ?? null), ...domainAndParents(companyDomain)];
+    const domains = [
+      ...domainAndParents(email?.split('@')[1] ?? null),
+      ...domainAndParents(companyDomain),
+      ...domainAndParents(target.websiteHost?.replace(/^www\./, '') ?? null),
+    ];
     if (domains.length > 0) checks.push(['domain', 'suppression.domain', domains]);
     if (target.companyId) checks.push(['company', 'suppression.company', [target.companyId]]);
     const profiles = this.db

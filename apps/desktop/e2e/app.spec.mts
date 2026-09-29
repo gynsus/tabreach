@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   fixtures = await startFixtureServer();
   app = await electron.launch({
     args: [join(import.meta.dirname, '..')],
-    env: { ...process.env, TABREACH_USER_DATA_DIR: userData },
+    env: { ...process.env, TABREACH_USER_DATA_DIR: userData, TABREACH_ALLOW_LOCAL_SITES: '1' },
   });
   page = await app.firstWindow();
 });
@@ -511,7 +511,7 @@ test('a campaign writes through a website contact form: prepared, approved as sh
   await expect(preview.getByRole('row', { name: /marketing emails/ })).toContainText(
     'Never ticked by TabReach',
   );
-  await expect(preview.getByRole('img', { name: 'The filled form' })).toBeVisible();
+  await expect(preview.getByRole('img', { name: 'The form as the site shows it' })).toBeVisible();
   await page.getByRole('button', { name: 'Approve' }).click();
 
   await go('#/campaigns');

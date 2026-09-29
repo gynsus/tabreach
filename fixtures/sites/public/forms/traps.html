@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact (traps)</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <!-- Audit 6.5: honeypots hidden the ways plugins hide them, a marketing box the page ticked,
+         a field already marked invalid, and a footer that says "we will get back to you". -->
+    <main>
+      <h1>Contact us</h1>
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>Name <input name="name" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Phone <input type="tel" name="phone" aria-invalid="true" /></label>
+        <label>Message <textarea name="message" required></textarea></label>
+        <label style="position: absolute; left: -9999px">Website <input name="website" /></label>
+        <label style="opacity: 0">Email again <input type="email" name="email2" /></label>
+        <span aria-hidden="true"
+          ><label>URL <input type="url" name="url" /></label
+        ></span>
+        <label><input type="checkbox" name="marketing" checked /> Send me marketing emails</label>
+        <button type="submit">Send</button>
+      </form>
+    </main>
+    <footer><p>We will get back to you within one business day.</p></footer>
+  </body>
+</html>

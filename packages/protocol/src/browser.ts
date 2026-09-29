@@ -256,6 +256,10 @@ export const formFieldSchema = z.object({
   source: z.enum(['pack', 'ai']).nullable().default(null),
   /** What TabReach writes there; null: left as the page has it (a consent is never ticked). */
   value: z.string().max(20_000).nullable(),
+  /** Check boxes and radios as the page left them; a consent ticked by the page is unticked. */
+  checked: z.boolean().default(false),
+  /** Text the page already put in a field TabReach leaves alone (it is sent as it is). */
+  prefilled: z.string().max(500).nullable().default(null),
 });
 export type FormField = z.infer<typeof formFieldSchema>;
 
@@ -285,8 +289,10 @@ export const formPrepareResultSchema = z.object({
   fields: z.array(formFieldSchema),
   /** A CAPTCHA or check on the form page: never solved; the person sends it. */
   challenge: z.string().nullable(),
-  /** PNG of the filled form, base64 — what the approval shows. */
+  /** PNG of the form as the site shows it, base64; nothing is typed in before approval. */
   screenshot: z.string().max(4_000_000).nullable(),
+  /** Where the form sends (origin and path of its action). */
+  action: z.string().max(2_000).nullable().default(null),
   packVersion: z.string(),
 });
 export type FormPrepareResult = z.infer<typeof formPrepareResultSchema>;

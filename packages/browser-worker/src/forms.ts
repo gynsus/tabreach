@@ -30,23 +30,34 @@ interface DomEl {
   textContent: string | null;
   isConnected: boolean;
   getAttribute(name: string): string | null;
-  getBoundingClientRect(): { width: number; height: number };
+  getBoundingClientRect(): { width: number; height: number; right: number; bottom: number };
   querySelector(selector: string): DomEl | null;
+  closest(selector: string): DomEl | null;
+  parentElement: DomEl | null;
 }
 interface DomField extends DomEl {
   name: string;
   id: string;
   value: string;
+  checked: boolean;
   required: boolean;
   labels: ArrayLike<DomEl> | null;
 }
 interface DomForm extends DomEl {
   elements: ArrayLike<DomField>;
   checkValidity(): boolean;
+  action: string;
+  method: string;
 }
 interface PageGlobals {
   document: { getElementById(id: string): DomEl | null };
-  getComputedStyle(el: DomEl): { visibility: string; display: string };
+  getComputedStyle(el: DomEl): {
+    visibility: string;
+    display: string;
+    opacity: string;
+    clip: string;
+    clipPath: string;
+  };
 }
 
 /** A form element as the page describes it (read by a script; nothing is changed). */
@@ -61,11 +72,20 @@ interface RawField {
   label: string;
   required: boolean;
   visible: boolean;
+  /** Check boxes and radios: ticked as the page left them. */
+  checked: boolean;
+  /** What the page already put in the field. */
+  value: string;
 }
 interface RawForm {
   visible: boolean;
   role: string;
   fields: RawField[];
+  /** Where the form sends (its action URL) and how. */
+  action: string;
+  method: string;
+  /** A blog comment form, which would publish the message (never a contact form). */
+  comment: boolean;
 }
 
 /** Runs in the page: the form's fields with their labels, in `form.elements` order. */
@@ -73,10 +93,22 @@ const DESCRIBE_FORM = (node: unknown): RawForm => {
   const form = node as DomForm;
   const g = globalThis as unknown as PageGlobals;
   const text = (el: DomEl | null) => (el?.textContent ?? '').replace(/\s+/g, ' ').trim();
+  // Seen by a person: laid out, on the page, not transparent, not clipped away, not hidden from
+  // assistive technology — the ways honeypot fields for bots are hidden (audit 6.5).
   const visible = (el: DomEl) => {
     const r = el.getBoundingClientRect();
-    const cs = g.getComputedStyle(el);
-    return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none';
+    if (r.width <= 1 || r.height <= 1 || r.right < 0 || r.bottom < 0) return false;
+    if (el.closest('[aria-hidden="true"], [hidden], [inert]')) return false;
+    for (let node: DomEl | null = el; node; node = node.parentElement) {
+      const cs = g.getComputedStyle(node);
+      if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) < 0.05) return false;
+      if (
+        /rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)/.test(cs.clip) ||
+        /inset\(50%\)|circle\(0/.test(cs.clipPath)
+      )
+        return false;
+    }
+    return true;
   };
   const labelOf = (el: DomField) => {
     const parts: string[] = [];
@@ -103,16 +135,28 @@ const DESCRIBE_FORM = (node: unknown): RawForm => {
       placeholder: el.getAttribute('placeholder') ?? '',
       label: labelOf(el),
       required: el.required || el.getAttribute('aria-required') === 'true',
-      // A field nobody can see is a trap for bots (honeypot) or not in use: never filled.
-      visible: visible(el),
+      // A field nobody can see, or one taken out of the tab order with autofill off, is a trap for
+      // bots (honeypot) or not in use: never filled.
+      visible:
+        visible(el) && !(el.getAttribute('tabindex') === '-1' && el.getAttribute('autocomplete') === 'off'),
+      checked: el.checked === true,
+      value: (el.value ?? '').slice(0, 500),
     });
   });
-  return { visible: visible(form), role: (form.getAttribute('role') ?? '').toLowerCase(), fields };
+  const id = (form.getAttribute('id') ?? '').toLowerCase();
+  return {
+    visible: visible(form),
+    role: (form.getAttribute('role') ?? '').toLowerCase(),
+    fields,
+    action: form.action ?? '',
+    method: (form.method ?? 'get').toLowerCase(),
+    comment: id === 'commentform' || /wp-comments-post|\/comments?\b/.test(form.action ?? ''),
+  };
 };
 
 /** A contact form: something to write in, a way to be answered, and no password (not a login). */
 function contactScore(form: RawForm): number {
-  if (!form.visible || form.role === 'search') return 0;
+  if (!form.visible || form.role === 'search' || form.comment) return 0;
   const shown = form.fields.filter((f) => f.visible);
   if (shown.some((f) => f.type === 'password' || f.type === 'search')) return 0;
   let score = 0;
@@ -189,6 +233,8 @@ export function mapForm(form: RawForm, values: FormValues, knowledge: FormKnowle
       meaning,
       source: meaning ? ('pack' as const) : null,
       value: value === '' ? null : value,
+      checked: f.checked,
+      prefilled: f.value && f.type !== 'checkbox' && f.type !== 'radio' ? f.value : null,
     };
   });
 }
@@ -243,9 +289,34 @@ function valueFor(meaning: Exclude<FormFieldMeaning, 'consent'>, v: FormValues):
 }
 
 /** The form as identified for approval: its fields, not their values. */
+/**
+ * The form as approved: its fields, what the page itself put in them (ticked boxes, prefilled
+ * text), and where it sends. Values TabReach writes are covered by the approval hash in core.
+ */
 export function signatureOf(form: RawForm): string {
-  const shape = form.fields.map((f) => [f.ref, f.tag, f.type, f.name, f.label, f.visible]);
-  return createHash('sha256').update(JSON.stringify(shape)).digest('hex');
+  const shape = form.fields.map((f) => [
+    f.ref,
+    f.tag,
+    f.type,
+    f.name,
+    f.label,
+    f.visible,
+    f.checked,
+    f.value,
+  ]);
+  return createHash('sha256')
+    .update(JSON.stringify([actionOf(form), form.method, shape]))
+    .digest('hex');
+}
+
+/** Where a form sends: origin and path of its action, without query. */
+export function actionOf(form: RawForm): string {
+  try {
+    const u = new URL(form.action);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return '';
+  }
 }
 
 interface FoundForm {
@@ -292,6 +363,11 @@ async function contactLeads(page: Page, knowledge: FormKnowledge, site: string) 
         const r = el.getBoundingClientRect();
         return r.width > 0 && r.height > 0;
       })
+      // A button that sends another form (a "Contact me" callback form) is never a way in.
+      .filter(
+        (el) =>
+          el.tagName === 'A' || !(el.closest('form') && (el.getAttribute('type') ?? 'submit') === 'submit'),
+      )
       .map((el) => ({
         link: el.tagName === 'A' ? ((el as unknown as { href: string }).href ?? null) : null,
         text: (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
@@ -378,11 +454,15 @@ export async function prepareForm(
     fields: [],
     challenge: null,
     screenshot: null,
+    action: null,
     packVersion: pack?.version ?? 'none',
   };
   if (!knowledge) return { ...base, status: 'failed', reason: 'task.unknownPack' };
   const site = new URL(req.url).hostname;
   if (!(await goto(page, req.url))) return { ...base, status: 'failed', reason: 'task.navigationFailed' };
+  // An expired domain redirecting to a parking page's "enquiry" form is not the company (audit 6.5).
+  if (!sameSite(new URL(page.url()).hostname, site))
+    return { ...base, status: 'no_form', reason: 'form.offsite' };
 
   let found = await findContactForm(page, signal);
   let opener: string | null = null;
@@ -436,11 +516,9 @@ export async function prepareForm(
     if (answer?.available) fields = applyResolved(fields, answer, req.values);
   }
   const formUrl = page.url().replace(/#.*$/, '');
-  for (const field of fields) {
-    if (field.value === null) continue;
-    signal.throwIfAborted();
-    await fill(found.handle, field.ref, field.value);
-  }
+  // Nothing is typed into the site before approval (audit 6.5): scripts on the page (session
+  // recorders, lead capture) would see it, and a person could press Send in the window. The
+  // approval shows the values in the app, next to the photo of the empty form.
   const challenge = await challengeOn(page, env.pack('generic'));
   const screenshot = await found.handle
     .screenshot({ timeout: 10_000 })
@@ -448,6 +526,7 @@ export async function prepareForm(
     .catch(() => null); // the approval then shows the fields only
   const missing = fields.some((f) => f.required && f.meaning !== 'consent' && f.value === null);
   const consent = fields.some((f) => f.required && f.kind === 'checkbox');
+  const action = actionOf(found.raw);
   const result = {
     ...base,
     formUrl,
@@ -456,6 +535,7 @@ export async function prepareForm(
     fields,
     challenge,
     screenshot,
+    action: action || null,
   };
   if (missing) return { ...result, status: 'needs_human', reason: 'form.unmappedRequired' };
   if (consent) return { ...result, status: 'needs_human', reason: 'form.consentRequired' };
@@ -512,6 +592,10 @@ export async function submitForm(
   });
   if (!knowledge) return notSent({ errorKey: 'task.unknownPack' });
   if (!(await goto(page, req.formUrl))) return notSent({ errorKey: 'task.navigationFailed' });
+  // Redirected elsewhere since approval (an expired domain, say): not the approved form.
+  if (!sameSite(new URL(page.url()).hostname, new URL(req.formUrl).hostname)) {
+    return notSent({ status: 'unsupported_state', errorKey: 'form.changed' });
+  }
   if (req.opener && !(await open(page, req.opener))) {
     return notSent({ status: 'unsupported_state', errorKey: 'form.changed' });
   }
@@ -527,6 +611,14 @@ export async function submitForm(
     signal.throwIfAborted();
     if (!(await fill(found.handle, field.ref, field.value))) return notSent({ errorKey: 'task.fillFailed' });
   }
+  // A consent the page ticked by itself is not the sender's: it is unticked (FR-FRM-006). A
+  // required one was never approved for auto (the person ticks it in assisted mode).
+  const consents = mapForm(found.raw, {}, knowledge).filter(
+    (f) => f.meaning === 'consent' && f.checked && !f.required,
+  );
+  for (const c of consents) {
+    if (!(await uncheck(found.handle, c.ref))) return notSent({ errorKey: 'task.fillFailed' });
+  }
   // A challenge is never solved: in auto mode nothing is pressed and the person is asked; in
   // assisted mode the person solves it and presses (FR-FRM-004).
   const challenge = await challengeOn(page, env.pack('generic'));
@@ -539,8 +631,12 @@ export async function submitForm(
     });
   }
   const mode = req.mode;
-  // The page's own checks first: a form it would refuse is not pressed at all.
-  if (!(await found.handle.evaluate((f) => (f as unknown as DomForm).checkValidity()).catch(() => false))) {
+  // Auto: the page's own checks first — a form it would refuse is not pressed at all. Assisted:
+  // the person fills what TabReach could not (a field, a consent), so the page decides then.
+  if (
+    mode === 'auto' &&
+    !(await found.handle.evaluate((f) => (f as unknown as DomForm).checkValidity()).catch(() => false))
+  ) {
     return notSent({ errorKey: 'form.invalid' });
   }
   const buttons = await found.handle.$$(
@@ -552,8 +648,6 @@ export async function submitForm(
     return notSent({ status: 'needs_human', errorKey: 'form.submitAmbiguous' });
   }
   const button = visibleButtons[0] ?? null;
-  const successBefore = await pageSays(page, knowledge.success);
-  const urlBefore = page.url();
   const values = () =>
     found.handle.evaluate(
       (f, refs) => refs.map((r) => (f as unknown as DomForm).elements[r]?.value ?? null),
@@ -566,6 +660,10 @@ export async function submitForm(
   signal.throwIfAborted();
   if (!(await checkpoint())) return notSent({ errorKey: 'task.checkpointRefused' });
   if (mode === 'auto' && !(await intact())) return notSent({ errorKey: 'task.stateChanged' });
+  // What the page showed before the press: only what appears after it counts (audit 6.5).
+  const urlBefore = page.url();
+  const textBefore = await visibleText(page);
+  const signalsBefore = await formSignals(found.handle, knowledge);
   // From here on the message may have been sent: every way out says so.
   const committed = { ...base, errorKey: null, committed: true } as const;
   try {
@@ -578,16 +676,28 @@ export async function submitForm(
       waitMs = ASSISTED_WAIT_MS;
     }
     const deadline = Date.now() + waitMs;
+    let refusedPolls = 0;
     for (;;) {
       signal.throwIfAborted();
       const formGone = !(await found.handle
         .evaluate((f) => (f as unknown as DomEl).isConnected)
         .catch(() => false));
       const moved = page.url() !== urlBefore;
-      if ((moved || formGone || !successBefore) && (await pageSays(page, knowledge.success))) {
-        return { ...committed, status: 'succeeded', url: safeUrl(page.url()) };
-      }
-      if (!formGone && !moved && (await refused(found.handle, knowledge))) {
+      const text = await visibleText(page);
+      // A new page saying so, or a success phrase that was not on this page before.
+      const says = knowledge.success.some((p) =>
+        moved ? text.includes(p) : occurrences(text, p) > occurrences(textBefore, p),
+      );
+      if (says) return { ...committed, status: 'succeeded', url: safeUrl(page.url()) };
+      // A refusal is claimed only when it is certain nothing left: auto mode, the same page, the
+      // form still there with the values as written, and a new visible error seen twice. Anything
+      // less certain stays unknown — a wrong "not sent" could let the message go out again.
+      const now = mode === 'auto' && !formGone && !moved ? await formSignals(found.handle, knowledge) : null;
+      const newError =
+        now !== null &&
+        (now.invalid > signalsBefore.invalid || now.alerts.some((a) => !signalsBefore.alerts.includes(a)));
+      refusedPolls = newError && (await intact()) ? refusedPolls + 1 : 0;
+      if (refusedPolls >= 2) {
         return { ...committed, status: 'failed', url: safeUrl(page.url()), errorKey: 'task.rejected' };
       }
       if (Date.now() > deadline) break;
@@ -609,25 +719,51 @@ export async function submitForm(
   };
 }
 
-/** Visible text on the page containing one of the phrases. */
-async function pageSays(page: Page, phrases: string[]): Promise<boolean> {
-  const text = (
+async function uncheck(form: ElementHandle, ref: number): Promise<boolean> {
+  const el = await form.evaluateHandle((f, i) => (f as unknown as DomForm).elements[i] ?? null, ref);
+  const box = el.asElement() as unknown as ElementHandle | null;
+  if (!box) return false;
+  await box.setChecked(false, { timeout: 10_000 });
+  return !(await box.isChecked());
+}
+
+async function visibleText(page: Page): Promise<string> {
+  return (
     await page
       .locator('body')
       .innerText({ timeout: 5_000 })
       .catch(() => '')
   ).toLowerCase();
-  return phrases.some((p) => text.includes(p));
 }
 
-/** The form is still there and marks a field invalid, or an alert on it says it was refused. */
-async function refused(form: ElementHandle, knowledge: FormKnowledge): Promise<boolean> {
-  const marked = await form
-    .evaluate((f) => (f as unknown as DomEl).querySelector('[aria-invalid="true"]') !== null)
-    .catch(() => false);
-  if (marked) return true;
-  const alerts = await form
-    .$$eval('[role=alert]', (els) => els.map((e) => (e.textContent ?? '').toLowerCase()))
-    .catch(() => [] as string[]);
-  return alerts.some((a) => knowledge.rejected.some((p) => a.includes(p)));
+function occurrences(text: string, phrase: string): number {
+  let n = 0;
+  for (let at = text.indexOf(phrase); at !== -1; at = text.indexOf(phrase, at + 1)) n++;
+  return n;
+}
+
+/** Visible error marks on the form: fields marked invalid, and alert texts with a refusal phrase. */
+async function formSignals(
+  form: ElementHandle,
+  knowledge: FormKnowledge,
+): Promise<{ invalid: number; alerts: string[] }> {
+  const seen = await form
+    .evaluate((f) => {
+      const shown = (el: DomEl) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 1 && r.height > 1;
+      };
+      const root = f as unknown as { querySelectorAll(s: string): ArrayLike<DomEl> };
+      return {
+        invalid: Array.from(root.querySelectorAll('[aria-invalid="true"]')).filter(shown).length,
+        alerts: Array.from(root.querySelectorAll('[role=alert], [aria-live=assertive]'))
+          .filter(shown)
+          .map((e) => (e.textContent ?? '').replace(/\s+/g, ' ').trim().toLowerCase()),
+      };
+    })
+    .catch(() => ({ invalid: 0, alerts: [] as string[] }));
+  return {
+    invalid: seen.invalid,
+    alerts: seen.alerts.filter((a) => knowledge.rejected.some((p) => a.includes(p))),
+  };
 }

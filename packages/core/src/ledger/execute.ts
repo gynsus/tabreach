@@ -1,4 +1,5 @@
 import type { MessageChannel, OutgoingMessage } from '../channels/channel.js';
+import { transaction } from '../db/database.js';
 import { PermanentError } from '../jobs/dispatcher.js';
 import { intentKey, type IntentParts, type SideEffectLedger } from './side-effects.js';
 
@@ -30,6 +31,12 @@ export async function executeSideEffect(opts: {
   signal: AbortSignal;
   /** Final pre-send checks, run in the reserving transaction; throw to block the send. */
   guard?: () => void;
+  /**
+   * The same checks again at a browser channel's commit point (audit 6.5): opening the site and
+   * filling the form take a while, and a stop, a reply or an edit may arrive meanwhile. Throwing
+   * refuses the checkpoint — nothing is pressed.
+   */
+  recheck?: () => void;
   /** Told when reconciliation settled an earlier attempt, for the audit trail. */
   onReconciled?: (outcome: 'completed' | 'not_sent') => void;
   /** Told why a send threw (the outcome is `unknown` either way), for the logs. */
@@ -83,7 +90,15 @@ export async function executeSideEffect(opts: {
     result = await channel.send(
       { ...opts.message, idempotencyKey: key },
       signal,
-      atCheckpoint ? { beforeCommit: () => ledger.markExecuting(id) } : undefined,
+      atCheckpoint
+        ? {
+            beforeCommit: () =>
+              transaction(ledger.db, () => {
+                opts.recheck?.();
+                ledger.markExecuting(id);
+              }),
+          }
+        : undefined,
     );
   } catch (error) {
     opts.onSendError?.(error);

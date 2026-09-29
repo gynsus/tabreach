@@ -717,4 +717,14 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX form_preparations_run ON form_preparations (workflow_run_id, prepared_at);
     `,
   },
+  {
+    version: 19,
+    name: 'form_preparation_sender',
+    sql: `
+      -- Which sender a form was prepared for, and where the form sends (audit 6.5): a changed sender
+      -- or a different action means preparing and approving again.
+      ALTER TABLE form_preparations ADD COLUMN sender_key TEXT NOT NULL DEFAULT '';
+      ALTER TABLE form_preparations ADD COLUMN action TEXT;
+    `,
+  },
 ];
