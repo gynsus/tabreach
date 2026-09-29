@@ -15,14 +15,21 @@ const UNSUPPORTED = new Set([
   'exclusiveMaximum',
 ]);
 
+/**
+ * The schema without keywords strict mode may reject. What they said is kept as words in the
+ * field's description ("maxItems: 20"), so the model still knows the limits.
+ */
 function strictSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(strictSchema);
   if (!schema || typeof schema !== 'object') return schema;
-  return Object.fromEntries(
-    Object.entries(schema as Record<string, unknown>)
-      .filter(([k]) => !UNSUPPORTED.has(k))
-      .map(([k, v]) => [k, strictSchema(v)]),
+  const entries = Object.entries(schema as Record<string, unknown>);
+  const limits = entries.filter(([k]) => UNSUPPORTED.has(k)).map(([k, v]) => `${k}: ${String(v)}`);
+  const kept = Object.fromEntries(
+    entries.filter(([k]) => !UNSUPPORTED.has(k)).map(([k, v]) => [k, strictSchema(v)]),
   );
+  if (limits.length === 0) return kept;
+  const description = typeof kept.description === 'string' ? `${kept.description} ` : '';
+  return { ...kept, description: `${description}(${limits.join(', ')})` };
 }
 
 /** A JSON answer, possibly wrapped in a Markdown code fence by some models. */

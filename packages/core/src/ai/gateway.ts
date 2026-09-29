@@ -242,6 +242,18 @@ export class AiGateway {
         return parsed.data;
       }
       record('invalid_output', answer.usage, started, 'schema');
+      // Which fields failed and how — never their values (they can hold page or reply text).
+      this.logger.warn(
+        {
+          event: 'ai.call_failed',
+          template: template.key,
+          model,
+          kind: 'invalid_output',
+          reason: 'schema',
+          issues: parsed.error.issues.slice(0, 5).map((i) => `${i.path.join('.')}: ${i.code}`),
+        },
+        'AI answer did not match the schema',
+      );
       // One bounded repair attempt (docs/15 "Structured output"): say what was wrong, ask again.
       prompt = `${user}\n\nYour previous answer did not match the required structure (${z.prettifyError(parsed.error).slice(0, 500)}). Answer again with the exact structure.`;
     }

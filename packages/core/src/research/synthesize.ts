@@ -34,15 +34,15 @@ const output = z.object({
 });
 export type Synthesis = z.infer<typeof output>;
 
-/** docs/15 example output, docs/16 "Research result". Version 1. */
+/** docs/15 example output, docs/16 "Research result". Version 2: the list and length limits are stated. */
 export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis> = {
   key: 'research.synthesize',
-  version: 1,
+  version: 2,
   purpose: 'Summarise a company from its own web pages into verified facts, inferences and a qualification.',
   useCase: 'research',
   input,
   output,
-  maxTokens: 6_000,
+  maxTokens: 8_000,
   build: ({ company, criteria, pages, nonce }) => ({
     system: [
       'You research a company for business outreach, using only the pages provided.',
@@ -52,6 +52,8 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
       'Inferences: your interpretation, each based on facts by their index in the facts list.',
       'Qualification against the criteria: match, possible_match, not_match, or insufficient_data when the',
       'pages do not say enough (also when no criteria are given). Missing information: what the pages do not answer.',
+      'Limits: at most 20 facts (the most useful for outreach), 10 inferences and 10 missing items; a claim up to',
+      '300 characters, a quote up to 400, the summary up to 1500, each reason up to 600. Keep the answer compact.',
       UNTRUSTED_RULES,
     ].join(' '),
     user: [
