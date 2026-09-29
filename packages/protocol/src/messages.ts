@@ -62,6 +62,8 @@ import {
   draftVersionSchema,
   policySettingsSchema,
   formSenderSchema,
+  linkedinSettingsSchema,
+  linkedinSettingsUpdateSchema,
   uncertainSendSchema,
 } from './campaigns.js';
 import {
@@ -319,6 +321,18 @@ export const requests = {
     kind: 'command',
     request: draftReviseSchema,
     response: approvalSchema.nullable(),
+  },
+  'linkedin.settings.get': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: linkedinSettingsSchema,
+  },
+  'linkedin.settings.update': {
+    channel: 'app',
+    kind: 'command',
+    request: linkedinSettingsUpdateSchema,
+    response: linkedinSettingsSchema,
   },
   'forms.sender.get': { channel: 'app', kind: 'query', request: z.object({}), response: formSenderSchema },
   'forms.sender.update': {

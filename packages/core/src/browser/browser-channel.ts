@@ -222,9 +222,14 @@ export class BrowserActionChannel implements MessageChannel {
     await close();
     return {
       outcome: 'not_sent',
-      errorClass: result.errorKey ?? result.status,
+      // A known page that is not the action's (an invitation already pending, not connected yet):
+      // the engine decides what that means for the step.
+      errorClass:
+        result.status === 'unsupported_state' && result.stateId && !result.errorKey
+          ? `state:${result.stateId}`
+          : (result.errorKey ?? result.status),
       // A page outside the pack's allowlist does not change by retrying (docs/07).
-      permanent: result.status === 'unsupported_state',
+      permanent: result.status === 'unsupported_state' && !result.stateId,
     };
   }
 

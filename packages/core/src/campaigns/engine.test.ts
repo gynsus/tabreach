@@ -30,6 +30,7 @@ const message = (over: Partial<Extract<CampaignStep, { type: 'send_message' }>> 
   executionMode: 'auto',
   delaySeconds: 0,
   mode: 'template',
+  linkedinAction: 'message',
   subject: 'Hello {{firstName}}',
   body: 'Hi {{firstName}}, a note for {{companyName|your team}}.',
   instructions: '',

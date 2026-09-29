@@ -47,6 +47,8 @@ interface Session {
   task: { id: string; abort: AbortController } | null;
   /** An unknown overlay message was logged once; a page cannot flood the log. */
   ignoredLogged: boolean;
+  /** A page of this session crashed (Chrome's own report). */
+  crashed: boolean;
 }
 
 export interface ProfileManagerOptions {
@@ -157,15 +159,19 @@ export class ProfileManager {
       overlayContext: null,
       task: null,
       ignoredLogged: false,
+      crashed: false,
     };
     this.sessions.set(req.sessionId, session);
     if (session.overlay) await this.installOverlay(req.sessionId, session);
     context.on('close', () => {
       if (!this.sessions.delete(req.sessionId)) return;
-      // Not closed by us or by the person closing its last window: Chrome went away (crash, quit).
-      const status = session.closing ? 'closed' : 'crashed';
+      // Crashed only when Chrome said a page crashed; closing windows or quitting Chrome is a close.
+      const status = session.crashed ? 'crashed' : 'closed';
       this.notify({ sessionId: req.sessionId, profileId: req.profileId, status, currentUrl: null });
     });
+    const onCrash = (page: Page) => page.on('crash', () => (session.crashed = true));
+    context.on('page', onCrash);
+    for (const page of context.pages()) onCrash(page);
     // On macOS Chrome keeps running without windows; the last window closed ends the session.
     context.on('page', (page) =>
       page.on('close', () => {

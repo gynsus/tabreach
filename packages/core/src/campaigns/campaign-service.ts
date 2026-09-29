@@ -48,6 +48,13 @@ export class CampaignService {
     private readonly replyHold: (contactId: string, companyId: string | null) => string | null = () => null,
     /** Whether an AI key is stored for the selected provider (AI steps need one). */
     private readonly aiReady: () => boolean = () => false,
+    /** LinkedIn launch rules: the adapter on, and `auto` only where opted in (FR-LIN-001/002). */
+    private readonly linkedinCheck?: (
+      step: Extract<CampaignConfig['steps'][number], { type: 'send_message' }>,
+    ) => {
+      field: string;
+      key: string;
+    } | null,
   ) {}
 
   list(includeArchived: boolean): Campaign[] {
@@ -295,11 +302,19 @@ export class CampaignService {
       else if (!this.channels(step.channel, config)) {
         if (step.channel === 'email') fields.emailAccountId = 'account.unavailable';
         else if (step.channel === 'web_form') fields[`steps.${i}.channel`] = 'forms.senderRequired';
+        else if (step.channel === 'linkedin') fields[`steps.${i}.channel`] = 'linkedin.disabled';
         else fields[`steps.${i}.channel`] = 'channel.unavailable';
       }
       // Only a browser channel has a person press the final button (docs/01 "Execution modes").
-      if (step.channel !== 'web_form' && step.executionMode !== 'auto')
+      if (step.channel !== 'web_form' && step.channel !== 'linkedin' && step.executionMode !== 'auto')
         fields[`steps.${i}.executionMode`] = 'mode.autoOnly';
+      if (step.channel === 'linkedin') {
+        const off = this.linkedinCheck?.(step);
+        if (off) fields[off.field.replace('{i}', String(i))] = off.key;
+        // LinkedIn invitation notes are short; a longer template is refused before launch.
+        if (step.linkedinAction === 'connect' && step.mode === 'template' && step.body.length > 300)
+          fields[`steps.${i}.body`] = 'linkedin.noteTooLong';
+      }
       if (step.mode === 'ai') {
         if (!step.instructions.trim()) fields[`steps.${i}.instructions`] = 'instructions.required';
         if (!this.aiReady()) fields[`steps.${i}.mode`] = 'ai.keyRequired';
@@ -307,7 +322,9 @@ export class CampaignService {
           fields[`steps.${i}.signature`] = 'template.unknownField';
         return;
       }
-      if (!step.body.trim()) fields[`steps.${i}.body`] = 'body.required';
+      // An invitation may go without a note.
+      if (!step.body.trim() && !(step.channel === 'linkedin' && step.linkedinAction === 'connect'))
+        fields[`steps.${i}.body`] = 'body.required';
       if (unknownPlaceholders(step.subject).length > 0)
         fields[`steps.${i}.subject`] = 'template.unknownField';
       if (unknownPlaceholders(step.body).length > 0) fields[`steps.${i}.body`] = 'template.unknownField';

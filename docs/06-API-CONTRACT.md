@@ -181,6 +181,8 @@ query   app.control.get                # { paused, pausedAt, emergencyStoppedAt,
 command app.pauseAll / app.resumeAll   # no new external action while paused; reading replies goes on
 command app.emergencyStop              # pause, and the worker stops every browser task at once
 command app.setKeepAwake               # { keepAwake } — keep the Mac awake while a campaign is active
+query   linkedin.settings.get          # { enabled, profileId, riskAcknowledgedAt, autoConnect, autoMessage, limits, limitsRaised } (Phase 7b)
+command linkedin.settings.update       # + acknowledgeRisk; errors linkedin.riskRequired | profileRequired | limitsRaiseRequired
 query   forms.sender.get               # { profileId, name, email, phone, company, website } (Phase 6b)
 command forms.sender.update            # the research profile is refused (forms.profileUnsuitable)
 query   forms.screenshot               # { approvalId } -> { png: base64 | null } — the prepared form
@@ -188,7 +190,7 @@ query   interventions.list             # open requests to the person, with diagn
 command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
 ```
 
-`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `profile.inUseByYou`, `profile.checking`, `profile.research`, `profile.formSender`, `session.nothingToReturn`, `session.notOpen`, `session.busy`, `intervention.notFound`, `intervention.closed`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
+`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `profile.inUseByYou`, `profile.checking`, `profile.research`, `profile.formSender`, `profile.linkedinAccount`, `session.nothingToReturn`, `session.notOpen`, `session.busy`, `intervention.notFound`, `intervention.closed`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
 
 ## Jobs and diagnostics
 

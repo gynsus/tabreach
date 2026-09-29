@@ -9,9 +9,10 @@ import { cn } from '../../lib/cn';
 import { AiSettings } from './AiSettings';
 import { EmailAccounts } from './EmailAccounts';
 import { FormSettings } from './FormSettings';
+import { LinkedinSettings } from './LinkedinSettings';
 import { PolicySettings } from './PolicySettings';
 
-const TABS = ['general', 'email', 'forms', 'ai', 'policy'] as const;
+const TABS = ['general', 'email', 'forms', 'linkedin', 'ai', 'policy'] as const;
 type Tab = (typeof TABS)[number];
 
 /** Settings, one logical group per tab; each tab has its own address (#/settings/ai). */
@@ -65,6 +66,7 @@ export function SettingsPage() {
           {current === 'general' ? <General /> : null}
           {current === 'email' ? <EmailAccounts /> : null}
           {current === 'forms' ? <FormSettings /> : null}
+          {current === 'linkedin' ? <LinkedinSettings /> : null}
           {current === 'ai' ? <AiSettings /> : null}
           {current === 'policy' ? <PolicySettings /> : null}
         </div>

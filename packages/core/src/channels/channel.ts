@@ -52,6 +52,13 @@ export interface MessageChannel {
   readonly dailyLimit: number | null;
   send(message: OutgoingMessage, signal: AbortSignal, hooks?: SendHooks): Promise<SendResult>;
   /**
+   * Why the channel may not act right now (a switched-off adapter, FR-LIN-001), or null. Checked
+   * at the final pre-send check and again at the checkpoint: off means nothing is sent.
+   */
+  unavailable?(): string | null;
+  /** Per-action-class limits of the channel account (FR-LIN-005), besides spacing and the daily limit. */
+  checkLimits?(actionType: string, idempotencyKey: string): { until: Date; rule: string } | null;
+  /**
    * Finds out whether an attempt with this key reached the outside world (the Sent folder by
    * Message-ID, say). `attemptStartedAt` is when the attempt was marked executing.
    */
