@@ -125,6 +125,7 @@ export class BrowserWorker {
               req,
               this.taskEnv,
               AbortSignal.any([task.signal, AbortSignal.timeout(TASK_TIMEOUT_MS)]),
+              (request) => this.peer.request('ai.resolveTarget', request, { timeoutMs: 90_000 }),
             );
           } finally {
             task.end();

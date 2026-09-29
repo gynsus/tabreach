@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Talk to sales</title>
+    <script src="../submit.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Talk to sales</h1>
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>Name <input name="name" required /></label>
+        <label>Email <input type="email" name="email" required /></label>
+        <label>Message <textarea name="message" required></textarea></label>
+        <button type="submit">Send</button>
+      </form>
+    </main>
+  </body>
+</html>

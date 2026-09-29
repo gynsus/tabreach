@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Write to us</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <!-- A changed layout: labels no phrase of the pack recognizes (Phase 6c semantic resolution). -->
+    <main>
+      <h1>We would love to hear from you</h1>
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>How should we address you? <input name="f1" required /></label>
+        <label>Where can we write back? <input name="f2" required /></label>
+        <label>Order reference <input name="f3" /></label>
+        <label>Anything we should know <textarea name="f4" required></textarea></label>
+        <button type="submit">Go</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -156,6 +156,10 @@ Worker side (`packages/browser-worker/src/forms.ts`), with the generic knowledge
 
 `FormService` (core) keeps the form sender, runs `form.prepare` in the sender's profile before approval and stores the preparation; the `web_form` channel is a `BrowserActionChannel` whose dispatch is `form.submit` with the run's latest preparation, so the ledger turns `executing` only at the checkpoint. The approval (`approval.form`) lists every field with the value TabReach writes, what stays empty, required fields the person fills, consent boxes it never ticks, who presses Send, and the photo of the filled form. See docs/13 and docs/17 for the state machine and campaign rules. Per-contact channel eligibility is derived (a form step needs the company's website); a separate eligibility table was not needed.
 
+### Implementation status (Phase 6c, 2026-09-29)
+
+Fields the phrases miss and a contact page no link names are resolved by AI from a closed list (ADR 013, docs/15), once per preparation; without AI they go to the person. Fixtures: a form with unfamiliar labels, and a site whose form is behind "Talk to sales". A page answering 4xx/5xx is not searched for a form.
+
 ## LinkedIn browser adapter
 
 Isolated module with a kill switch (setting, fails closed).

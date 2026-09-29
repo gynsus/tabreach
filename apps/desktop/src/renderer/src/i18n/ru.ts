@@ -378,6 +378,7 @@ export const ru: Catalog = {
         settings_updated: 'Настройки AI изменены',
         key_set: 'Ключ AI сохранён',
         key_removed: 'Ключ AI удалён',
+        target_resolved: 'AI распознал поля формы или ссылку на контакты',
       },
       account: {
         connected: 'Почтовый ящик подключён',
@@ -617,6 +618,7 @@ export const ru: Catalog = {
       field: 'Поле',
       value: 'Что будет вписано',
       unlabelled: 'Поле без названия',
+      byAi: 'распознано AI — проверьте',
       neverTicked: 'TabReach не ставит',
       youFill: 'Заполняете вы',
       leftEmpty: 'Останется пустым',

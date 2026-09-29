@@ -353,7 +353,12 @@ export const en = {
         keep_awake_changed: 'Keep-awake setting changed',
       },
       research: { started: 'Research started', completed: 'Research done', failed: 'Research failed' },
-      ai: { settings_updated: 'AI settings changed', key_set: 'AI key saved', key_removed: 'AI key removed' },
+      ai: {
+        settings_updated: 'AI settings changed',
+        key_set: 'AI key saved',
+        key_removed: 'AI key removed',
+        target_resolved: 'AI recognized form fields or a contact link',
+      },
       account: {
         connected: 'Email account connected',
         updated: 'Email account changed',
@@ -588,6 +593,7 @@ export const en = {
       field: 'Field',
       value: 'What goes in',
       unlabelled: 'Unnamed field',
+      byAi: 'recognized by AI — check it',
       neverTicked: 'Never ticked by TabReach',
       youFill: 'You fill this in',
       leftEmpty: 'Left empty',

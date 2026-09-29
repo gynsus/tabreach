@@ -62,6 +62,7 @@ export const auditActionTypes = [
   'ai.settings_updated',
   'forms.sender_updated',
   'form.prepared',
+  'ai.target_resolved',
   'ai.key_set',
   'ai.key_removed',
   'message.classified',

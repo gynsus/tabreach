@@ -9,6 +9,8 @@ import {
   silentLogger,
   uuidv7,
   type FormPrepareResult,
+  type ResolveTargetRequest,
+  type ResolveTargetResult,
   type TaskResult,
 } from '@tabreach/protocol';
 import { createEndpointPair } from '@tabreach/protocol/testing';
@@ -43,6 +45,9 @@ describe('website forms (Phase 6)', () => {
   let page: Page;
   let proceed = true;
   let checkpoints = 0;
+  /** What core's resolver answers (ADR 013); null: not available (no AI key). */
+  let resolver: ((req: ResolveTargetRequest) => ResolveTargetResult) | null = null;
+  const resolved: ResolveTargetRequest[] = [];
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'tabreach-forms-'));
     profiles = new ProfileManager({ root, headless: true, keychain: false, logger: silentLogger });
@@ -55,10 +60,17 @@ describe('website forms (Phase 6)', () => {
     });
     proceed = true;
     checkpoints = 0;
-    core = new RpcPeer(coreSide).handle('task.checkpoint', () => {
-      checkpoints++;
-      return { proceed };
-    });
+    resolver = null;
+    resolved.length = 0;
+    core = new RpcPeer(coreSide)
+      .handle('task.checkpoint', () => {
+        checkpoints++;
+        return { proceed };
+      })
+      .handle('ai.resolveTarget', (req) => {
+        resolved.push(req);
+        return resolver ? resolver(req) : { available: false, meanings: [], link: null };
+      });
     sessionId = uuidv7();
     await core.request(
       'profile.open',
@@ -211,4 +223,58 @@ describe('website forms (Phase 6)', () => {
     expect(await submit(r)).toMatchObject({ status: 'succeeded', committed: true });
     expect(await submissions()).toHaveLength(1);
   }, 90_000);
+
+  it('fields the phrases miss go to AI once, as a closed list; without AI they go to the person (Phase 6c)', async () => {
+    const without = await prepare('forms/odd.html');
+    expect(without).toMatchObject({ status: 'needs_human', reason: 'form.unmappedRequired' });
+    expect(resolved).toHaveLength(1); // asked, not available
+
+    resolver = (req) => ({
+      available: true,
+      link: null,
+      // A ref it was not given is ignored; a field it is unsure of stays unknown.
+      meanings:
+        req.kind === 'form_fields'
+          ? ([
+              { ref: 0, meaning: 'name' },
+              { ref: 1, meaning: 'email' },
+              { ref: 2, meaning: null },
+              { ref: 99, meaning: 'phone' },
+            ] as ResolveTargetResult['meanings'])
+          : [],
+    });
+    const r = await prepare('forms/odd.html');
+    expect(r.status).toBe('ready');
+    expect(r.fields.map((f) => [f.label, f.meaning, f.source, f.value])).toEqual([
+      ['How should we address you?', 'name', 'ai', 'Anna Test'],
+      ['Where can we write back?', 'email', 'ai', 'anna@sender.test'],
+      ['Order reference', null, null, null],
+      ['Anything we should know', 'message', 'pack', 'Hello from TabReach'],
+    ]);
+    const asked = resolved.at(-1);
+    expect(asked).toMatchObject({ kind: 'form_fields' });
+    expect(asked?.kind === 'form_fields' && asked.fields.map((f) => f.ref)).toEqual([0, 1, 2]);
+    // Sending never asks AI: the approved values go into the same fields.
+    expect(await submit(r)).toMatchObject({ status: 'succeeded', committed: true });
+    expect(resolved).toHaveLength(2);
+  }, 120_000);
+
+  it('a contact page no link names is found by AI choosing one of the site’s links (Phase 6c)', async () => {
+    const without = await prepare('forms/sales/index.html');
+    expect(without).toMatchObject({ status: 'no_form' });
+    resolver = (req) => ({
+      available: true,
+      meanings: [],
+      link:
+        req.kind === 'contact_link' ? (req.links.find((l) => l.text === 'Talk to sales')?.ref ?? null) : null,
+    });
+    const r = await prepare('forms/sales/index.html');
+    expect(r).toMatchObject({ status: 'ready', formUrl: `${fixtures.url}forms/sales/talk.html` });
+    const asked = resolved.filter((q) => q.kind === 'contact_link').at(-1);
+    expect(asked?.kind === 'contact_link' && asked.links.map((l) => l.text)).toEqual([
+      'Pricing',
+      'Talk to sales',
+      'Log in',
+    ]);
+  }, 120_000);
 });

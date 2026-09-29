@@ -351,6 +351,11 @@ function FormPreview({ approval: a }: { approval: Approval }) {
               <td className="py-1.5 pr-4">
                 {f.label || t('approvals.form.unlabelled')}
                 {f.required ? <span className="text-bad"> *</span> : null}
+                {f.source === 'ai' ? (
+                  <Badge tone="accent" className="ml-2">
+                    {t('approvals.form.byAi')}
+                  </Badge>
+                ) : null}
               </td>
               <td className="py-1.5 whitespace-pre-wrap">
                 {f.value !== null ? (
