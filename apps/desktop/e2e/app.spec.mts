@@ -401,6 +401,27 @@ test('the inbox opens with its filters and says when there are no replies', asyn
   await expect(page.getByText('No replies yet.')).toBeVisible();
 });
 
+test('browser profiles: create, open in Chrome under your control, close, delete by name', async () => {
+  await page.getByRole('link', { name: 'Browser profiles' }).click();
+  await page.getByRole('button', { name: 'New profile' }).click();
+  const create = page.getByRole('dialog', { name: 'New profile' });
+  await create.getByLabel('Name').fill('E2E profile');
+  await create.getByRole('button', { name: 'Create' }).click();
+  const profile = page.getByTestId('profile').filter({ hasText: 'E2E profile' });
+  await expect(profile).toContainText('Ready');
+  await profile.getByRole('button', { name: 'Open', exact: true }).click();
+  await expect(profile).toContainText('You are in control', { timeout: 60_000 });
+  await expect(profile.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  await profile.getByRole('button', { name: 'Close' }).click();
+  await expect(profile).toContainText('Ready', { timeout: 30_000 });
+  await profile.getByRole('button', { name: 'Delete' }).click();
+  const confirm = page.getByRole('dialog', { name: 'Delete “E2E profile”?' });
+  await expect(confirm.getByRole('button', { name: 'Delete' })).toBeDisabled();
+  await confirm.getByLabel('Type “E2E profile” to confirm').fill('E2E profile');
+  await confirm.getByRole('button', { name: 'Delete' }).click();
+  await expect(page.getByTestId('profile')).toHaveCount(0);
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

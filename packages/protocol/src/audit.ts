@@ -16,6 +16,7 @@ export const auditObjectTypeSchema = z.enum([
   'account',
   'conversation',
   'research',
+  'browser_profile',
 ]);
 export type AuditObjectType = z.infer<typeof auditObjectTypeSchema>;
 
@@ -67,5 +68,12 @@ export const auditActionTypes = [
   'research.failed',
   'draft.generated',
   'approval.auto_approved',
+  'profile.created',
+  'profile.updated',
+  'profile.archived',
+  'profile.deleted',
+  'profile.opened',
+  'profile.closed',
+  'session.interrupted',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

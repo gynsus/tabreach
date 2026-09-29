@@ -34,6 +34,8 @@ Diagnostic          failure evidence (screenshot, a11y snapshot, ...)
 
 ## Browser protocol (core ↔ worker)
 
+Implemented in Phase 5a: `profile.open` (with a core-chosen `sessionId`), `profile.close`, `profile.healthCheck`, `profile.delete`, `session.focus`; events `session.changed` and `worker.heartbeat`. The rest below comes with 5b–5d.
+
 Messages use the common envelope. Families:
 
 ```text

@@ -7,7 +7,7 @@ const CATEGORIES: Record<ActivityCategory, string[]> = {
   campaigns: ['campaign.', 'enrollment.'],
   prospects: ['contact.', 'company.', 'import.', 'export.', 'suppression.'],
   research: ['research.'],
-  settings: ['ai.', 'account.', 'policy.', 'job.', 'side_effect.'],
+  settings: ['ai.', 'account.', 'policy.', 'job.', 'side_effect.', 'profile.', 'session.'],
 };
 const MAX_BODY = 5_000;
 

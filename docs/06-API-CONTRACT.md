@@ -181,6 +181,19 @@ command conversations.review           # { messageId, decision: confirm | dismis
 command conversations.draftReply       # planned, Phase 8 (not implemented)
 ```
 
+## Browser profiles (Phase 5a)
+
+```text
+query   profiles.list                  # { includeArchived } -> profiles with their live session and last health
+command profiles.create                # { name, purpose: general | research }
+command profiles.update / profiles.archive
+command profiles.delete                # { id, confirmName } — closed profiles only; the name must match exactly
+command profiles.open                  # { id, startUrl? } — visible Chrome, control mode `human`
+command profiles.close / profiles.focus / profiles.check
+```
+
+`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `chrome.missing`, `worker.notRunning`.
+
 ## Jobs and diagnostics
 
 ```text

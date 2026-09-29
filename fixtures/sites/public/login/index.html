@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture Sign in</title>
+  </head>
+  <body>
+    <!-- A site that remembers its user in a cookie, like a real one: signing in once must survive a
+         browser restart in a persistent profile (Phase 5a exit criterion). -->
+    <h1>Sign in</h1>
+    <form id="signin">
+      <label>Username <input name="username" autocomplete="username" required /></label>
+      <label
+        >Password <input name="password" type="password" autocomplete="current-password" required
+      /></label>
+      <button type="submit">Sign in</button>
+    </form>
+    <script>
+      document.getElementById('signin').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const user = new FormData(e.target).get('username');
+        document.cookie = `fixture_session=${encodeURIComponent(user)}; max-age=2592000; path=/; SameSite=Lax`;
+        location.href = 'account.html';
+      });
+    </script>
+  </body>
+</html>
