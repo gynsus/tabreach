@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  type Language,
   RpcError,
   uuidv7,
   type ChangedEntity,
@@ -70,6 +71,8 @@ export class ResearchService {
       http: Http;
       logger: Logger;
       changed: (entities: ChangedEntity[]) => void;
+      /** The interface language: research is written in it (quotes stay as on the page). */
+      language: () => Language;
       sleep?: (ms: number) => Promise<void>;
     },
   ) {
@@ -82,9 +85,18 @@ export class ResearchService {
       payload: z.object({ runId: z.uuid() }),
       sideEffecting: false,
       concurrency: 2,
-      maxAttempts: 3,
+      maxAttempts: MAX_ATTEMPTS,
       maxAgeMs: 6 * 60 * 60_000,
-      handler: ({ runId }, ctx) => this.run(runId, ctx.signal),
+      handler: async ({ runId }, ctx) => {
+        try {
+          await this.run(runId, ctx.signal);
+        } catch (error) {
+          // The job gives up after this: the run must not stay "running" for ever.
+          const final = error instanceof PermanentError || ctx.attempt >= MAX_ATTEMPTS;
+          if (final && !ctx.signal.aborted && this.isOpen(runId)) this.fail(runId, failureKey(error));
+          throw error;
+        }
+      },
     };
     return [type] as unknown as JobType<never>[];
   }
@@ -95,7 +107,7 @@ export class ResearchService {
   ): ResearchRun {
     return transaction(this.d.db, () => {
       const company = this.company(input.companyId);
-      if (!company.website_url && !company.domain_normalized)
+      if (!siteUrl(company))
         throw RpcError.validation({ website: 'research.noWebsite' }, 'research.noWebsite');
       if (!this.d.ai.settings().keySet) throw new RpcError('CONFLICT', 'No AI key', 'ai.no_key');
       const id = uuidv7();
@@ -193,7 +205,8 @@ export class ResearchService {
     this.update(runId, { status: 'running' });
     this.d.changed(['research']);
     const company = this.company(run.company_id);
-    const start = new URL(company.website_url ?? `https://${company.domain_normalized}/`);
+    const start = siteUrl(company);
+    if (!start) return this.fail(runId, 'research.noWebsite');
     const site = start.hostname;
 
     // Collect: the start page, then likely pages it links to on the same site.
@@ -241,6 +254,7 @@ export class ResearchService {
         {
           company: { name: company.name, site },
           criteria: run.criteria,
+          language: this.d.language(),
           pages: pages.map((p, i) => ({
             ref: `E${i + 1}`,
             url: p.url,
@@ -263,7 +277,11 @@ export class ResearchService {
   }
 
   /** Keeps every claim, but only a quote found on its page makes a fact (docs/15 "Grounding verification"). */
-  private storeSynthesis(runId: string, s: Synthesis, pages: { evidenceId: string; text: string }[]): void {
+  private storeSynthesis(
+    runId: string,
+    s: Synthesis,
+    pages: { evidenceId: string; url: string; text: string }[],
+  ): void {
     transaction(this.d.db, () => {
       const ts = this.d.now().toISOString();
       const insert = this.d.db.prepare(
@@ -274,7 +292,7 @@ export class ResearchService {
       let position = 0;
       let verifiedCount = 0;
       for (const f of s.facts) {
-        const page = pages[Number(f.evidenceRef.slice(1)) - 1];
+        const page = pageForRef(f.evidenceRef, pages);
         const verified = page !== undefined && quoteFound(f.quote, page.text);
         const id = uuidv7();
         insert.run(
@@ -350,6 +368,23 @@ export class ResearchService {
     return id;
   }
 
+  /** Runs whose job is gone (it died before failures were recorded on the run) are failed on start. */
+  resync(): void {
+    const orphans = this.d.db
+      .prepare(
+        `SELECT r.id FROM research_runs r WHERE r.status IN ('pending', 'running') AND NOT EXISTS (
+           SELECT 1 FROM jobs j WHERE j.type = ? AND j.status IN ('pending', 'running')
+             AND json_extract(j.payload, '$.runId') = r.id)`,
+      )
+      .all(JOB_RESEARCH) as { id: string }[];
+    for (const { id } of orphans) this.fail(id, 'research.failed');
+  }
+
+  private isOpen(runId: string): boolean {
+    const status = this.row(runId).status;
+    return status === 'pending' || status === 'running';
+  }
+
   private fail(runId: string, error: string): void {
     this.update(runId, { status: 'failed', error, finished_at: this.d.now().toISOString() });
     const run = this.row(runId);
@@ -409,4 +444,38 @@ export class ResearchService {
       pagesSkipped: r.pages_skipped,
     };
   }
+}
+
+const MAX_ATTEMPTS = 3;
+
+/** Where research starts: the website as entered (a scheme added when missing), else the domain. */
+export function siteUrl(company: {
+  website_url: string | null;
+  domain_normalized: string | null;
+}): URL | null {
+  for (const raw of [company.website_url, company.domain_normalized]) {
+    const text = raw?.trim();
+    if (!text) continue;
+    try {
+      const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+      if ((url.protocol === 'https:' || url.protocol === 'http:') && url.hostname.includes('.')) return url;
+    } catch {
+      // not a URL: try the next candidate
+    }
+  }
+  return null;
+}
+
+function failureKey(error: unknown): string {
+  const errorClass =
+    error instanceof RetryableError || error instanceof PermanentError ? error.errorClass : '';
+  return errorClass.startsWith('ai_') ? `ai.${errorClass.slice(3)}` : 'research.failed';
+}
+
+/** The page a fact cites: "E2", also "E2 https://…" or the page's URL, as models write it. */
+export function pageForRef<P extends { url: string }>(ref: string, pages: P[]): P | undefined {
+  const n = /\bE(\d+)\b/.exec(ref)?.[1];
+  if (n !== undefined) return pages[Number(n) - 1];
+  const url = ref.trim();
+  return pages.find((p) => p.url === url || p.url === `${url}/`);
 }

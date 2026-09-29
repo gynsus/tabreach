@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { ctx, Harness } from '../email/harness.js';
 import { extractPage } from './extract.js';
 import { parseRobots } from './robots.js';
+import { pageForRef } from './research-service.js';
 import { normalizeForQuote, quoteFound } from './verify.js';
 
 describe('quote verification', () => {
@@ -13,6 +14,18 @@ describe('quote verification', () => {
     expect(quoteFound('we opened our new Munich office', page)).toBe(false);
     expect(quoteFound('Berlin', page)).toBe(false); // too short to prove anything
     expect(normalizeForQuote('Ｆｕｌｌ‐width')).toBe('full-width');
+  });
+});
+
+describe('fact page refs', () => {
+  it('finds the page from E2, from "E2 <url>" and from the URL alone', () => {
+    const pages = [{ url: 'https://a.test/' }, { url: 'https://a.test/about' }];
+    expect(pageForRef('E2', pages)).toBe(pages[1]);
+    expect(pageForRef('E2 https://a.test/about — About', pages)).toBe(pages[1]);
+    expect(pageForRef('[E1]', pages)).toBe(pages[0]);
+    expect(pageForRef('https://a.test/about', pages)).toBe(pages[1]);
+    expect(pageForRef('E9', pages)).toBeUndefined();
+    expect(pageForRef('the homepage', pages)).toBeUndefined();
   });
 });
 
@@ -161,7 +174,17 @@ describe('research runs on the fixture site', () => {
     expect(request.user).not.toMatch(/Ignore all previous instructions|data@evil\.test/);
     expect(request.user.match(/<untrusted source="E\d/g)).toHaveLength(3);
     expect(request.system).toMatch(/copied character for character/);
+    expect(request.system).toMatch(/in English, as plain/);
     expect(request.model).toBe('claude-sonnet-5');
+  });
+
+  it('writes research in the interface language; quotes stay as on the page', async () => {
+    h.services.settings.set('ui', { language: 'ru' });
+    h.services.research.start({ companyId: company() }, ctx());
+    await h.run();
+    const request = h.anthropic.requests.at(-1)!;
+    expect(request.system).toMatch(/in Russian, as plain/);
+    expect(request.system).toMatch(/Quotes stay exactly as on the page/);
   });
 
   it('stores identical page content once across runs', async () => {
@@ -202,5 +225,33 @@ describe('research runs on the fixture site', () => {
     expect(() => h.services.research.start({ companyId: company() }, ctx())).toThrow(
       expect.objectContaining({ problem: expect.objectContaining({ detail: 'ai.no_key' }) }),
     );
+  });
+
+  it('takes a website entered without https://', async () => {
+    const companyId = h.services.prospects.createCompany({ name: 'Acme', website: 'acme.test' }, ctx()).id;
+    const run = h.services.research.start({ companyId }, ctx());
+    await h.run();
+    expect(fetched[0]).toBe('https://acme.test/robots.txt');
+    expect(h.services.research.get(run.id).pagesFetched).toBeGreaterThan(0);
+  });
+
+  it('a run whose job gives up is failed with the reason, not left running', async () => {
+    const run = h.services.research.start({ companyId: company() }, ctx());
+    const busy = { status: 529, body: { error: { type: 'overloaded_error' } } };
+    h.anthropic.answer(busy, busy, busy);
+    for (let i = 0; i < 3; i++) {
+      await h.run();
+      h.clock.advance(60 * 60_000);
+    }
+    expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'ai.rate_limited' });
+  });
+
+  it('on start, a run left running without a job is failed', async () => {
+    const run = h.services.research.start({ companyId: company() }, ctx());
+    h.db.prepare(`UPDATE research_runs SET status = 'running' WHERE id = ?`).run(run.id);
+    h.db.prepare(`UPDATE jobs SET status = 'dead' WHERE type = 'research.run'`).run();
+    h.dispatcher.stop();
+    h.boot();
+    expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'research.failed' });
   });
 });

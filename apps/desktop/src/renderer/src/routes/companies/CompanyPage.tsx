@@ -55,7 +55,7 @@ export function CompanyPage() {
           </>
         }
       />
-      <div className="grid flex-1 grid-cols-1 content-start items-start gap-8 overflow-y-auto p-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid flex-1 grid-cols-1 content-start items-start gap-8 overflow-y-auto p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
         <div className="grid content-start gap-8">
           <DetailList
             items={[

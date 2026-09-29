@@ -669,6 +669,7 @@ export const en = {
   },
   errors: {
     research: {
+      failed: 'Research stopped because of an unexpected error. Try again.',
       noWebsite: 'Add the company’s website to research it.',
       noPages: 'No page of the website could be read.',
       notFound: 'This research no longer exists.',

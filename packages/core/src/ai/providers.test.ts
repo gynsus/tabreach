@@ -40,8 +40,15 @@ describe('OpenRouter and OpenAI providers', () => {
     expect(req?.body.model).toBe('deepseek/deepseek-v4.1-flash');
     expect(req?.body.messages.map((m) => m.role)).toEqual(['system', 'user']);
     expect(req?.body.response_format).toMatchObject({ type: 'json_schema', json_schema: { strict: true } });
-    // Keywords strict mode may reject are left out; Zod still enforces them.
-    expect(JSON.stringify(req?.body.response_format.json_schema.schema)).not.toMatch(/maxLength|maximum/);
+    // Keywords strict mode may reject are left out, but the model is still told the limits in
+    // words; Zod enforces them.
+    const schema = req?.body.response_format.json_schema.schema as {
+      properties: Record<string, Record<string, unknown>>;
+    };
+    expect(schema.properties.label).not.toHaveProperty('maxLength');
+    expect(schema.properties.label?.description).toBe('(maxLength: 20)');
+    expect(schema.properties.score).not.toHaveProperty('maximum');
+    expect(schema.properties.score?.description).toBe('(minimum: 0, maximum: 1)');
     expect(req?.body.provider).toEqual({ require_parameters: true });
     expect(h.services.ai.usage()).toMatchObject({ calls: 1, costUsd: 0.00042 });
     expect(h.anthropic.requests).toHaveLength(0);

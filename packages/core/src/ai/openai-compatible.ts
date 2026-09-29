@@ -15,14 +15,21 @@ const UNSUPPORTED = new Set([
   'exclusiveMaximum',
 ]);
 
+/**
+ * The schema without keywords strict mode may reject. What they said is kept as words in the
+ * field's description ("maxItems: 20"), so the model still knows the limits.
+ */
 function strictSchema(schema: unknown): unknown {
   if (Array.isArray(schema)) return schema.map(strictSchema);
   if (!schema || typeof schema !== 'object') return schema;
-  return Object.fromEntries(
-    Object.entries(schema as Record<string, unknown>)
-      .filter(([k]) => !UNSUPPORTED.has(k))
-      .map(([k, v]) => [k, strictSchema(v)]),
+  const entries = Object.entries(schema as Record<string, unknown>);
+  const limits = entries.filter(([k]) => UNSUPPORTED.has(k)).map(([k, v]) => `${k}: ${String(v)}`);
+  const kept = Object.fromEntries(
+    entries.filter(([k]) => !UNSUPPORTED.has(k)).map(([k, v]) => [k, strictSchema(v)]),
   );
+  if (limits.length === 0) return kept;
+  const description = typeof kept.description === 'string' ? `${kept.description} ` : '';
+  return { ...kept, description: `${description}(${limits.join(', ')})` };
 }
 
 /** A JSON answer, possibly wrapped in a Markdown code fence by some models. */
@@ -84,7 +91,12 @@ export class OpenAiCompatibleProvider implements AiProvider {
     }
     const json = (await res.json().catch(() => ({}))) as {
       choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
-      usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        cost?: number;
+        completion_tokens_details?: { reasoning_tokens?: number };
+      };
       error?: { code?: number | string; type?: string };
     };
     if (!res.ok) {
@@ -99,6 +111,9 @@ export class OpenAiCompatibleProvider implements AiProvider {
       inputTokens: json.usage?.prompt_tokens ?? 0,
       outputTokens: json.usage?.completion_tokens ?? 0,
       ...(typeof json.usage?.cost === 'number' ? { costUsd: json.usage.cost } : {}),
+      ...(typeof json.usage?.completion_tokens_details?.reasoning_tokens === 'number'
+        ? { reasoningTokens: json.usage.completion_tokens_details.reasoning_tokens }
+        : {}),
     };
     const content = json.choices?.[0]?.message?.content;
     if (json.choices?.[0]?.finish_reason === 'length')

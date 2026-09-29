@@ -16,6 +16,8 @@ export interface Usage {
   outputTokens: number;
   /** Cost as reported by the provider (OpenRouter does), in USD. */
   costUsd?: number;
+  /** Of the output, tokens spent thinking before the answer (reasoning models), when reported. */
+  reasoningTokens?: number;
 }
 
 export interface AiProvider {
