@@ -20,13 +20,13 @@ describe('browser profiles (Phase 5a)', () => {
   const changes: SessionChanged[] = [];
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), 'tabreach-profiles-'));
-    profiles = new ProfileManager({ root, headless: true, logger: silentLogger });
+    profiles = new ProfileManager({ root, headless: true, keychain: false, logger: silentLogger });
     profiles.notify = (c) => changes.push(c);
     changes.length = 0;
   });
   afterEach(async () => {
     await profiles.closeAll();
-    await rm(root, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
   const open = (profileId: string, startUrl: string | null = null) =>
     profiles.open({ profileId, sessionId: uuidv7(), channel: 'chrome', startUrl });
@@ -88,5 +88,21 @@ describe('browser profiles (Phase 5a)', () => {
     expect(() => profiles.dir('../../etc')).toThrow(
       expect.objectContaining({ problem: expect.objectContaining({ detail: 'profile.invalidId' }) }),
     );
+  });
+
+  it('launches Chrome as a normal browser: sandbox on, security features not switched off (ADR 026)', async () => {
+    const sessionId = uuidv7();
+    await profiles.open({ profileId: uuidv7(), sessionId, channel: 'chrome', startUrl: null });
+    const page = profiles.contextOf(sessionId)!.pages()[0]!;
+    await page.goto('chrome://version');
+    const commandLine = await page.locator('#command_line').innerText();
+    for (const flag of [
+      '--no-sandbox',
+      '--disable-background-networking',
+      '--disable-component-update',
+      '--disable-client-side-phishing-detection',
+      '--disable-popup-blocking',
+    ])
+      expect(commandLine, flag).not.toContain(flag);
   });
 });

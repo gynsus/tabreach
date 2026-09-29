@@ -5,6 +5,22 @@ import { join } from 'node:path';
 import { chromium, type BrowserContext } from 'playwright-core';
 import { RpcError, type Logger, type SessionChanged, type WorkerProfileHealth } from '@tabreach/protocol';
 
+/**
+ * Playwright's defaults are made for tests. In a profile the user signs in to real accounts with,
+ * these would weaken Chrome (ADR 026): no sandbox, no Safe Browsing or security component updates,
+ * no phishing detection, no popup blocking, cookies encrypted with a fixed key instead of the Keychain.
+ */
+const TEST_ONLY_DEFAULTS = [
+  '--disable-background-networking',
+  '--disable-client-side-phishing-detection',
+  '--disable-component-update',
+  '--disable-popup-blocking',
+  '--disable-prompt-on-repost',
+  '--disable-hang-monitor',
+  '--disable-default-apps',
+];
+const KEYCHAIN_DEFAULTS = ['--use-mock-keychain', '--password-store=basic'];
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface Session {
@@ -18,6 +34,11 @@ export interface ProfileManagerOptions {
   root: string;
   /** Visible by default: the product never hides the browser (ADR 009). Tests only run headless. */
   headless?: boolean;
+  /**
+   * Profiles encrypt cookies and saved data with the macOS Keychain, like the user's own Chrome
+   * (ADR 026). Tests turn it off: a CI runner cannot answer a Keychain prompt.
+   */
+  keychain?: boolean;
   logger: Logger;
 }
 
@@ -55,6 +76,12 @@ export class ProfileManager {
       context = await chromium.launchPersistentContext(dir, {
         ...(req.channel === 'chrome' ? { channel: 'chrome' } : {}),
         headless: this.options.headless ?? false,
+        // Chrome's sandbox stays on (Playwright turns it off by default).
+        chromiumSandbox: true,
+        ignoreDefaultArgs: [
+          ...TEST_ONLY_DEFAULTS,
+          ...(this.options.keychain === false ? [] : KEYCHAIN_DEFAULTS),
+        ],
         // The window keeps its own size, like a normal browser window.
         viewport: null,
         timeout: 60_000,
@@ -132,7 +159,8 @@ export class ProfileManager {
 
   async delete(profileId: string): Promise<void> {
     if (this.sessionOf(profileId)) throw new RpcError('CONFLICT', 'Profile is open', 'profile.open');
-    await rm(this.dir(profileId), { recursive: true, force: true });
+    // Chrome may still be flushing files for a moment after its window closed.
+    await rm(this.dir(profileId), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 
   /** The running browser of a session, for browser tasks (Phase 5b) and tests. */
