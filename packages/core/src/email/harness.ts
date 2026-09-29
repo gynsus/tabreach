@@ -96,6 +96,7 @@ export class Harness {
     this.dispatcher.pause();
     this.services.engine.resync();
     this.services.inbox.resync();
+    this.services.research.resync();
   }
 
   run = () => this.dispatcher.runDue();

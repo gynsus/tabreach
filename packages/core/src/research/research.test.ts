@@ -203,4 +203,32 @@ describe('research runs on the fixture site', () => {
       expect.objectContaining({ problem: expect.objectContaining({ detail: 'ai.no_key' }) }),
     );
   });
+
+  it('takes a website entered without https://', async () => {
+    const companyId = h.services.prospects.createCompany({ name: 'Acme', website: 'acme.test' }, ctx()).id;
+    const run = h.services.research.start({ companyId }, ctx());
+    await h.run();
+    expect(fetched[0]).toBe('https://acme.test/robots.txt');
+    expect(h.services.research.get(run.id).pagesFetched).toBeGreaterThan(0);
+  });
+
+  it('a run whose job gives up is failed with the reason, not left running', async () => {
+    const run = h.services.research.start({ companyId: company() }, ctx());
+    const busy = { status: 529, body: { error: { type: 'overloaded_error' } } };
+    h.anthropic.answer(busy, busy, busy);
+    for (let i = 0; i < 3; i++) {
+      await h.run();
+      h.clock.advance(60 * 60_000);
+    }
+    expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'ai.rate_limited' });
+  });
+
+  it('on start, a run left running without a job is failed', async () => {
+    const run = h.services.research.start({ companyId: company() }, ctx());
+    h.db.prepare(`UPDATE research_runs SET status = 'running' WHERE id = ?`).run(run.id);
+    h.db.prepare(`UPDATE jobs SET status = 'dead' WHERE type = 'research.run'`).run();
+    h.dispatcher.stop();
+    h.boot();
+    expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'research.failed' });
+  });
 });

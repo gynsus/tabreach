@@ -79,6 +79,7 @@ export class CoreService {
         this.dispatcher.resume();
         this.services.engine.resync();
         this.services.inbox.resync();
+        this.services.research.resync();
         options.logger.info({ event: 'power.resume' }, 'system woke up; jobs resumed');
         return { ok: true as const };
       });
@@ -107,6 +108,7 @@ export class CoreService {
     core.dispatcher.start();
     core.services.engine.resync();
     core.services.inbox.resync();
+    core.services.research.resync();
     return core;
   }
 
