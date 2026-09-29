@@ -8,7 +8,7 @@ import {
 import { ArrowDown, ArrowUp, Mail, Plus, Split, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
-import { Button, Field, Input, Select } from '../../components/ui';
+import { Button, Field, Input, Select, NumberInput } from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { cn } from '../../lib/cn';
 
@@ -101,21 +101,14 @@ export function SequenceEditor(props: {
           </header>
           <Field label={t('campaigns.delayDays')} hint={t('campaigns.delayHint')} className="max-w-xs">
             {(id, describedBy) => (
-              <Input
+              <NumberInput
                 id={id}
-                type="number"
                 min={0}
                 max={365}
-                step={1}
                 aria-describedby={describedBy}
                 disabled={props.disabled}
                 value={Math.round(step.delaySeconds / DAY_SECONDS)}
-                onChange={(e) =>
-                  update(i, {
-                    ...step,
-                    delaySeconds: Math.max(0, Math.min(365, Number(e.target.value) || 0)) * DAY_SECONDS,
-                  })
-                }
+                onCommit={(days) => update(i, { ...step, delaySeconds: days * DAY_SECONDS })}
               />
             )}
           </Field>
@@ -161,7 +154,7 @@ function MessageFields(props: {
   const { step, index } = props;
   const hint = t('campaigns.placeholdersHint', {
     fields: templateFields.map((f) => `{{${f}}}`).join(', '),
-    example: '{{companyName|your team}}',
+    example: `{{companyName|${t('campaigns.placeholderFallback')}}}`,
   });
   return (
     <>

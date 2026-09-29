@@ -1,11 +1,13 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { Timeline, formatDateTime } from '../../components/Timeline';
+import { useToast } from '../../components/toast';
 import { Alert, Badge, Button, DetailList, PageHeader, Tags } from '../../components/ui';
 import { call, errorMessage } from '../../lib/api';
+import { invalidateEntities } from '../../lib/live';
 import { ContactForm } from '../contacts/ContactForm';
 import { CompanyForm } from './CompanyForm';
 import { ResearchSection } from './ResearchSection';
@@ -48,6 +50,7 @@ export function CompanyPage() {
               <ArrowLeft size={14} aria-hidden />
               {t('companies.title')}
             </Link>
+            <DoNotContactCompany companyId={c.id} />
             <Button onClick={() => setEditing(true)}>
               <Pencil size={13} aria-hidden />
               {t('common.edit')}
@@ -105,5 +108,36 @@ export function CompanyPage() {
         <ContactForm open company={{ id: c.id, name: c.name }} onClose={() => setAddingContact(false)} />
       ) : null}
     </>
+  );
+}
+
+/** Adds the whole company to the do-not-contact list (docs/17 contact policy), after a confirm. */
+function DoNotContactCompany({ companyId }: { companyId: string }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const add = useMutation({
+    mutationFn: () => call('suppressions.add', { kind: 'company', value: companyId }),
+    onSuccess: async () => {
+      setConfirming(false);
+      toast(t('companies.suppressed'));
+      await invalidateEntities(qc, ['suppression', 'activity']);
+    },
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
+  return confirming ? (
+    <span className="flex items-center gap-1">
+      <Button variant="danger" onClick={() => add.mutate()} disabled={add.isPending}>
+        {t('companies.confirmSuppress')}
+      </Button>
+      <Button variant="ghost" onClick={() => setConfirming(false)}>
+        {t('common.cancel')}
+      </Button>
+    </span>
+  ) : (
+    <Button variant="ghost" onClick={() => setConfirming(true)}>
+      {t('companies.suppress')}
+    </Button>
   );
 }

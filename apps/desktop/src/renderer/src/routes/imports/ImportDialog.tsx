@@ -160,7 +160,11 @@ function ImportDialog({ onClose }: { onClose: () => void }) {
           </div>
 
           {fileError ? <Alert>{fileError}</Alert> : null}
-          {read.isPending ? <p className="text-[13px] text-soft">{t('import.reading')}</p> : null}
+          {read.isPending ? (
+            <p role="status" className="text-[13px] text-soft">
+              {t('import.reading')}
+            </p>
+          ) : null}
           {read.isError ? <Alert>{errorMessage(t, read.error)}</Alert> : null}
           {commit.isError ? <Alert>{errorMessage(t, commit.error)}</Alert> : null}
 

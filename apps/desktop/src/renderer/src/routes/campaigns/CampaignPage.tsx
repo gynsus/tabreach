@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useParams } from 'react-router';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, Field, Input, PageHeader, Select } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Field,
+  Input,
+  PageHeader,
+  Select,
+  UnsavedChangesPrompt,
+} from '../../components/ui';
 import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
@@ -206,6 +215,7 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
 
           <ApprovalSection config={config} disabled={archived || busy} onChange={edit} />
 
+          <UnsavedChangesPrompt when={dirty && !save.isPending && !launch.isPending} />
           <PeopleSection campaign={campaign} />
 
           <Timeline scope={{ campaignId: campaign.id }} refs={['contact']} />

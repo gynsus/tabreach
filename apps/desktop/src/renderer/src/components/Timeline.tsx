@@ -88,7 +88,7 @@ export function ActivityItem(props: { entry: TimelineEntry; refs: Ref[]; showDat
               onClick={() => setOpen(!open)}
               className="justify-self-start text-left text-soft hover:text-accent"
             >
-              {e.message.subject ? `«${e.message.subject}» ` : ''}
+              {e.message.subject ? `${t('common.quoted', { text: e.message.subject })} ` : ''}
               <span className="text-xs text-accent">
                 {open ? t('activity.hideMessage') : t('activity.showMessage')}
               </span>
@@ -145,7 +145,7 @@ export function Timeline(props: { scope: TimelineScope; refs: Ref[] }) {
         {t('common.history')}
       </h2>
       {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
-      {events.length === 0 ? (
+      {query.isError ? null : events.length === 0 ? (
         <p className="text-[13px] text-faint">
           {query.isPending ? t('common.loading') : t('activity.empty')}
         </p>

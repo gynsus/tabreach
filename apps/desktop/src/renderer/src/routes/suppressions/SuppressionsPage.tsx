@@ -5,7 +5,17 @@ import { useId, useRef, useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, EmptyState, Field, Input, PageHeader, Select } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  Loading,
+  PageHeader,
+  Select,
+} from '../../components/ui';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { usePagedList } from '../../lib/lists';
 import { invalidateEntities } from '../../lib/live';
@@ -28,6 +38,7 @@ export function SuppressionsPage() {
     mutationFn: () => call('suppressions.add', { kind, value }),
     onSuccess: async () => {
       setValue('');
+      toast(t('suppressions.addedToast'));
       await invalidateEntities(qc, ['suppression', 'activity']);
     },
   });
@@ -127,8 +138,9 @@ export function SuppressionsPage() {
           ) : null}
         </div>
 
+        {query.isPending ? <Loading /> : null}
         {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
-        {query.isSuccess && rows.length === 0 ? (
+        {query.isPending ? null : query.isSuccess && rows.length === 0 ? (
           searching ? (
             <EmptyState title={t('suppressions.noResults')} />
           ) : (

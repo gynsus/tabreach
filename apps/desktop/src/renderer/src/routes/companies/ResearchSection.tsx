@@ -36,6 +36,7 @@ export function ResearchSection({ companyId, hasWebsite }: { companyId: string; 
     onSuccess: () => invalidateEntities(qc, ['research', 'activity']),
   });
   const busy = latest?.status === 'pending' || latest?.status === 'running';
+  const loadError = runs.error ?? detail.error;
   return (
     <section
       aria-labelledby="research-heading"
@@ -78,6 +79,7 @@ export function ResearchSection({ companyId, hasWebsite }: { companyId: string; 
       </div>
       {!hasWebsite ? <p className="text-xs text-faint">{t('errors.research.noWebsite')}</p> : null}
       {start.isError ? <Alert>{errorMessage(t, start.error)}</Alert> : null}
+      {loadError ? <Alert>{errorMessage(t, loadError)}</Alert> : null}
       {latest?.status === 'failed' && latest.error ? (
         <Alert>{translateKey(t, `errors.${latest.error}`, t('errors.generic'))}</Alert>
       ) : null}
@@ -113,7 +115,7 @@ function ResearchResult({ run }: { run: ResearchDetail }) {
           {facts.map((f) => (
             <li key={f.id} className="grid gap-0.5 border-l-2 border-accent pl-3">
               <span>{f.claim}</span>
-              <span className="text-xs text-soft">«{f.quote}»</span>
+              <span className="text-xs text-soft">{t('common.quoted', { text: f.quote })}</span>
               <span className="font-mono text-[11px] break-all text-faint">{source(f)?.url}</span>
             </li>
           ))}

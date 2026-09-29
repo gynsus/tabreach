@@ -18,16 +18,15 @@ export function ActivityPage() {
     <>
       <PageHeader title={t('activity.title')} subtitle={t('activity.subtitle')} />
       <div
-        role="tablist"
-        aria-label={t('activity.title')}
+        role="group"
+        aria-label={t('inbox.filter')}
         className="flex flex-wrap gap-1 border-b border-rule px-6"
       >
         {FILTERS.map((f) => (
           <button
             key={f}
             type="button"
-            role="tab"
-            aria-selected={filter === f}
+            aria-pressed={filter === f}
             onClick={() => setFilter(f)}
             className={cn(
               '-mb-px border-b-2 px-3 py-2 text-[13px]',
@@ -40,7 +39,7 @@ export function ActivityPage() {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
         {query.isSuccess && events.length === 0 ? <EmptyState title={t('activity.empty')} /> : null}
         <ol className="grid max-w-3xl gap-3">

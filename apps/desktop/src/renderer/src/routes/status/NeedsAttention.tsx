@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Job, UncertainSend } from '@tabreach/protocol';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
@@ -111,6 +112,7 @@ function UncertainRow({ item }: { item: UncertainSend }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
+  const [confirmNotSent, setConfirmNotSent] = useState(false);
   const resolve = useMutation({
     mutationFn: (outcome: 'completed' | 'not_sent') => call('sideEffects.resolve', { id: item.id, outcome }),
     onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
@@ -143,13 +145,30 @@ function UncertainRow({ item }: { item: UncertainSend }) {
         >
           {t('attention.wasSent')}
         </Button>
-        <Button
-          size="sm"
-          onClick={() => resolve.mutate('not_sent')}
-          disabled={resolve.isPending || item.checking}
-        >
-          {t('attention.wasNotSent')}
-        </Button>
+        {confirmNotSent ? (
+          <>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => resolve.mutate('not_sent')}
+              disabled={resolve.isPending || item.checking}
+            >
+              {t('attention.confirmNotSent')}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirmNotSent(false)}>
+              {t('common.cancel')}
+            </Button>
+          </>
+        ) : (
+          // "Not sent" makes TabReach send it now: a second click confirms (audit 4.5).
+          <Button
+            size="sm"
+            onClick={() => setConfirmNotSent(true)}
+            disabled={resolve.isPending || item.checking}
+          >
+            {t('attention.wasNotSent')}
+          </Button>
+        )}
       </span>
     </li>
   );

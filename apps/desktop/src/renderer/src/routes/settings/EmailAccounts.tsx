@@ -11,7 +11,7 @@ import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, Field, Input, Modal, Select } from '../../components/ui';
+import { Alert, Badge, Button, Field, Input, Modal, Select, NumberInput } from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
@@ -415,37 +415,25 @@ function ConnectAccount(props: { onClose: () => void }) {
         <div className="grid grid-cols-2 gap-3">
           <Field label={t('accounts.dailyLimit')}>
             {(id) => (
-              <Input
+              <NumberInput
                 id={id}
-                type="number"
                 min={1}
                 max={2000}
                 value={limits.dailyLimit}
                 disabled={busy}
-                onChange={(e) =>
-                  setLimits({
-                    ...limits,
-                    dailyLimit: Math.max(1, Math.min(2000, Number(e.target.value) || 1)),
-                  })
-                }
+                onCommit={(dailyLimit) => setLimits({ ...limits, dailyLimit })}
               />
             )}
           </Field>
           <Field label={t('accounts.spacing')}>
             {(id) => (
-              <Input
+              <NumberInput
                 id={id}
-                type="number"
                 min={0}
                 max={86400}
                 value={limits.minSpacingSeconds}
                 disabled={busy}
-                onChange={(e) =>
-                  setLimits({
-                    ...limits,
-                    minSpacingSeconds: Math.max(0, Math.min(86400, Number(e.target.value) || 0)),
-                  })
-                }
+                onCommit={(minSpacingSeconds) => setLimits({ ...limits, minSpacingSeconds })}
               />
             )}
           </Field>
@@ -483,11 +471,12 @@ export function ConnectGmail(props: { onClose: () => void }) {
       wide
       onClose={props.onClose}
       title={t('accounts.gmail.title')}
-      busy={busy}
+      // Closable while it waits for the browser: an abandoned sign-in just times out, and one
+      // finished later still connects the mailbox (audit 4.5).
       footer={
         <>
-          <Button variant="ghost" onClick={props.onClose} disabled={busy}>
-            {t('common.cancel')}
+          <Button variant="ghost" onClick={props.onClose}>
+            {busy ? t('common.close') : t('common.cancel')}
           </Button>
           <Button variant="primary" type="submit" form="connect-gmail" disabled={busy || !clientId.trim()}>
             {busy ? t('accounts.gmail.waiting') : t('accounts.gmail.signIn')}
@@ -541,6 +530,11 @@ export function ConnectGmail(props: { onClose: () => void }) {
           </Field>
         </div>
         {alert ? <Alert>{alert}</Alert> : null}
+        {busy ? (
+          <p role="status" className="text-xs text-soft">
+            {t('accounts.gmail.waitingHint')}
+          </p>
+        ) : null}
       </form>
     </Modal>
   );

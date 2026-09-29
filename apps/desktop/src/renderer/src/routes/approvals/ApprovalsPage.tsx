@@ -5,7 +5,17 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, DetailList, EmptyState, Field, Input, PageHeader } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  DetailList,
+  EmptyState,
+  Field,
+  Input,
+  Loading,
+  PageHeader,
+} from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
@@ -25,9 +35,19 @@ export function ApprovalsPage() {
   const toast = useToast();
   const pending = usePendingApprovals();
   const items = pending.data?.items ?? [];
-  const [index, setIndex] = useState(0);
+  // Selected by id, so a live refresh that reorders the queue never swaps the message on screen;
+  // the position is only the fallback once it has been decided (audit 4.5).
+  const [selected, setSelected] = useState<{ id: string | null; index: number }>({ id: null, index: 0 });
   const [editing, setEditing] = useState(false);
-  const current = items[Math.min(index, Math.max(items.length - 1, 0))];
+  const [confirmReject, setConfirmReject] = useState(false);
+  const current =
+    items.find((a) => a.id === selected.id) ?? items[Math.min(selected.index, Math.max(items.length - 1, 0))];
+  const select = (i: number) => {
+    const next = items[Math.max(0, Math.min(i, items.length - 1))];
+    if (next) setSelected({ id: next.id, index: items.indexOf(next) });
+    setEditing(false);
+    setConfirmReject(false);
+  };
 
   const refresh = () => invalidateEntities(qc, ['approval', 'enrollment', 'campaign', 'activity']);
   const decide = useMutation({
@@ -51,11 +71,12 @@ export function ApprovalsPage() {
 
   // The listener is attached once, on mount, and reads the latest state through a ref: a key pressed
   // right after an approval appears must not fall between two re-attachments.
-  const latest = useRef({ current, decide, editing, count: items.length });
-  latest.current = { current, decide, editing, count: items.length };
+  const position = current ? items.indexOf(current) : 0;
+  const latest = useRef({ current, decide, editing, confirmReject, position, select });
+  latest.current = { current, decide, editing, confirmReject, position, select };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const { current, decide, editing, count } = latest.current;
+      const { current, decide, editing, confirmReject, position, select } = latest.current;
       if (editing || !current || decide.isPending) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const target = e.target as HTMLElement | null;
@@ -63,10 +84,15 @@ export function ApprovalsPage() {
       const key = e.key.toLowerCase();
       if (key === 'a') decide.mutate({ decision: 'approve', approval: current });
       else if (key === 's') decide.mutate({ decision: 'skip', approval: current });
-      else if (key === 'r') decide.mutate({ decision: 'reject', approval: current });
+      // Rejecting stops the sequence: R asks first, a second R confirms, Escape cancels.
+      else if (key === 'r' && confirmReject) {
+        setConfirmReject(false);
+        decide.mutate({ decision: 'reject', approval: current });
+      } else if (key === 'r') setConfirmReject(true);
+      else if (e.key === 'Escape' && confirmReject) setConfirmReject(false);
       else if (key === 'e') setEditing(true);
-      else if (key === 'j' || e.key === 'ArrowDown') setIndex((i) => Math.min(i + 1, count - 1));
-      else if (key === 'k' || e.key === 'ArrowUp') setIndex((i) => Math.max(i - 1, 0));
+      else if (key === 'j' || e.key === 'ArrowDown') select(position + 1);
+      else if (key === 'k' || e.key === 'ArrowUp') select(position - 1);
       else return;
       e.preventDefault();
     };
@@ -77,6 +103,7 @@ export function ApprovalsPage() {
   return (
     <>
       <PageHeader title={t('approvals.title')} subtitle={t('approvals.subtitle')} />
+      {pending.isPending ? <Loading /> : null}
       {pending.isError ? (
         <div className="p-6">
           <Alert>{errorMessage(t, pending.error)}</Alert>
@@ -96,10 +123,7 @@ export function ApprovalsPage() {
                 <button
                   type="button"
                   aria-current={a.id === current.id ? 'true' : undefined}
-                  onClick={() => {
-                    setIndex(i);
-                    setEditing(false);
-                  }}
+                  onClick={() => select(i)}
                   className={cn(
                     'grid w-full gap-0.5 px-4 py-2 text-left text-[13px] hover:bg-sunken',
                     a.id === current.id && 'bg-accent-soft',
@@ -121,7 +145,12 @@ export function ApprovalsPage() {
               editing={editing}
               busy={decide.isPending}
               onEdit={setEditing}
-              onDecide={(decision) => decide.mutate({ decision, approval: current })}
+              confirmReject={confirmReject}
+              onConfirmReject={setConfirmReject}
+              onDecide={(decision) => {
+                setConfirmReject(false);
+                decide.mutate({ decision, approval: current });
+              }}
               onRevised={async () => {
                 setEditing(false);
                 await refresh();
@@ -141,6 +170,8 @@ function ApprovalDetail(props: {
   busy: boolean;
   onEdit: (editing: boolean) => void;
   onDecide: (decision: Decision) => void;
+  confirmReject: boolean;
+  onConfirmReject: (confirming: boolean) => void;
   onRevised: () => Promise<void>;
 }) {
   const { t, i18n } = useTranslation();
@@ -248,14 +279,30 @@ function ApprovalDetail(props: {
             <Button onClick={() => props.onDecide('skip')} disabled={props.busy} aria-keyshortcuts="S">
               {t('approvals.skip')}
             </Button>
-            <Button
-              variant="danger"
-              onClick={() => props.onDecide('reject')}
-              disabled={props.busy}
-              aria-keyshortcuts="R"
-            >
-              {t('approvals.reject')}
-            </Button>
+            {props.confirmReject ? (
+              <span role="group" aria-label={t('approvals.confirmReject')} className="flex gap-2">
+                <Button
+                  variant="danger"
+                  onClick={() => props.onDecide('reject')}
+                  disabled={props.busy}
+                  autoFocus
+                >
+                  {t('approvals.confirmReject')}
+                </Button>
+                <Button variant="ghost" onClick={() => props.onConfirmReject(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </span>
+            ) : (
+              <Button
+                variant="danger"
+                onClick={() => props.onConfirmReject(true)}
+                disabled={props.busy}
+                aria-keyshortcuts="R"
+              >
+                {t('approvals.reject')}
+              </Button>
+            )}
           </div>
           <p className="text-xs text-faint">{t('approvals.skipHint')}</p>
         </>
@@ -307,7 +354,7 @@ function FactsUsed({ approval: a }: { approval: Approval }) {
         {a.facts.map((f) => (
           <li key={f.id} className="grid gap-0.5 border-l-2 border-accent pl-3">
             <span>{f.claim}</span>
-            <span className="text-xs text-soft">«{f.quote}»</span>
+            <span className="text-xs text-soft">{t('common.quoted', { text: f.quote })}</span>
             {f.url ? <span className="font-mono text-[11px] break-all text-faint">{f.url}</span> : null}
           </li>
         ))}

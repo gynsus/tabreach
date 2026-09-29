@@ -1,6 +1,6 @@
 import type { CampaignConfig } from '@tabreach/protocol';
 import { useTranslation } from 'react-i18next';
-import { Field, Input, Select } from '../../components/ui';
+import { Field, NumberInput, Select } from '../../components/ui';
 
 const textarea =
   'min-h-20 w-full rounded-md border border-rule bg-raised px-2.5 py-2 text-[13px] text-ink placeholder:text-faint focus:border-accent focus:outline-none';
@@ -46,16 +46,13 @@ export function ApprovalSection(props: {
         {config.approvalMode === 'approve_campaign' ? (
           <Field label={t('campaigns.sampleSize')} className="w-40">
             {(id) => (
-              <Input
+              <NumberInput
                 id={id}
-                type="number"
                 min={1}
                 max={50}
                 value={config.sampleSize}
                 disabled={disabled}
-                onChange={(e) =>
-                  onChange({ ...config, sampleSize: Math.max(1, Math.min(50, Number(e.target.value) || 1)) })
-                }
+                onCommit={(sampleSize) => onChange({ ...config, sampleSize })}
               />
             )}
           </Field>
@@ -68,20 +65,14 @@ export function ApprovalSection(props: {
       <p className="max-w-2xl text-xs text-soft">{t('campaigns.checksHint')}</p>
       <Field label={t('campaigns.maxLength')} className="w-48">
         {(id) => (
-          <Input
+          <NumberInput
             id={id}
-            type="number"
             min={100}
             max={10_000}
             step={50}
             value={config.maxLength}
             disabled={disabled}
-            onChange={(e) =>
-              onChange({
-                ...config,
-                maxLength: Math.max(100, Math.min(10_000, Number(e.target.value) || 100)),
-              })
-            }
+            onCommit={(maxLength) => onChange({ ...config, maxLength })}
           />
         )}
       </Field>

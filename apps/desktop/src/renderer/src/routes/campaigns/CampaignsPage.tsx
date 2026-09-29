@@ -4,7 +4,17 @@ import { Plus } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
-import { Alert, Badge, Button, EmptyState, Field, Input, Modal, PageHeader } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  Loading,
+  Modal,
+  PageHeader,
+} from '../../components/ui';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -37,6 +47,7 @@ export function CampaignsPage() {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
+        {campaigns.isPending ? <Loading /> : null}
         {campaigns.isError ? <Alert>{errorMessage(t, campaigns.error)}</Alert> : null}
         {campaigns.isSuccess && items.length === 0 ? (
           <EmptyState
@@ -87,9 +98,7 @@ function CampaignRow({ campaign: c }: { campaign: Campaign }) {
         <span className="text-soft">{t('campaigns.counts', c.enrollments)}</span>
         <span>
           {c.pendingApprovals > 0 ? (
-            <Badge tone="accent">
-              {c.pendingApprovals} · {t('campaigns.columns.approvals')}
-            </Badge>
+            <Badge tone="accent">{t('campaigns.toApprove', { count: c.pendingApprovals })}</Badge>
           ) : null}
         </span>
       </Link>
