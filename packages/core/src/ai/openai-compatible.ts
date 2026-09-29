@@ -83,7 +83,7 @@ export class OpenAiCompatibleProvider implements AiProvider {
       throw new AiError('unavailable', `${this.name} unreachable`);
     }
     const json = (await res.json().catch(() => ({}))) as {
-      choices?: { message?: { content?: string | null } }[];
+      choices?: { message?: { content?: string | null }; finish_reason?: string | null }[];
       usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
       error?: { code?: number | string; type?: string };
     };
@@ -101,6 +101,8 @@ export class OpenAiCompatibleProvider implements AiProvider {
       ...(typeof json.usage?.cost === 'number' ? { costUsd: json.usage.cost } : {}),
     };
     const content = json.choices?.[0]?.message?.content;
+    if (json.choices?.[0]?.finish_reason === 'length')
+      throw Object.assign(new AiError('invalid_output', 'Answer cut off at the token limit'), { usage });
     if (!content) throw Object.assign(new AiError('invalid_output', 'No answer'), { usage });
     try {
       return { json: parseJson(content), usage };

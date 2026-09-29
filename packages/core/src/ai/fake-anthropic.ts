@@ -63,7 +63,13 @@ export interface SeenChatRequest {
 
 type ChatAnswer =
   | { status: number; body: unknown }
-  | { content: string; promptTokens?: number; completionTokens?: number; cost?: number };
+  | {
+      content: string;
+      promptTokens?: number;
+      completionTokens?: number;
+      cost?: number;
+      finishReason?: string;
+    };
 
 /** OpenAI Chat Completions as OpenRouter and OpenAI speak it, in memory. */
 export class FakeChatCompletions {
@@ -84,7 +90,7 @@ export class FakeChatCompletions {
     if ('status' in a) return new Response(JSON.stringify(a.body), { status: a.status });
     return new Response(
       JSON.stringify({
-        choices: [{ message: { content: a.content } }],
+        choices: [{ message: { content: a.content }, finish_reason: a.finishReason ?? 'stop' }],
         usage: {
           prompt_tokens: a.promptTokens ?? 500,
           completion_tokens: a.completionTokens ?? 50,

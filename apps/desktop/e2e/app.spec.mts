@@ -284,6 +284,7 @@ test('stores an AI key encrypted without showing it again, and removes it', asyn
   await expect(page.getByLabel('New API key')).toHaveValue('');
   await expect(page.getByTestId('ai-usage')).toContainText('0 calls');
   await page.getByRole('button', { name: 'Remove key' }).click();
+  await page.getByRole('button', { name: 'Remove the key?' }).click();
   await expect(page.getByText('Not set', { exact: true })).toBeVisible();
 });
 
@@ -299,11 +300,24 @@ test('settings are split into tabs, and each AI provider keeps its own key', asy
   await page.getByLabel('New API key').fill('sk-or-v1-e2e-not-a-real-key-000000');
   await page.getByRole('button', { name: 'Save' }).first().click();
   await expect(page.getByText('Stored encrypted', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('ai-key-hint')).toHaveText('…0000');
+  await expect(page.getByText(/Saved\. Check that the key works/)).toBeVisible();
+  // An unsaved budget survives saving the key again; saving a key twice keeps it.
+  await page.getByLabel('Monthly budget, USD').fill('25');
+  await expect(page.getByText('Unsaved changes')).toBeVisible();
+  await page.getByLabel('New API key').fill('sk-or-v1-e2e-not-a-real-key-111111');
+  await page.getByRole('button', { name: 'Replace key' }).click();
+  await expect(page.getByTestId('ai-key-hint')).toHaveText('…1111');
+  await expect(page.getByText('Stored encrypted', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Monthly budget, USD')).toHaveValue('25');
+  await page.getByRole('button', { name: 'Discard changes' }).click();
+  await expect(page.getByLabel('Monthly budget, USD')).toHaveValue('');
   // Anthropic has no key of its own; switching back shows that.
   await page.getByRole('radio', { name: /Anthropic/ }).click();
   await expect(page.getByText('Not set', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: /OpenRouter/ }).click();
   await page.getByRole('button', { name: 'Remove key' }).click();
+  await page.getByRole('button', { name: 'Remove the key?' }).click();
   await expect(page.getByText('Not set', { exact: true })).toBeVisible();
   await page.getByRole('radio', { name: /Anthropic/ }).click();
 });

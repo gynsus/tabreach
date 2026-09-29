@@ -27,7 +27,8 @@ const SETTINGS_KEY = 'ai';
 const LEGACY_KEY_REF = 'ai.key';
 const keyRefName = (provider: AiProviderName) => `ai.key.${provider}`;
 const PROVIDERS: AiProviderName[] = ['anthropic', 'openrouter', 'openai'];
-const keyRefSchema = z.object({ secretId: z.string() });
+/** `hint` is the key's last four characters, so the user can tell which key is stored. */
+const keyRefSchema = z.object({ secretId: z.string(), hint: z.string().optional() });
 const CALL_TIMEOUT_MS = 120_000;
 
 export interface AiCallContext {
@@ -61,6 +62,7 @@ export class AiGateway {
         this.apiKey('openai'),
       ),
     };
+    this.sweepOrphanKeys();
   }
 
   settings(): AiSettings {
@@ -69,7 +71,8 @@ export class AiGateway {
       AiProviderName,
       boolean
     >;
-    return { ...config, keySet: keys[config.provider], keys };
+    const hint = this.keyRef(config.provider)?.hint;
+    return { ...config, keySet: keys[config.provider], keyHint: hint ? `…${hint}` : null, keys };
   }
 
   update(input: AiSettingsInput, ctx: CommandContext): AiSettings {
@@ -84,10 +87,13 @@ export class AiGateway {
   }
 
   async setKey(provider: AiProviderName, apiKey: string, ctx: CommandContext): Promise<void> {
-    const secretId = await this.secrets.put('ai_api_key', apiKey);
-    const previous = this.keyRef(provider);
-    this.settingsRepo.set(keyRefName(provider), { secretId });
-    if (previous) this.dropKey(provider, previous.secretId);
+    const key = apiKey.trim();
+    const secretId = await this.secrets.put('ai_api_key', key);
+    const previous = this.keyRefs(provider);
+    // Point at the new key first; only then forget the old one (never the reference just written).
+    this.settingsRepo.set(keyRefName(provider), { secretId, hint: key.slice(-4) });
+    for (const ref of previous) this.secrets.delete(ref.secretId);
+    if (provider === 'anthropic') this.deleteRefs([LEGACY_KEY_REF]);
     this.audit.record({
       actorType: 'user',
       actionType: 'ai.key_set',
@@ -98,8 +104,10 @@ export class AiGateway {
   }
 
   removeKey(provider: AiProviderName, ctx: CommandContext): void {
-    const ref = this.keyRef(provider);
-    if (ref) this.dropKey(provider, ref.secretId);
+    for (const ref of this.keyRefs(provider)) this.secrets.delete(ref.secretId);
+    this.deleteRefs(
+      provider === 'anthropic' ? [keyRefName(provider), LEGACY_KEY_REF] : [keyRefName(provider)],
+    );
     this.audit.record({
       actorType: 'user',
       actionType: 'ai.key_removed',
@@ -109,11 +117,25 @@ export class AiGateway {
     });
   }
 
-  private dropKey(provider: AiProviderName, secretId: string): void {
-    this.secrets.delete(secretId);
-    this.db
-      .prepare('DELETE FROM settings WHERE key IN (?, ?)')
-      .run(keyRefName(provider), provider === 'anthropic' ? LEGACY_KEY_REF : '');
+  private deleteRefs(names: string[]): void {
+    const del = this.db.prepare('DELETE FROM settings WHERE key = ?');
+    for (const name of names) del.run(name);
+  }
+
+  /** Every stored reference for a provider: its own, and for Anthropic the pre-provider one. */
+  private keyRefs(provider: AiProviderName): { secretId: string }[] {
+    const refs = [this.settingsRepo.get(keyRefName(provider), keyRefSchema)];
+    if (provider === 'anthropic') refs.push(this.settingsRepo.get(LEGACY_KEY_REF, keyRefSchema));
+    return refs.filter((r) => r !== undefined);
+  }
+
+  /** Stored AI keys no setting points at (left by replacing a key before 2026-09-29) are deleted. */
+  private sweepOrphanKeys(): void {
+    const live = new Set(PROVIDERS.flatMap((p) => this.keyRefs(p).map((r) => r.secretId)));
+    const rows = this.db.prepare(`SELECT id FROM secrets WHERE purpose = 'ai_api_key'`).all() as {
+      id: string;
+    }[];
+    for (const { id } of rows) if (!live.has(id)) this.secrets.delete(id);
   }
 
   /** A minimal real call with the classification model: proves the key, the model name and the network. */
@@ -206,7 +228,11 @@ export class AiGateway {
         const kind = error instanceof AiError ? error.kind : 'unavailable';
         const usage = (error as { usage?: Usage }).usage ?? { inputTokens: 0, outputTokens: 0 };
         record(kind === 'invalid_output' ? 'invalid_output' : 'error', usage, started, kind);
-        this.logger.warn({ event: 'ai.call_failed', template: template.key, model, kind }, 'AI call failed');
+        const reason = error instanceof AiError ? error.message : undefined;
+        this.logger.warn(
+          { event: 'ai.call_failed', template: template.key, model, kind, reason },
+          'AI call failed',
+        );
         if (kind === 'invalid_output' && attempt === 1) continue;
         throw error instanceof AiError ? error : new AiError('unavailable');
       }
@@ -282,7 +308,7 @@ export class AiGateway {
     return this.settingsRepo.get(SETTINGS_KEY, aiSettingsInputSchema) ?? DEFAULT_AI_SETTINGS;
   }
 
-  private keyRef(provider: AiProviderName): { secretId: string } | undefined {
+  private keyRef(provider: AiProviderName): z.infer<typeof keyRefSchema> | undefined {
     return (
       this.settingsRepo.get(keyRefName(provider), keyRefSchema) ??
       (provider === 'anthropic' ? this.settingsRepo.get(LEGACY_KEY_REF, keyRefSchema) : undefined)
@@ -313,6 +339,7 @@ const keyCheck: PromptTemplate<Record<string, never>, { ok: boolean }> = {
   useCase: 'classification',
   input: z.object({}).strict() as unknown as z.ZodType<Record<string, never>>,
   output: z.object({ ok: z.boolean() }),
-  maxTokens: 20,
+  // Room for models that reason before answering (e.g. DeepSeek); only used tokens are billed.
+  maxTokens: 1_000,
   build: () => ({ system: 'Answer with ok = true.', user: 'Check.' }),
 };

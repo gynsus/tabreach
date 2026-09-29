@@ -5,13 +5,14 @@ import {
   type AiSettings as Settings,
   type AiUseCase,
 } from '@tabreach/protocol';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, Field, Input } from '../../components/ui';
+import { Alert, Badge, Button, Field, Input, SaveBar } from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { cn } from '../../lib/cn';
+import { useDraft } from '../../lib/draft';
 import { invalidateEntities } from '../../lib/live';
 
 const USE_CASES: AiUseCase[] = ['classification', 'research', 'drafting'];
@@ -31,8 +32,8 @@ export function AiSettings() {
         <p className="text-[13px] text-soft">{t('ai.subtitle')}</p>
       </div>
       <ProviderPicker settings={settings.data} />
-      <ApiKey key={settings.data.provider} provider={settings.data.provider} keySet={settings.data.keySet} />
-      <ModelsAndBudget initial={settings.data} />
+      <ApiKey key={`key-${settings.data.provider}`} settings={settings.data} />
+      <ModelsAndBudget key={`models-${settings.data.provider}`} initial={settings.data} />
       <Usage />
     </section>
   );
@@ -88,39 +89,48 @@ function ProviderPicker({ settings }: { settings: Settings }) {
   );
 }
 
-function ApiKey({ provider, keySet }: { provider: AiProviderName; keySet: boolean }) {
+function ApiKey({ settings }: { settings: Settings }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const toast = useToast();
+  const { provider, keySet, keyHint } = settings;
   const [key, setKey] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const [justSaved, setJustSaved] = useState(false);
   const refresh = () => invalidateEntities(qc, ['settings', 'activity']);
+  const test = useMutation({ mutationFn: () => call('ai.testKey', {}) });
   const save = useMutation({
-    mutationFn: () => call('ai.setKey', { provider, apiKey: key }),
+    mutationFn: () => call('ai.setKey', { provider, apiKey: key.trim() }),
     onSuccess: async () => {
       setKey('');
+      setJustSaved(true);
+      test.reset();
       await refresh();
     },
   });
-  const remove = useMutation({ mutationFn: () => call('ai.removeKey', { provider }), onSuccess: refresh });
-  const test = useMutation({
-    mutationFn: () => call('ai.testKey', {}),
-    onSuccess: (r) =>
-      toast(
-        r.ok
-          ? t('ai.keyWorks')
-          : translateKey(t, `ai.errors.${r.error ?? 'unavailable'}`, t('errors.generic')),
-        r.ok ? 'ok' : 'bad',
-      ),
+  const remove = useMutation({
+    mutationFn: () => call('ai.removeKey', { provider }),
+    onSuccess: async () => {
+      setConfirmRemove(false);
+      setJustSaved(false);
+      test.reset();
+      await refresh();
+    },
   });
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (key.trim()) save.mutate();
   };
+  const result = test.data;
   return (
     <div className="grid gap-2">
-      <div className="flex items-center gap-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <span className="font-medium">{t('ai.key')}</span>
         <Badge tone={keySet ? 'ok' : 'neutral'}>{keySet ? t('ai.keySet') : t('ai.keyMissing')}</Badge>
+        {keyHint ? (
+          <span className="font-mono text-xs text-soft" data-testid="ai-key-hint">
+            {keyHint}
+          </span>
+        ) : null}
       </div>
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2">
         <Field
@@ -142,30 +152,64 @@ function ApiKey({ provider, keySet }: { provider: AiProviderName; keySet: boolea
           )}
         </Field>
         <Button type="submit" variant="primary" disabled={!key.trim() || save.isPending}>
-          {t('common.save')}
+          {save.isPending ? t('common.saving') : keySet ? t('ai.replaceKey') : t('common.save')}
         </Button>
         {keySet ? (
           <>
-            <Button onClick={() => test.mutate()} disabled={test.isPending}>
-              {test.isPending ? t('common.loading') : t('ai.testKey')}
+            <Button
+              variant={justSaved && !result ? 'primary' : 'secondary'}
+              onClick={() => test.mutate()}
+              disabled={test.isPending}
+            >
+              {test.isPending ? t('ai.testing') : t('ai.testKey')}
             </Button>
-            <Button variant="ghost" onClick={() => remove.mutate()} disabled={remove.isPending}>
-              {t('ai.removeKey')}
-            </Button>
+            {confirmRemove ? (
+              <span className="flex items-center gap-1">
+                <Button variant="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>
+                  {t('ai.confirmRemoveKey')}
+                </Button>
+                <Button variant="ghost" onClick={() => setConfirmRemove(false)}>
+                  {t('common.cancel')}
+                </Button>
+              </span>
+            ) : (
+              <Button variant="ghost" onClick={() => setConfirmRemove(true)}>
+                {t('ai.removeKey')}
+              </Button>
+            )}
           </>
         ) : null}
       </form>
+      <div role="status" className="text-[13px]">
+        {result?.ok ? <p className="text-ok">{t('ai.keyWorks')}</p> : null}
+        {result && !result.ok ? (
+          <p className="text-bad">
+            {translateKey(t, `ai.errors.${result.error ?? 'unavailable'}`, t('errors.generic'))}
+          </p>
+        ) : null}
+        {test.isError ? <p className="text-bad">{errorMessage(t, test.error)}</p> : null}
+        {justSaved && !result && !test.isPending ? (
+          <p className="text-soft">{t('ai.savedCheckNow')}</p>
+        ) : null}
+      </div>
       {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
+      {remove.isError ? <Alert>{errorMessage(t, remove.error)}</Alert> : null}
     </div>
   );
 }
+
+type Editable = Pick<Settings, 'provider' | 'models' | 'prices' | 'monthlyBudgetUsd'>;
 
 function ModelsAndBudget({ initial }: { initial: Settings }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const [value, setValue] = useState(initial);
-  useEffect(() => setValue(initial), [initial]);
+  const { value, setValue, dirty, reset } = useDraft<Editable>({
+    provider: initial.provider,
+    models: initial.models,
+    prices: initial.prices,
+    monthlyBudgetUsd: initial.monthlyBudgetUsd,
+  });
   const save = useMutation({
     mutationFn: () =>
       call('ai.settings.update', {
@@ -257,14 +301,7 @@ function ModelsAndBudget({ initial }: { initial: Settings }) {
         )}
       </Field>
       {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
-      <Button
-        variant="primary"
-        className="justify-self-start"
-        onClick={() => save.mutate()}
-        disabled={save.isPending}
-      >
-        {save.isPending ? t('common.saving') : t('common.save')}
-      </Button>
+      <SaveBar dirty={dirty} saving={save.isPending} onSave={() => save.mutate()} onDiscard={reset} />
     </div>
   );
 }

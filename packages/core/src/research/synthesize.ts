@@ -42,7 +42,7 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
   useCase: 'research',
   input,
   output,
-  maxTokens: 2_500,
+  maxTokens: 6_000,
   build: ({ company, criteria, pages, nonce }) => ({
     system: [
       'You research a company for business outreach, using only the pages provided.',

@@ -15,6 +15,8 @@ export const en = {
     settings: 'Settings',
   },
   common: {
+    unsaved: 'Unsaved changes',
+    discard: 'Discard changes',
     save: 'Save',
     saving: 'Saving…',
     cancel: 'Cancel',
@@ -507,6 +509,10 @@ export const en = {
     pricesHintOpenRouter:
       'OpenRouter reports the cost of each call, so prices are optional here. A price you enter overrides it.',
     key: 'API key',
+    replaceKey: 'Replace key',
+    testing: 'Checking…',
+    confirmRemoveKey: 'Remove the key?',
+    savedCheckNow: 'Saved. Check that the key works — it makes one tiny request.',
     keySet: 'Stored encrypted',
     keyMissing: 'Not set',
     newKey: 'New API key',
@@ -540,7 +546,8 @@ export const en = {
       rate_limited: 'The provider is busy or the rate limit was reached. Try again later.',
       unavailable: 'The AI provider could not be reached.',
       rejected: 'The provider refused the request. Check the model names.',
-      invalid_output: 'The model returned an unexpected answer.',
+      invalid_output:
+        'The key is accepted, but the model did not answer in the expected format. Check the model name or try again.',
       budget: 'The monthly AI budget is reached.',
     },
   },

@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PolicySettings as Policy } from '@tabreach/protocol';
-import { useEffect, useId, useState } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Alert, Button, Input } from '../../components/ui';
+import { Alert, Input, SaveBar } from '../../components/ui';
 import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage } from '../../lib/api';
+import { useDraft } from '../../lib/draft';
 import { invalidateEntities } from '../../lib/live';
 
 /** Contact policy (ADR 021 §6): caps across all campaigns, default sending hours, company stop. */
@@ -24,9 +25,8 @@ function PolicyForm({ initial }: { initial: Policy }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const [value, setValue] = useState(initial);
+  const { value, setValue, dirty, reset } = useDraft(initial);
   const stopId = useId();
-  useEffect(() => setValue(initial), [initial]);
   const save = useMutation({
     mutationFn: () => call('policy.settings.update', value),
     onSuccess: async () => {
@@ -34,7 +34,6 @@ function PolicyForm({ initial }: { initial: Policy }) {
       await invalidateEntities(qc, ['settings', 'activity']);
     },
   });
-  const dirty = JSON.stringify(value) !== JSON.stringify(initial);
   const cap = (which: 'contactCap' | 'companyCap') => (
     <div className="flex flex-wrap items-center gap-2 text-[13px]">
       <span className="w-48 text-soft">{t(`settings.policy.${which}`)}</span>
@@ -97,14 +96,13 @@ function PolicyForm({ initial }: { initial: Policy }) {
         <p className="text-xs text-faint">{t('settings.policy.companyStopHint')}</p>
       </div>
       {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
-      <Button
-        variant="primary"
-        className="justify-self-start"
-        onClick={() => save.mutate()}
-        disabled={!dirty || save.isPending || value.window.start >= value.window.end}
-      >
-        {save.isPending ? t('common.saving') : t('common.save')}
-      </Button>
+      <SaveBar
+        dirty={dirty}
+        saving={save.isPending}
+        invalid={value.window.start >= value.window.end}
+        onSave={() => save.mutate()}
+        onDiscard={reset}
+      />
     </section>
   );
 }
