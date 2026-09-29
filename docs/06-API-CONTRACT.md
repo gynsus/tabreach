@@ -75,6 +75,16 @@ query   policy.settings.get                                            # caps, a
 command policy.settings.update
 ```
 
+## AI settings
+
+```text
+query   ai.settings.get                # provider, models per use case, prices, budget, keySet
+command ai.settings.update
+command ai.setKey / ai.removeKey       # the key is stored encrypted and never returned
+command ai.testKey                     # one minimal call with the classification model
+query   ai.usage                       # { month } -> calls, tokens, estimated cost, per use case
+```
+
 ## Research
 
 ```text

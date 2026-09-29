@@ -56,5 +56,9 @@ export const auditActionTypes = [
   'message.reviewed',
   'contact.bounced',
   'contact.reply_hold_released',
+  'ai.settings_updated',
+  'ai.key_set',
+  'ai.key_removed',
+  'message.classified',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

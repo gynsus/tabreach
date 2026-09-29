@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import {
   conversationListRequestSchema,
   conversationSchema,
@@ -305,6 +306,39 @@ export const requests = {
   'conversations.get': { channel: 'app', kind: 'query', request: byId, response: conversationSchema },
   'conversations.markRead': { channel: 'app', kind: 'command', request: byId, response: ok },
   'conversations.review': { channel: 'app', kind: 'command', request: reviewRequestSchema, response: ok },
+  'ai.settings.get': { channel: 'app', kind: 'query', request: z.object({}), response: aiSettingsSchema },
+  'ai.settings.update': {
+    channel: 'app',
+    kind: 'command',
+    request: aiSettingsInputSchema,
+    response: aiSettingsSchema,
+  },
+  /** Stores the provider API key encrypted; it is never returned. */
+  'ai.setKey': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ apiKey: z.string().trim().min(10).max(500) }),
+    response: ok,
+  },
+  'ai.removeKey': { channel: 'app', kind: 'command', request: z.object({}), response: ok },
+  /** One minimal call with the stored key and the classification model. */
+  'ai.testKey': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({}),
+    response: z.object({ ok: z.boolean(), error: z.string().optional() }),
+  },
+  'ai.usage': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({
+      month: z
+        .string()
+        .regex(/^\d{4}-\d{2}$/)
+        .optional(),
+    }),
+    response: aiUsageSchema,
+  },
   'accounts.list': {
     channel: 'app',
     kind: 'query',

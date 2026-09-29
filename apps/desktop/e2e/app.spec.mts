@@ -273,6 +273,20 @@ test('the Gmail wizard explains the setup and checks the client ID before openin
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 });
 
+test('stores an AI key encrypted without showing it again, and removes it', async () => {
+  await go('#/settings');
+  await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible();
+  await expect(page.getByText('Not set')).toBeVisible();
+  // A made-up key: nothing is called with it (no "Test key" here — that would reach the real API).
+  await page.getByLabel('New API key').fill('sk-ant-e2e-not-a-real-key-000000');
+  await page.getByRole('button', { name: 'Save' }).first().click();
+  await expect(page.getByText('Stored encrypted')).toBeVisible();
+  await expect(page.getByLabel('New API key')).toHaveValue('');
+  await expect(page.getByTestId('ai-usage')).toContainText('0 calls');
+  await page.getByRole('button', { name: 'Remove key' }).click();
+  await expect(page.getByText('Not set')).toBeVisible();
+});
+
 test('the inbox opens with its filters and says when there are no replies', async () => {
   await page.getByRole('link', { name: 'Inbox' }).click();
   await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible();

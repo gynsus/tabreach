@@ -10,6 +10,7 @@ import { migrations } from '../db/migrations.js';
 import { fakeClock } from '../db/test-db.js';
 import { Dispatcher } from '../jobs/dispatcher.js';
 import type { SecretCipher } from '../secrets/secrets.js';
+import { FakeAnthropic } from '../ai/fake-anthropic.js';
 import { FakeGoogle } from './fake-google.js';
 import { FakeMail } from './fake-mail.js';
 
@@ -47,6 +48,7 @@ export class Harness {
   readonly clock = fakeClock('2026-09-28T10:00:00.000Z');
   readonly mail = new FakeMail();
   readonly google = new FakeGoogle();
+  readonly anthropic = new FakeAnthropic();
   readonly logs: string[] = [];
   db!: DatabaseSync;
   services!: AppServices;
@@ -65,6 +67,7 @@ export class Harness {
       cipher,
       mailClients: this.mail,
       gmail: this.google.deps,
+      aiHttp: this.anthropic.http,
       logger: capturingLogger(this.logs),
     });
     this.dispatcher = new Dispatcher({
@@ -72,7 +75,11 @@ export class Harness {
       now: this.clock.now,
       logger: capturingLogger(this.logs),
     });
-    for (const type of [...this.services.engine.jobTypes(), ...this.services.inbox.jobTypes()]) {
+    for (const type of [
+      ...this.services.engine.jobTypes(),
+      ...this.services.inbox.jobTypes(),
+      ...this.services.classifier.jobTypes(),
+    ]) {
       this.dispatcher.register(type);
     }
     this.dispatcher.start();

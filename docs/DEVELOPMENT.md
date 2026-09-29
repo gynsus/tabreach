@@ -145,6 +145,11 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
   checks PKCE and bearer tokens. Main's loopback listener is `apps/desktop/src/main/oauth-loopback.ts`.
 - Passwords are stored with `SecretStore` (encrypted by main); account DTOs and logs never contain them.
 
+## AI
+
+- All provider calls go through `AiGateway` (`packages/core/src/ai`). Tests use `FakeAnthropic`, which records
+  requests (key, model, system/user text, schema) and answers what the test queued. CI never calls a real provider.
+
 ## User interface
 
 Screens: Contacts, Companies, Do not contact, Campaigns (editor, schedule, people), Approvals
