@@ -171,6 +171,7 @@ export class AppServices {
       http: options.webHttp ?? ((url, init) => fetch(url, init)),
       logger: logger.child({ component: 'research' }),
       changed: (entities) => this.changed(entities),
+      language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
       ...(options.sleep ? { sleep: options.sleep } : {}),
     });
     this.inbox = new InboxService({

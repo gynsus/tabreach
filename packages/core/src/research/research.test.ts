@@ -174,7 +174,17 @@ describe('research runs on the fixture site', () => {
     expect(request.user).not.toMatch(/Ignore all previous instructions|data@evil\.test/);
     expect(request.user.match(/<untrusted source="E\d/g)).toHaveLength(3);
     expect(request.system).toMatch(/copied character for character/);
+    expect(request.system).toMatch(/in English, as plain/);
     expect(request.model).toBe('claude-sonnet-5');
+  });
+
+  it('writes research in the interface language; quotes stay as on the page', async () => {
+    h.services.settings.set('ui', { language: 'ru' });
+    h.services.research.start({ companyId: company() }, ctx());
+    await h.run();
+    const request = h.anthropic.requests.at(-1)!;
+    expect(request.system).toMatch(/in Russian, as plain/);
+    expect(request.system).toMatch(/Quotes stay exactly as on the page/);
   });
 
   it('stores identical page content once across runs', async () => {

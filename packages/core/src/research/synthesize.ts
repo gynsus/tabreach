@@ -1,10 +1,11 @@
-import { qualificationSchema } from '@tabreach/protocol';
+import { languageSchema, qualificationSchema } from '@tabreach/protocol';
 import { z } from 'zod';
 import { untrusted, UNTRUSTED_RULES, type PromptTemplate } from '../ai/prompts.js';
 
 const input = z.object({
   company: z.object({ name: z.string(), site: z.string() }),
   criteria: z.string().nullable(),
+  language: languageSchema,
   pages: z
     .array(z.object({ ref: z.string(), url: z.string(), title: z.string().nullable(), text: z.string() }))
     .min(1),
@@ -34,16 +35,18 @@ const output = z.object({
 });
 export type Synthesis = z.infer<typeof output>;
 
-/** docs/15 example output, docs/16 "Research result". Version 2: the list and length limits are stated. */
+const LANGUAGE_NAMES: Record<z.infer<typeof languageSchema>, string> = { en: 'English', ru: 'Russian' };
+
+/** docs/15 example output, docs/16 "Research result". Version 2: the list and length limits are stated. Version 3: plain prose in the interface language. */
 export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis> = {
   key: 'research.synthesize',
-  version: 2,
+  version: 3,
   purpose: 'Summarise a company from its own web pages into verified facts, inferences and a qualification.',
   useCase: 'research',
   input,
   output,
   maxTokens: 8_000,
-  build: ({ company, criteria, pages, nonce }) => ({
+  build: ({ company, criteria, language, pages, nonce }) => ({
     system: [
       'You research a company for business outreach, using only the pages provided.',
       'Facts: statements the pages make. Each fact gives the page ref (just E1, E2, …) and a quote copied character for character',
@@ -54,6 +57,9 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
       'pages do not say enough (also when no criteria are given). Missing information: what the pages do not answer.',
       'Limits: at most 20 facts (the most useful for outreach), 10 inferences and 10 missing items; a claim up to',
       '300 characters, a quote up to 400, the summary up to 1500, each reason up to 600. Keep the answer compact.',
+      `Write the summary, claims, inferences, reasons and missing items in ${LANGUAGE_NAMES[language]}, as plain`,
+      'prose for a salesperson: no page refs such as E1 and no code words such as possible_match in the text.',
+      'Quotes stay exactly as on the page, in the page language.',
       UNTRUSTED_RULES,
     ].join(' '),
     user: [

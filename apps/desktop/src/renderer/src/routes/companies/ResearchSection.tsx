@@ -39,7 +39,7 @@ export function ResearchSection({ companyId, hasWebsite }: { companyId: string; 
   return (
     <section
       aria-labelledby="research-heading"
-      className="grid gap-4 rounded-md border border-rule bg-raised p-4"
+      className="grid min-w-0 gap-4 rounded-md border border-rule bg-raised p-4"
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id="research-heading" className="text-[14px] font-semibold">
@@ -52,7 +52,11 @@ export function ResearchSection({ companyId, hasWebsite }: { companyId: string; 
         ) : null}
       </div>
       <div className="flex flex-wrap items-end gap-2">
-        <Field label={t('research.criteria')} hint={t('research.criteriaHint')} className="min-w-80 flex-1">
+        <Field
+          label={t('research.criteria')}
+          hint={t('research.criteriaHint')}
+          className="min-w-0 flex-1 basis-60"
+        >
           {(id, describedBy) => (
             <textarea
               id={id}

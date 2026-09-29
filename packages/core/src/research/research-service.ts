@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import {
+  type Language,
   RpcError,
   uuidv7,
   type ChangedEntity,
@@ -70,6 +71,8 @@ export class ResearchService {
       http: Http;
       logger: Logger;
       changed: (entities: ChangedEntity[]) => void;
+      /** The interface language: research is written in it (quotes stay as on the page). */
+      language: () => Language;
       sleep?: (ms: number) => Promise<void>;
     },
   ) {
@@ -251,6 +254,7 @@ export class ResearchService {
         {
           company: { name: company.name, site },
           criteria: run.criteria,
+          language: this.d.language(),
           pages: pages.map((p, i) => ({
             ref: `E${i + 1}`,
             url: p.url,
