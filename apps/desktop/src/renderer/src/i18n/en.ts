@@ -471,6 +471,7 @@ export const en = {
     emptyFilter: 'Nothing here.',
     select: 'Choose a conversation.',
     you: 'You',
+    via: 'via {{address}}',
     classifications: { reply: 'Reply', out_of_office: 'Out of office', auto: 'Automatic', bounce: 'Bounce' },
     labels: {
       interested: 'Interested',

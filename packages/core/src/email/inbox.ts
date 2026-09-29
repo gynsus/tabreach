@@ -652,9 +652,15 @@ export class InboxService {
   private summary(r: ConversationRow): ConversationSummary {
     const last = this.d.db
       .prepare(
-        `SELECT body, classification FROM messages WHERE conversation_id = ? AND direction = 'inbound' ORDER BY occurred_at DESC LIMIT 1`,
+        `SELECT body, classification, ai_label FROM messages WHERE conversation_id = ? AND direction = 'inbound' ORDER BY occurred_at DESC LIMIT 1`,
       )
-      .get(r.id) as { body: string | null; classification: Classification | null } | undefined;
+      .get(r.id) as
+      | {
+          body: string | null;
+          classification: Classification | null;
+          ai_label: ConversationSummary['lastLabel'];
+        }
+      | undefined;
     const review = this.d.db
       .prepare(`SELECT 1 FROM messages WHERE conversation_id = ? AND review_status = 'pending'`)
       .get(r.id);
@@ -679,12 +685,14 @@ export class InboxService {
     return {
       id: r.id,
       accountAddress: this.d.accounts.addressOf(r.channel_account_id) ?? '',
+      contactAddress: contact?.email ?? null,
       contactId: r.contact_id,
       companyId: r.company_id,
       title,
       lastMessageAt: r.last_message_at,
       lastSnippet: (last?.body ?? '').replace(/\s+/g, ' ').trim().slice(0, 160),
       lastClassification: last?.classification ?? null,
+      lastLabel: last?.ai_label ?? null,
       unread: r.unread === 1,
       needsReview: review !== undefined,
     };

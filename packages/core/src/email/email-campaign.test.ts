@@ -447,6 +447,11 @@ describe('replies', () => {
     const [conversation] = h.services.inbox.list('all', { limit: 10, offset: 0 }).items;
     const reply = h.services.inbox.get(conversation!.id).messages.find((m) => m.direction === 'inbound');
     expect(reply?.label).toBe('opt_out');
+    // The list shows the label too, and whose conversation it is.
+    expect(h.services.inbox.list('all', { limit: 10, offset: 0 }).items[0]).toMatchObject({
+      lastLabel: 'opt_out',
+      contactAddress: 'bob@beta.test',
+    });
     expect(h.services.suppressions.list({ limit: 10, offset: 0 }).items).toMatchObject([
       { kind: 'email', value: 'bob@beta.test', reason: 'opt_out' },
     ]);
