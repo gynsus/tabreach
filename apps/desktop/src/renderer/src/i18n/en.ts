@@ -52,6 +52,7 @@ export const en = {
       'TabReach stopped after repeated errors. Quit and reopen the app. If it happens again, create a diagnostics bundle.',
   },
   fieldNames: {
+    timezone: 'time zone',
     name: 'name',
     website: 'website',
     domain: 'domain',
@@ -68,6 +69,11 @@ export const en = {
     email: 'email',
     linkedinUrl: 'LinkedIn profile',
     websiteUrl: 'website',
+  },
+  prospects: {
+    timezone: 'Time zone',
+    timezoneHint: 'Sending hours follow it. Empty: the company’s, else the campaign’s.',
+    companyTimezoneHint: 'Sending hours follow it for contacts without their own.',
   },
   companies: {
     suppress: 'Do not contact',
@@ -154,6 +160,8 @@ export const en = {
       companyName: 'Company name',
       companyWebsite: 'Company website',
       companyCountry: 'Company country',
+      companyTimezone: 'Company time zone',
+      contactTimezone: 'Time zone',
       companyCity: 'Company city',
       companyTags: 'Company tags',
       companyCustom: 'Company custom field',

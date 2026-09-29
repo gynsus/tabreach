@@ -14,6 +14,7 @@ export interface ContactRow {
   email: string | null;
   email_normalized: string | null;
   email_status: Contact['emailStatus'];
+  timezone: string | null;
   status: 'active' | 'archived';
   custom_fields: string;
   created_at: string;
@@ -28,6 +29,8 @@ export interface ContactFields {
   jobTitle: string | null;
   email: string | null;
   emailNormalized: string | null;
+  /** IANA zone, for sending hours in the recipient's time (FR-CAM-011). */
+  timezone: string | null;
   status: 'active' | 'archived';
   customFields: CustomFields;
 }
@@ -40,6 +43,7 @@ const columns: Record<Exclude<keyof ContactFields, 'customFields'>, keyof Contac
   jobTitle: 'job_title',
   email: 'email',
   emailNormalized: 'email_normalized',
+  timezone: 'timezone',
   status: 'status',
 };
 
@@ -94,8 +98,8 @@ export class ContactRepository {
     this.db
       .prepare(
         `INSERT INTO contacts (id, company_id, first_name, last_name, full_name, job_title, email, email_normalized,
-                               status, custom_fields, created_at, updated_at, name_key, search_key)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '')`,
+                               timezone, status, custom_fields, created_at, updated_at, name_key, search_key)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '')`,
       )
       .run(
         id,
@@ -106,6 +110,7 @@ export class ContactRepository {
         fields.jobTitle,
         fields.email,
         fields.emailNormalized,
+        fields.timezone,
         fields.status,
         JSON.stringify(fields.customFields),
         ts,
@@ -269,6 +274,7 @@ export class ContactRepository {
       email: r.email,
       emailStatus: r.email_status,
       linkedinUrl: linkedin.get(r.id) ?? null,
+      timezone: r.timezone,
       status: r.status,
       tags: tags.get(r.id) ?? [],
       customFields: readCustomFields(r.custom_fields),

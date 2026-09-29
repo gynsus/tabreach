@@ -141,9 +141,19 @@ Exit criteria:
 - automation blocked during human control; overlay can only pause;
 - worker crash after `about_to_commit` yields `unknown` and reconciliation, never a repeat.
 
+Order (decided in the 4.5 audit, 2026-09-29), each a working slice:
+
+- **5a — protocol, profiles, sessions**: browser tables (`browser_profiles`, `browser_sessions`, `browser_tasks`), profile create/open/close/health/delete with purposes and the research profile, sessions with control modes, heartbeat, crash handling and orphan Chrome cleanup, profiles UI. Exit: log into a fixture site manually, restart, session preserved.
+- **5b — adapter packs and page states**: pack format, loader and schema validation, allowlist state matching, deterministic primitives inside tasks, diagnostics, challenge detection and `human_interventions`. Exit: fake CAPTCHA → `WAITING_FOR_HUMAN`.
+- **5c — overlay and human control**: overlay (pause only), take/return control, revalidation, outcome confirmation, the `about_to_commit` checkpoint; app-wide **Pause all** and **Emergency stop** (docs/11, FR-BRA-008) and **keep-awake** (FR-APP-004); tray and native notifications for interventions. Exit: automation blocked during human control; worker crash after `about_to_commit` → `unknown`.
+- **5d — browser research**: `RenderPageForResearch` in the research profile for pages the static fetcher cannot read.
+
 ---
 
 ## Phase 6 — Website form channel
+
+Also: per-contact channel eligibility (`contact_channel_eligibility`, docs/01, docs/05), needed once a contact can be reached by more than email.
+
 
 Deliver:
 
@@ -194,6 +204,7 @@ Deliver:
 - retention settings and job;
 - local recovery backup/restore and portable export (without secrets);
 - first-run setup wizard (Chrome check, AI key, email account, first profile);
+- MVP items found unassigned by the 4.5 audit (docs/01): campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008); campaign status CSV export (FR-PROS-007); manual reply drafting from the inbox; XOAUTH2 for IMAP/SMTP; threaded email follow-ups (`In-Reply-To`/`References`, docs/17 `replyAsThread`); campaign goal, ICP and research instructions, campaign batch and contact-level research, research freshness per campaign (FR-RES-001, docs/16); evidence text with the quote highlighted (FR-RES-005); per-campaign AI budget and cost; the remaining step types (`wait`, `human_task`, `webhook` — the last needs a decision against CLAUDE.md §1's outbound-traffic rule);
 - signing, notarization, DMG;
 - optional: auto-update feed;
 - user docs.

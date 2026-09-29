@@ -102,8 +102,10 @@ packages/protocol       IPC envelope, request and event registries (Zod), RpcPee
                         shared secret redaction, logger contract
 packages/core           SQLite (node:sqlite), migrations, transactions, CoreService, command log (idempotency),
                         prospects (companies, contacts, tags, normalization, CSV import/export),
-                        suppressions, audit log, settings, secrets, job queue and dispatcher,
-                        side-effect ledger, channel contract and test channel
+                        suppressions, audit log and timelines, settings, secrets, job queue and dispatcher,
+                        side-effect ledger, channel contract and test channel, campaigns (engine, approvals,
+                        policy), email (IMAP/SMTP, Gmail API, inbox, replies), AI gateway and providers,
+                        research, AI drafts and draft checks
 packages/browser-worker Chrome detection, Playwright launch check, BrowserWorker
 packages/adapter-packs  Adapter pack schema (ADR 017)
 fixtures/sites          Local pages for browser tests
@@ -147,14 +149,15 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
 
 ## AI
 
-- All provider calls go through `AiGateway` (`packages/core/src/ai`). Tests use `FakeAnthropic`, which records
+- All provider calls go through `AiGateway` (`packages/core/src/ai`). Tests use `FakeAnthropic` and `FakeChatCompletions` (OpenRouter/OpenAI), which record
   requests (key, model, system/user text, schema) and answers what the test queued. CI never calls a real provider.
 
 ## User interface
 
-Screens: Contacts, Companies, Do not contact, Campaigns (editor, schedule, people), Approvals
-(keyboard queue: A / E / S / R, J / K), Activity, Status (with "Needs attention"), Settings (language,
-contact policy).
+Screens: Contacts, Companies (with research), Do not contact, Campaigns (editor with template or AI steps,
+schedule, approval and checks, people, history), Inbox, Approvals (keyboard queue: A / E / S / R, J / K; checks,
+facts and versions), Activity (by category), Status (with "Needs attention"), Settings (tabs: general, email
+accounts, AI, contact policy).
 
 React + Tailwind CSS 4 + TanStack Query/Table/Virtual + React Router (hash) + i18next (ADR 019).
 
@@ -169,4 +172,4 @@ React + Tailwind CSS 4 + TanStack Query/Table/Virtual + React Router (hash) + i1
 
 JSON lines (pino), one file per process: `main.log`, `core.log`, `worker.log`. Secret-looking keys
 (`password`, `token`, `apiKey`, `plaintext`, `ciphertext`, `cookie`, `authorization`, …) are redacted
-at any of the first three nesting levels. Files rotate at 10 MB, five generations kept.
+at any nesting level up to 8; anything deeper is replaced whole (fails closed). Files rotate at 10 MB, five generations kept.

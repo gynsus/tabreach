@@ -3,7 +3,7 @@ import { uuidv7, type Contact } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CompanyPicker, type PickedCompany } from '../../components/CompanyPicker';
-import { Alert, Button, Field, Input, Modal, useDiscardGuard } from '../../components/ui';
+import { Alert, Button, Field, Input, Modal, TimeZoneInput, useDiscardGuard } from '../../components/ui';
 import { call, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -31,6 +31,7 @@ export function ContactForm(props: {
     email: c?.email ?? '',
     jobTitle: c?.jobTitle ?? '',
     linkedinUrl: c?.linkedinUrl ?? '',
+    timezone: c?.timezone ?? '',
     tags: c?.tags.join(', ') ?? '',
   });
   const [company, setCompany] = useState<PickedCompany | null>(
@@ -114,6 +115,17 @@ export function ContactForm(props: {
         {text('email', t('contacts.email'), 'email')}
         {text('jobTitle', t('contacts.jobTitle'))}
         {text('linkedinUrl', t('contacts.linkedin'))}
+        <Field label={t('prospects.timezone')} hint={t('prospects.timezoneHint')} errorKey={errors.timezone}>
+          {(id, describedBy) => (
+            <TimeZoneInput
+              id={id}
+              value={form.timezone}
+              onChange={set('timezone')}
+              aria-invalid={errors.timezone ? true : undefined}
+              aria-describedby={describedBy}
+            />
+          )}
+        </Field>
         <Field label={t('contacts.company')} errorKey={errors.companyId}>
           {(id, describedBy) => (
             <CompanyPicker id={id} value={company} onChange={setCompany} describedBy={describedBy} />

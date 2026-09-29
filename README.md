@@ -102,4 +102,12 @@ Exact commands may evolve, but onboarding must remain near-one-command and fully
 
 ## Status
 
-This repository begins as an MVP implementation specification. The source code should be implemented phase-by-phase according to `docs/22-IMPLEMENTATION-PLAN.md`.
+Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-09-29, Phases 0–4 and the 1.5, 3.5 and 4.5 audits are done:
+
+- prospects, CSV import/export and the do-not-contact list;
+- campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
+- email through IMAP/SMTP or the Gmail API with the user's own OAuth client, without automatic duplicates, with replies and bounces stopping sequences;
+- the AI gateway with the user's key (Anthropic, OpenRouter, OpenAI), research with verified quotes, reply labels and AI drafts with automated checks and `approve_campaign`;
+- timelines of every contact, company and campaign.
+
+Next: Phase 5, the browser worker and human control.

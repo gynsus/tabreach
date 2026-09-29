@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { uuidv7, type Company } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Button, Field, Input, Modal, useDiscardGuard } from '../../components/ui';
+import { Alert, Button, Field, Input, Modal, TimeZoneInput, useDiscardGuard } from '../../components/ui';
 import { call, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -26,6 +26,7 @@ export function CompanyForm(props: {
     website: c?.websiteUrl ?? '',
     country: c?.country ?? '',
     city: c?.city ?? '',
+    timezone: c?.timezone ?? '',
     tags: c?.tags.join(', ') ?? '',
   });
   const [nameMissing, setNameMissing] = useState(false);
@@ -103,6 +104,21 @@ export function CompanyForm(props: {
           {text('country', t('companies.country'))}
           {text('city', t('companies.city'))}
         </div>
+        <Field
+          label={t('prospects.timezone')}
+          hint={t('prospects.companyTimezoneHint')}
+          errorKey={errors.timezone}
+        >
+          {(id, describedBy) => (
+            <TimeZoneInput
+              id={id}
+              value={form.timezone}
+              onChange={set('timezone')}
+              aria-invalid={errors.timezone ? true : undefined}
+              aria-describedby={describedBy}
+            />
+          )}
+        </Field>
         {text('tags', t('companies.tags'), t('common.tagsHint'))}
       </form>
     </Modal>

@@ -13,6 +13,7 @@ const BASE_HEADERS = [
   'company_website',
   'company_country',
   'company_city',
+  'company_timezone',
   'company_tags',
   'first_name',
   'last_name',
@@ -20,6 +21,7 @@ const BASE_HEADERS = [
   'email',
   'job_title',
   'linkedin_url',
+  'timezone',
   'contact_tags',
 ] as const;
 
@@ -74,6 +76,7 @@ export class ExportService {
           c?.website_url ?? '',
           c?.country ?? '',
           c?.city ?? '',
+          c?.timezone ?? '',
           (c ? (cTags.get(c.id) ?? []) : []).join('; '),
         ],
         custom: companyKeys.map((k) => String(custom[k] ?? '')),
@@ -95,6 +98,7 @@ export class ExportService {
         p.email ?? '',
         p.job_title ?? '',
         linkedin.get(p.id) ?? '',
+        p.timezone ?? '',
         (pTags.get(p.id) ?? []).join('; '),
         ...cc.custom,
         ...contactKeys.map((k) => String(custom[k] ?? '')),
@@ -103,7 +107,7 @@ export class ExportService {
     for (const company of companies) {
       if (withContacts.has(company.id)) continue;
       const cc = companyCells(company);
-      rows.push([...cc.base, '', '', '', '', '', '', '', ...cc.custom, ...contactKeys.map(() => '')]);
+      rows.push([...cc.base, '', '', '', '', '', '', '', '', ...cc.custom, ...contactKeys.map(() => '')]);
     }
 
     this.audit.record({

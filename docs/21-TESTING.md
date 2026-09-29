@@ -40,7 +40,7 @@ SQLite uses Node's built-in `node:sqlite`, so the same code runs under plain Nod
 - job queue: enqueue-in-transaction, claim, lease expiry recovery, backoff, dead jobs;
 - side-effect ledger reconciliation paths;
 - email transports against fake servers (Message-ID reconciliation, bounce parsing, reply matching);
-- protocol contract tests: every message type round-trips through Zod schemas on both sides;
+- protocol contract tests: every registered request and event is complete with Zod schemas (`registry.test.ts`), and envelopes are validated on both sides of every channel (`rpc.test.ts`);
 - core ↔ worker with a real worker and fixture sites.
 
 ### Browser fixture tests
@@ -83,6 +83,8 @@ campaign with email step (fake SMTP/IMAP)
 -> reply arrives
 -> sequence stops
 ```
+
+This flow runs as a core integration test with fake mail servers (`email-campaign.test.ts`); the Electron E2E covers the same campaign on the test channel.
 
 Real Gmail/LinkedIn checks are manual, run by the developer with an explicit command, never in CI.
 

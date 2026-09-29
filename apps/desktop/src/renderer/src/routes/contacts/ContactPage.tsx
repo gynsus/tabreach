@@ -57,7 +57,7 @@ export function ContactPage() {
           </>
         }
       />
-      <div className="grid flex-1 grid-cols-1 content-start items-start gap-8 overflow-y-auto p-6 lg:grid-cols-[1fr_320px]">
+      <div className="grid flex-1 grid-cols-1 content-start items-start gap-8 overflow-y-auto p-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)]">
         <DetailList
           items={[
             { label: t('contacts.email'), value: c.email ?? none },
@@ -66,6 +66,7 @@ export function ContactPage() {
               value: c.linkedinUrl ? <span className="font-mono text-xs">{c.linkedinUrl}</span> : none,
             },
             { label: t('contacts.company'), value: c.companyName ?? none },
+            { label: t('prospects.timezone'), value: c.timezone ?? none },
             { label: t('contacts.tags'), value: c.tags.length ? <Tags tags={c.tags} /> : none },
             ...Object.entries(c.customFields).map(([k, v]) => ({ label: k, value: String(v) })),
             { label: t('common.created'), value: formatDateTime(c.createdAt, i18n.language) },

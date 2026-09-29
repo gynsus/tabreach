@@ -103,7 +103,7 @@ command campaigns.pause / campaigns.resume
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
 query   enrollments.list               # { campaignId } — step, next action, what it waits for
 command enrollments.pause / enrollments.resume / enrollments.stop
-command campaigns.clone / campaigns.preview   # Phase 2c
+command campaigns.clone / campaigns.preview   # planned, Phase 8 (not implemented)
 ```
 
 Launch validation fails with `VALIDATION_FAILED` and field keys such as `steps.0.body: template.unknownField`;
@@ -178,7 +178,7 @@ query   conversations.list             # { filter: all | unread | review } -> it
 query   conversations.get              # summary + messages (outbound and inbound)
 command conversations.markRead
 command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
-command conversations.draftReply       # Phase 4 (AI drafting)
+command conversations.draftReply       # planned, Phase 8 (not implemented)
 ```
 
 ## Jobs and diagnostics
@@ -186,10 +186,11 @@ command conversations.draftReply       # Phase 4 (AI drafting)
 ```text
 query   jobs.needsAttention            # dead/failed jobs
 command jobs.retry / jobs.dismiss
-command diagnostics.createBundle       # main shows the save dialog
+command diagnostics.createBundle       # planned, Phase 8 (not implemented)
+query   app.health                     # implemented: versions, core/worker/Chrome health for the status screen
 ```
 
-## App-wide commands (Phase 2+)
+## App-wide commands (planned: pause and emergency stop in Phase 5, the rest in Phase 8; none implemented yet)
 
 ```text
 command app.globalPause / app.emergencyStop
@@ -208,11 +209,12 @@ Implemented:
 
 ```text
 data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings'|
-                            'job'|'campaign'|'enrollment'|'approval')[] }   # after every mutation
+                            'job'|'campaign'|'enrollment'|'approval'|'account'|'conversation'|
+                            'research')[] }   # after every mutation
 ```
 
 Background work announces its changes the same way: a failed or dead job sends `job`, a new approval sends `approval`, a sent message sends `enrollment`.
 
-Planned with their phases: `email.reply_received` (Phase 3), `browser.intervention_required` and `browser.session_changed` (Phase 5).
+Replies need no event of their own: an arriving reply sends `data.changed { conversation }`. Planned: `browser.intervention_required` and `browser.session_changed` (Phase 5).
 
 Core availability is not an event: main reports it through `onCoreState` (ADR 020).
