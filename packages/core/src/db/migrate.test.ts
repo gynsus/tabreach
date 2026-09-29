@@ -50,6 +50,23 @@ describe('migrate', () => {
     db.close();
   });
 
+  it('upgrades the previous version with data (v13 → current): drafts read as written by the template', async () => {
+    const db = openDatabase(join(dir, 'app.db'));
+    await migrate(db, migrations.slice(0, 13), { backupDir: backupDir() });
+    const ts = '2026-09-28T10:00:00.000Z';
+    db.prepare(
+      `INSERT INTO companies (id, name, name_key, search_key, created_at, updated_at) VALUES ('co', 'Acme', 'acme', 'acme', ?, ?)`,
+    ).run(ts, ts);
+    db.prepare(
+      `INSERT INTO message_drafts (id, company_id, channel, body, content_hash, version, created_at)
+       VALUES ('d-1', 'co', 'test', 'Hello', 'h', 1, ?)`,
+    ).run(ts);
+    const report = await migrate(db, migrations, { backupDir: backupDir() });
+    expect(report).toMatchObject({ fromVersion: 13, toVersion: migrations.length });
+    expect(db.prepare('SELECT origin FROM message_drafts').all()).toEqual([{ origin: 'template' }]);
+    db.close();
+  });
+
   it('is a no-op on an up-to-date database', async () => {
     const db = openDatabase(join(dir, 'app.db'));
     await migrate(db, migrations, { backupDir: backupDir() });

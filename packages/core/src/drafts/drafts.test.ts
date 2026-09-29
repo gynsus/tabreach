@@ -257,4 +257,58 @@ describe('AI drafts', () => {
     expect(deliveries()).toEqual([]);
     expect(h.services.approvals.pending()[0]?.checks.find((c) => c.key === 'links')?.passed).toBe(false);
   });
+
+  it('approve_campaign: approving template messages of another step is no sample of AI drafts (audit 4.5)', async () => {
+    h.services.policy.update({ ...h.services.policy.current(), contactCap: { touches: 100, days: 1 } });
+    const template = {
+      type: 'send_message' as const,
+      channel: 'test' as const,
+      executionMode: 'auto' as const,
+      delaySeconds: 0,
+      mode: 'template' as const,
+      subject: 'Hello',
+      body: 'Hello {{firstName}}, a first short note.',
+      instructions: '',
+      signature: '',
+    };
+    const campaign = launch({
+      approvalMode: 'approve_campaign',
+      sampleSize: 1,
+      steps: [template, config().steps[0]!],
+    });
+    h.anthropic.answer(research, draft(grounded));
+    h.services.campaigns.enroll(campaign, [contact('Ann')], ctx());
+    await settle();
+    const [first] = h.services.approvals.pending();
+    expect(first?.origin).toBe('template');
+    h.services.approvals.approve(first!.id, first!.contentHash, ctx());
+    await settle();
+    // Step 2 is AI: nothing of that kind was approved by hand yet, so it waits.
+    const [second] = h.services.approvals.pending();
+    expect(second).toMatchObject({ origin: 'ai', stepPosition: 2 });
+    expect(second?.checks.every((c) => c.passed)).toBe(true);
+  });
+
+  it('a research run stuck without a job does not hold the message: it is written without facts', async () => {
+    const campaign = launch();
+    const ann = contact('Ann');
+    h.db
+      .prepare(
+        `INSERT INTO research_runs (id, company_id, status, correlation_id, started_at) VALUES (?, ?, 'running', ?, ?)`,
+      )
+      .run(
+        '01a0f000-0000-7000-8000-000000000001',
+        companyId,
+        '01a0f000-0000-7000-8000-000000000002',
+        h.clock.now().toISOString(),
+      );
+    h.anthropic.answer(
+      research,
+      draft('Hello Ann,\n\nCould we talk next week about warehouse automation?', []),
+    );
+    h.services.campaigns.enroll(campaign, [ann], ctx());
+    await settle();
+    expect(h.services.research.get('01a0f000-0000-7000-8000-000000000001').status).toBe('failed');
+    expect(h.services.approvals.pending()).toHaveLength(1);
+  });
 });

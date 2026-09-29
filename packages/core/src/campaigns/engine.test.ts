@@ -19,6 +19,7 @@ import { migrate } from '../db/migrate.js';
 import { migrations } from '../db/migrations.js';
 import { fakeClock } from '../db/test-db.js';
 import { Dispatcher } from '../jobs/dispatcher.js';
+import type { CampaignEngineDeps } from './engine.js';
 
 const DAY = 24 * 60 * 60_000;
 const ctx = () => ({ correlationId: uuidv7() });
@@ -62,8 +63,8 @@ class Harness {
   }
 
   /** A fresh core process on the same database: new services, new dispatcher owner. */
-  boot(channelSpacingMs = 0): void {
-    this.channel = new TestChannel(this.db, this.clock.now, channelSpacingMs);
+  boot(channelSpacingMs = 0, dailyLimit: number | null = null): void {
+    this.channel = new TestChannel(this.db, this.clock.now, channelSpacingMs, dailyLimit);
     this.services = new AppServices(this.db, { now: this.clock.now, channels: [this.channel] });
     this.dispatcher = new Dispatcher({
       queue: this.services.jobs,
@@ -482,6 +483,31 @@ describe('audit 3.5: send safety', () => {
     return { campaign, contactId };
   }
 
+  it('an uncertain send cannot be edited into a second message (acceptance: draft.alreadySent)', async () => {
+    await unknownAttempt();
+    const draft = h.db.prepare('SELECT id FROM message_drafts ORDER BY version DESC LIMIT 1').get() as {
+      id: string;
+    };
+    expect(() => h.services.approvals.revise(draft.id, 'Hi', 'A different text', ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'draft.alreadySent' }) }),
+    );
+  });
+
+  it('keeps an account to its daily limit: the rest goes out the next day', async () => {
+    h.boot(0, 1);
+    const campaign = h.launch([message()]);
+    h.services.campaigns.enroll(
+      campaign,
+      [h.contact('Ann', 'ann@acme.test'), h.contact('Bob', 'bob@beta.test')],
+      ctx(),
+    );
+    await h.run();
+    await h.approveAll();
+    expect(h.channel.deliveries()).toHaveLength(1);
+    await h.advance(DAY);
+    expect(h.channel.deliveries()).toHaveLength(2);
+  });
+
   it('refuses a person’s decision while a send job is still checking; lists the attempt meanwhile', async () => {
     await unknownAttempt();
     expect(effect().status).toBe('unknown');
@@ -536,6 +562,26 @@ describe('audit 3.5: send safety', () => {
     await h.advance(60 * 60_000);
     expect(h.channel.deliveries()).toHaveLength(0);
     expect(h.enrollments(campaign)[0]?.status).toBe('completed');
+  });
+
+  it('an address edited while the inbox is read before sending is never written to (audit 4.5)', async () => {
+    const campaign = h.launch([message()]);
+    const ann = h.contact('Ann', 'ann@acme.test');
+    h.services.campaigns.enroll(campaign, [ann], ctx());
+    await h.run();
+    // The pre-send inbox read (email only in the app) is where time passes; the edit lands there.
+    const deps = (h.services.engine as unknown as { d: CampaignEngineDeps }).d;
+    let edited = false;
+    deps.beforeSend = async () => {
+      if (edited) return;
+      edited = true;
+      h.services.prospects.updateContact({ id: ann, email: 'ann@new.test' }, ctx());
+    };
+    await h.approveAll();
+    expect(h.channel.deliveries().map((d) => d.target)).not.toContain('ann@acme.test');
+    // It asks again, for the new address.
+    const [again] = h.pending();
+    expect(again?.target).toBe('ann@new.test');
   });
 
   it('a restart does not revive a send job that died; it waits in Needs attention', async () => {

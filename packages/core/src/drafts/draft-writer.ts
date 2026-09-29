@@ -88,6 +88,8 @@ const RESEARCH_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
 /** A failed research is not retried for every message: without it, drafts use no facts for a day. */
 const FAILED_RESEARCH_BACKOFF_MS = 24 * 60 * 60_000;
 const RESEARCH_POLL_MS = 20_000;
+/** A research still running after this is not waited for: the message is written without it. */
+const RESEARCH_MAX_WAIT_MS = 60 * 60_000;
 
 export interface DraftRequest {
   companyId: string | null;
@@ -173,8 +175,15 @@ export class DraftWriter {
     | { kind: 'wait' }
     | { kind: 'none' } {
     const now = this.d.now().getTime();
+    // A run whose job is gone is failed first, so a draft never waits on it (audit 4.5).
+    this.d.research.resync();
     const [latest] = this.d.research.list(companyId);
-    if (latest && (latest.status === 'pending' || latest.status === 'running')) return { kind: 'wait' };
+    if (
+      latest &&
+      (latest.status === 'pending' || latest.status === 'running') &&
+      now - new Date(latest.startedAt).getTime() < RESEARCH_MAX_WAIT_MS
+    )
+      return { kind: 'wait' };
     const found = this.d.research.latestFacts(companyId);
     const completedAt = found
       ? this.d.research.list(companyId).find((r) => r.id === found.runId)?.finishedAt
@@ -185,7 +194,7 @@ export class DraftWriter {
       latest?.status === 'failed' && now - new Date(latest.startedAt).getTime() < FAILED_RESEARCH_BACKOFF_MS;
     if (!recentFailure) {
       try {
-        this.d.research.start({ companyId }, { correlationId });
+        this.d.research.start({ companyId }, { correlationId }, 'system');
         return { kind: 'wait' };
       } catch (error) {
         // No website, or no AI key: write without facts rather than not at all.

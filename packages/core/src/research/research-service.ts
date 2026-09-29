@@ -19,7 +19,7 @@ import { PermanentError, RetryableError, type JobType } from '../jobs/dispatcher
 import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
 import { extractPage } from './extract.js';
-import { PageFetcher } from './fetcher.js';
+import { PageFetcher, type ResolveHost } from './fetcher.js';
 import { synthesizeResearch, type Synthesis } from './synthesize.js';
 import { quoteFound } from './verify.js';
 
@@ -74,9 +74,13 @@ export class ResearchService {
       /** The interface language: research is written in it (quotes stay as on the page). */
       language: () => Language;
       sleep?: (ms: number) => Promise<void>;
+      /** DNS for the research fetcher; tests resolve fixture hosts to a public address. */
+      resolveHost?: ResolveHost;
     },
   ) {
-    this.fetcher = new PageFetcher(d.http, d.sleep);
+    this.fetcher = new PageFetcher(d.http, d.sleep, d.resolveHost, (url, error) =>
+      d.logger.info({ event: 'research.fetch_failed', url, error: String(error) }, 'page not fetched'),
+    );
   }
 
   jobTypes(): JobType<never>[] {
@@ -104,6 +108,8 @@ export class ResearchService {
   start(
     input: { companyId: string; criteria?: string | null | undefined },
     ctx: CommandContext,
+    /** `system` when a campaign's AI step starts it, not the user. */
+    actor: 'user' | 'system' = 'user',
   ): ResearchRun {
     return transaction(this.d.db, () => {
       const company = this.company(input.companyId);
@@ -128,7 +134,7 @@ export class ResearchService {
         { dedupeKey: `research:${id}`, correlationId: ctx.correlationId },
       );
       this.d.audit.record({
-        actorType: 'user',
+        actorType: actor,
         actionType: 'research.started',
         objectType: 'research',
         objectId: id,

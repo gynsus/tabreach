@@ -197,6 +197,7 @@ async function mailboxClient(s: MailSettings, signal: AbortSignal): Promise<Mail
       await abortable(sig, client.append(folder, raw, ['\\Seen']), drop);
     },
     async close() {
+      // A polite LOGOUT that fails leaves nothing to handle: drop the connection instead.
       await client.logout().catch(() => client.close());
     },
   };

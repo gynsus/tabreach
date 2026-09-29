@@ -37,7 +37,7 @@ describe('draft checks', () => {
     const r = check(
       {
         subject: null,
-        body: 'Здравствуйте, Анна! Видел, что вы открыли офис в Москве. Пакет от 1 490 000 ₽ выглядит интересно.\n\nBest,\nBob',
+        body: 'Здравствуйте, Анна! Видел, что вы открыли офис в Москве. Ваш пакет от 1 490 000 ₽ выглядит интересно.\n\nBest,\nBob',
         sources: ['Анна', 'Открыли новый офис в Москва-Сити', 'Разработка MVP от 1490000 ₽'],
       },
       'grounding',
@@ -96,6 +96,31 @@ describe('draft checks', () => {
       passed: false,
       detail: 'Berlin-офис',
     });
+  });
+});
+
+describe('grounding after audit 4.5', () => {
+  it('names at a sentence start, in brackets or quotes are checked; ordinary openers are not', () => {
+    const body =
+      'Hi Bob. Microsoft told us about Acme (Google) and "Oracle" too: Amazon agreed.\n\nBest,\nBob';
+    expect(check({ subject: null, body, sources: ['Acme', 'Bob'] }, 'grounding')).toMatchObject({
+      passed: false,
+      detail: 'Microsoft, Google, Oracle, Amazon',
+    });
+    const plain =
+      'Здравствуйте, Анна! Посмотрели ваш сайт. Отдельно отмечу работу с ИИ. Подскажите удобное время.\n\nBest,\nBob';
+    expect(check({ subject: null, body: plain, sources: ['Анна', 'ИИ'] }, 'grounding')?.passed).toBe(true);
+  });
+
+  it('links: any TLD, bare hosts included', () => {
+    for (const link of ['bit.ly/x', 'example.xyz', 'offer.shop/deal', 'пример.рф'])
+      expect(
+        check({ body: `Hello Ann, see ${link} for the Berlin office.\n\nBest,\nBob` }, 'links')?.passed,
+      ).toBe(false);
+    expect(
+      check({ body: 'Hello Ann, т.е. 2.5 раза лучше, e.g. the Berlin office.\n\nBest,\nBob' }, 'links')
+        ?.passed,
+    ).toBe(true);
   });
 });
 
