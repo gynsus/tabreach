@@ -444,7 +444,8 @@ export const en = {
     showHistory: 'Show earlier versions',
     hideHistory: 'Hide earlier versions',
     title: 'Approvals',
-    subtitle: 'Every message waits here until you approve it.',
+    subtitle:
+      'Messages wait here until you decide. Campaigns that approve automatically send you only what failed a check.',
     emptyTitle: 'Nothing to approve',
     emptyBody: 'Messages appear here when a campaign step is due.',
     approve: 'Approve',
