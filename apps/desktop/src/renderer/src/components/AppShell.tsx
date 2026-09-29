@@ -79,7 +79,7 @@ export function AppShell() {
     <div className="flex h-full">
       <nav
         aria-label="TabReach"
-        className="flex w-56 shrink-0 flex-col gap-5 border-r border-rule bg-sunken px-3 pt-5 pb-4"
+        className="relative flex w-56 shrink-0 flex-col gap-5 border-r border-rule bg-sunken px-3 pt-5 pb-4"
       >
         <p className="px-2.5 font-mono text-[11px] font-medium tracking-[0.14em] text-accent uppercase">
           TabReach
@@ -109,7 +109,11 @@ export function AppShell() {
           </NavGroup>
         </div>
       </nav>
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+      {/*
+        Positioned, so absolutely placed content (screen-reader-only labels, popovers) is laid out
+        and clipped here: otherwise it stretches the window and the whole app scrolls.
+      */}
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <CoreBanner />
         <Outlet />
       </main>
