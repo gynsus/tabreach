@@ -10,6 +10,7 @@ import {
   type ContactUpdate,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
+import { isValidTimeZone } from '../campaigns/schedule.js';
 import { transaction } from '../db/database.js';
 import { CompanyRepository, type CompanyFields } from './companies.js';
 import { ContactRepository, ProfileUrlConflictError, type ContactFields } from './contacts.js';
@@ -26,6 +27,12 @@ export interface CommandContext {
 }
 
 const empty = (v: string | null | undefined): string | null => (v?.trim() ? v.trim() : null);
+/** An IANA time zone, or null when empty; anything else is a field error. */
+function timeZone(value: string | null | undefined): string | null {
+  const zone = empty(value);
+  if (zone && !isValidTimeZone(zone)) throw RpcError.validation({ timezone: 'timezone.invalid' });
+  return zone;
+}
 const cleanTags = (tags: readonly string[] | undefined) => (tags ? cleanTagList(tags) : undefined);
 
 /** Manual create/edit of companies and contacts (FR-PROS-001, -002, -006). */
@@ -85,6 +92,7 @@ export class ProspectService {
       }
       if (input.country !== undefined) patch.country = empty(input.country);
       if (input.city !== undefined) patch.city = empty(input.city);
+      if (input.timezone !== undefined) patch.timezone = timeZone(input.timezone);
       if (input.status !== undefined) patch.status = input.status;
       if (input.customFields !== undefined) patch.customFields = input.customFields;
       const changed = this.companies.update(input.id, patch);
@@ -138,6 +146,7 @@ export class ProspectService {
       jobTitle: empty(input.jobTitle),
       email,
       emailNormalized,
+      timezone: timeZone(input.timezone),
       status: 'active',
       customFields: input.customFields ?? {},
     };
@@ -181,6 +190,7 @@ export class ProspectService {
       if (input.lastName !== undefined) patch.lastName = empty(input.lastName);
       if (input.fullName !== undefined) patch.fullName = empty(input.fullName);
       if (input.jobTitle !== undefined) patch.jobTitle = empty(input.jobTitle);
+      if (input.timezone !== undefined) patch.timezone = timeZone(input.timezone);
       if (input.status !== undefined) patch.status = input.status;
       if (input.customFields !== undefined) patch.customFields = input.customFields;
       if (input.email !== undefined) {
@@ -229,6 +239,7 @@ export class ProspectService {
       domain: website ? this.requireDomain(website) : null,
       country: empty(input.country),
       city: empty(input.city),
+      timezone: timeZone(input.timezone),
       status: 'active',
       customFields: input.customFields ?? {},
     };

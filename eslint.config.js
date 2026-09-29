@@ -55,7 +55,15 @@ export default tseslint.config(
     files: ['packages/protocol/**/*.ts', 'packages/adapter-packs/**/*.ts'],
     rules: restrict([
       {
-        group: ['@tabreach/core', '@tabreach/browser-worker', 'electron', 'playwright-core', 'node:sqlite'],
+        group: [
+          '@tabreach/core',
+          '@tabreach/browser-worker',
+          'electron',
+          'playwright',
+          'playwright/*',
+          'playwright-core',
+          'node:sqlite',
+        ],
         message: 'shared packages carry contracts only.',
       },
     ]),
@@ -73,13 +81,19 @@ export default tseslint.config(
         ],
         message: 'renderer imports only @tabreach/protocol.',
       },
-      { group: ['electron', 'node:*', 'playwright-core'], message: 'renderer is sandboxed UI code.' },
+      {
+        group: ['electron', 'node:*', 'playwright', 'playwright/*', 'playwright-core'],
+        message: 'renderer is sandboxed UI code.',
+      },
     ]),
   },
   {
     files: ['apps/desktop/src/main/**/*.ts', 'apps/desktop/src/preload/**/*.ts'],
     rules: restrict([
-      { group: ['node:sqlite', 'playwright-core'], message: 'main is a supervisor: no DB, no Playwright.' },
+      {
+        group: ['node:sqlite', 'playwright', 'playwright/*', 'playwright-core'],
+        message: 'main is a supervisor: no DB, no Playwright.',
+      },
     ]),
   },
 );

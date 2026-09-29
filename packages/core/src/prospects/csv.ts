@@ -64,6 +64,7 @@ alias(
 );
 alias('company.country', 'country', 'company country', 'company_country', 'страна');
 alias('company.city', 'city', 'company city', 'company_city', 'город');
+alias('company.timezone', 'company timezone', 'company_timezone', 'часовой пояс компании');
 alias('company.tags', 'company tags', 'company_tags', 'теги компании');
 alias('contact.firstName', 'first name', 'first_name', 'firstname', 'given name', 'имя');
 alias('contact.lastName', 'last name', 'last_name', 'lastname', 'surname', 'family name', 'фамилия');
@@ -90,6 +91,7 @@ alias(
   'профиль linkedin',
   'линкедин',
 );
+alias('contact.timezone', 'timezone', 'time zone', 'time_zone', 'tz', 'часовой пояс');
 alias('contact.tags', 'tags', 'contact tags', 'contact_tags', 'теги', 'метки');
 
 /** Lowercase, letters/digits only (Unicode-aware), so `E-mail`, `e_mail` and `EMAIL` compare equal. */

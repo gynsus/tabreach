@@ -9,6 +9,7 @@ import {
   type OnMatch,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
+import { isValidTimeZone } from '../campaigns/schedule.js';
 import { transaction } from '../db/database.js';
 import type { CompanyFields, CompanyRow } from './companies.js';
 import { ProfileUrlConflictError, type ContactFields, type ContactRow } from './contacts.js';
@@ -29,7 +30,13 @@ const SAMPLE_ROWS = 20;
 
 /** One CSV row after mapping, before matching. */
 interface RowValues {
-  company: { name: string | null; website: string | null; country: string | null; city: string | null };
+  company: {
+    name: string | null;
+    website: string | null;
+    country: string | null;
+    city: string | null;
+    timezone: string | null;
+  };
   companyTags: string[];
   companyCustom: CustomFields;
   contact: {
@@ -39,6 +46,7 @@ interface RowValues {
     email: string | null;
     jobTitle: string | null;
     linkedinUrl: string | null;
+    timezone: string | null;
   };
   contactTags: string[];
   contactCustom: CustomFields;
@@ -46,6 +54,12 @@ interface RowValues {
 
 /** A row that cannot be imported; the message is an error key the UI translates (`errors.*`). */
 class InvalidRow extends Error {}
+
+/** A time zone cell must be an IANA zone (Europe/Berlin); anything else rejects the row. */
+function importTimeZone(value: string): string {
+  if (!isValidTimeZone(value)) throw new InvalidRow('timezone.invalid');
+  return value;
+}
 
 /** Mirrors the limits of `customFieldsSchema`, so stored values always read back. */
 const CUSTOM_FIELD_VALUE_MAX = 2_000;
@@ -137,7 +151,7 @@ export class ImportService {
 
   private mapRow(headers: string[], cells: string[], mapping: readonly ImportField[]): RowValues {
     const v: RowValues = {
-      company: { name: null, website: null, country: null, city: null },
+      company: { name: null, website: null, country: null, city: null, timezone: null },
       companyTags: [],
       companyCustom: {},
       contact: {
@@ -147,6 +161,7 @@ export class ImportService {
         email: null,
         jobTitle: null,
         linkedinUrl: null,
+        timezone: null,
       },
       contactTags: [],
       contactCustom: {},
@@ -175,6 +190,9 @@ export class ImportService {
         case 'company.city':
           v.company.city = value;
           break;
+        case 'company.timezone':
+          v.company.timezone = importTimeZone(value);
+          break;
         case 'company.tags':
           v.companyTags.push(...splitTags(value));
           break;
@@ -198,6 +216,9 @@ export class ImportService {
           break;
         case 'contact.linkedinUrl':
           v.contact.linkedinUrl = value;
+          break;
+        case 'contact.timezone':
+          v.contact.timezone = importTimeZone(value);
           break;
         case 'contact.tags':
           v.contactTags.push(...splitTags(value));
@@ -268,6 +289,7 @@ export class ImportService {
           websiteUrl: v.company.website,
           country: v.company.country,
           city: v.company.city,
+          timezone: v.company.timezone,
           status: 'active',
           customFields: v.companyCustom,
         });
@@ -336,6 +358,7 @@ export class ImportService {
           jobTitle: v.contact.jobTitle,
           email: v.contact.email,
           emailNormalized,
+          timezone: v.contact.timezone,
           status: 'active',
           customFields: v.contactCustom,
         });
@@ -402,6 +425,8 @@ export class ImportService {
     if (country !== undefined) patch.country = country;
     const city = take(row.city, v.company.city);
     if (city !== undefined) patch.city = city;
+    const timezone = take(row.timezone, v.company.timezone);
+    if (timezone !== undefined) patch.timezone = timezone;
     const custom = mergeCustom(row.custom_fields, v.companyCustom, onMatch);
     if (custom) patch.customFields = custom;
     return patch;
@@ -429,6 +454,8 @@ export class ImportService {
     set('lastName', row.last_name, v.contact.lastName);
     set('fullName', row.full_name, v.contact.fullName);
     set('jobTitle', row.job_title, v.contact.jobTitle);
+    const timezone = take(row.timezone, v.contact.timezone);
+    if (timezone !== undefined) patch.timezone = timezone;
     if (emailNormalized && take(row.email_normalized, emailNormalized) !== undefined) {
       const owner = this.prospects.contacts.findByEmail(emailNormalized);
       if (!owner || owner.id === row.id) {

@@ -15,12 +15,12 @@ There is exactly one component that calls AI providers: the **AI gateway** in co
 ## Implementation status (Phase 4a, 2026-09-29)
 
 - `packages/core/src/ai/`: `AiGateway` (the only caller), `AnthropicProvider` (Messages API over `fetch`; structured output as a forced tool call whose `input_schema` is the template's Zod schema converted with `z.toJSONSchema`), versioned `PromptTemplate`s, `untrusted()` fencing with a per-call nonce (closing tags inside the material are defused).
-- Settings (`ai`): provider, model per use case (suggested per provider on switch: `DEFAULT_AI_MODELS`), prices per model entered by the user, monthly budget, prices per model entered by the user, monthly budget. Each provider has its own key (`SecretStore` secret `ai_api_key`, referenced by the `ai.key.<provider>` setting; the pre-provider `ai.key` reference is still read as Anthropic's), so switching provider keeps the other keys. The reference also keeps the key's last four characters (shown as `…a1b2` so the user can tell which key is stored). Saving a key points the reference at the new secret before deleting the old one; on start, `ai_api_key` secrets no reference points at are deleted.
+- Settings (`ai`): provider, model per use case (suggested per provider on switch: `DEFAULT_AI_MODELS`), prices per model entered by the user, monthly budget. Each provider has its own key (`SecretStore` secret `ai_api_key`, referenced by the `ai.key.<provider>` setting; the pre-provider `ai.key` reference is still read as Anthropic's), so switching provider keeps the other keys. The reference also keeps the key's last four characters (shown as `…a1b2` so the user can tell which key is stored). Saving a key points the reference at the new secret before deleting the old one; on start, `ai_api_key` secrets no reference points at are deleted.
 - Providers (2026-09-29): `anthropic` (`AnthropicProvider`), and `openrouter` / `openai` through `OpenAiCompatibleProvider` — `POST {base}/chat/completions`, structured output as `response_format: json_schema` with `strict: true` (JSON Schema keywords strict mode rejects, such as `minLength` or `maximum`, are stripped; Zod still validates the answer). For OpenRouter the request asks for `provider.require_parameters` (only routes that honour the schema) and `usage.include`, and the reported `usage.cost` is recorded when the user entered no price. HTTP 402 maps to the `payment` error. An answer cut off at the token limit (`finish_reason: length`) is `invalid_output` and gets the one repair attempt. Token limits leave room for models that reason before answering (key check 1 000, reply label 1 000, research synthesis 6 000); only used tokens are billed. Suggested OpenRouter model: `deepseek/deepseek-v4.1-flash`. Keywords strict mode drops are restated in the field's description (`(maxItems: 20)`), so the model still sees the limits. Logs record reasoning tokens when the provider reports them, and for a schema mismatch the failing field paths and issue codes (never values).
 - `ai_calls` records template key/version, model, status, tokens, estimated cost and latency — never prompts or content. Cost and the budget work for models with a price set or a provider-reported cost (OpenRouter); token counts are always shown. A call without a cost makes the month's total unknown in the display, but the budget still counts every known cost (audit 4.5).
 - First use case: reply labels (`reply.classify` v1) — interested / not interested / opt-out / out-of-office / other. An opt-out adds the sender to the do-not-contact list. Without a key, replies are not sent anywhere.
 
-- Drafting (Phase 4c): `draft.write` v1 (drafting model). Input: the user's instructions (trusted), recipient fields, the company's verified facts as `F1…` refs (each fenced as untrusted: they come from web pages), and the messages already sent to the recipient. Output: subject, body without signature, and the refs used; only those facts are attached to the draft. Grounding is checked deterministically (ADR 025).
+- Drafting (Phase 4c): `draft.write` v2 (drafting model; v2 forbids fact refs and a sign-off in the text and a pretended earlier conversation). Input: the user's instructions (trusted), recipient fields, the company's verified facts as `F1…` refs (each fenced as untrusted: they come from web pages), and the messages already sent to the recipient. Output: subject, body without signature, and the refs used; only those facts are attached to the draft. Grounding is checked deterministically (ADR 025).
 
 ## Provider abstraction
 
@@ -37,7 +37,7 @@ Model selection is configuration per use case (e.g. a smaller/cheaper model for 
 
 ## Keys: bring your own
 
-The user enters their own provider API key in the setup wizard. It is stored encrypted via `safeStorage` (`18-SECURITY-PRIVACY-COMPLIANCE.md`). The product operates no proxy and resells no tokens.
+The user enters their own provider API key in Settings → AI (a first-run wizard may come with packaging). It is stored encrypted via `safeStorage` (`18-SECURITY-PRIVACY-COMPLIANCE.md`). The product operates no proxy and resells no tokens.
 
 ## Structured output
 
@@ -150,7 +150,7 @@ Any instruction found on a webpage or in an email ("send credentials", "ignore p
 
 Per research run: max pages, max extracted characters, max model calls, max tokens, timeout.
 
-Per campaign: optional monthly AI budget; the gateway refuses calls beyond it and raises a user-visible error.
+Global: an optional monthly AI budget (implemented); the gateway refuses calls beyond it with a user-visible `budget` error. A per-campaign budget is planned for Phase 8.
 
 Per browser task: bounded semantic attempts.
 

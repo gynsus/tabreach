@@ -381,3 +381,20 @@ export function Loading() {
     </p>
   );
 }
+
+const TIME_ZONES = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
+
+/** An IANA time zone with suggestions from the system's list; free text is checked by core. */
+export function TimeZoneInput(props: Omit<InputHTMLAttributes<HTMLInputElement>, 'list' | 'type'>) {
+  const listId = useId();
+  return (
+    <>
+      <Input {...props} list={listId} placeholder={props.placeholder ?? 'Europe/Berlin'} autoComplete="off" />
+      <datalist id={listId}>
+        {TIME_ZONES.map((z) => (
+          <option key={z} value={z} />
+        ))}
+      </datalist>
+    </>
+  );
+}

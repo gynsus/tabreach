@@ -51,8 +51,8 @@ Responsibilities:
 - application lifecycle, single-instance lock;
 - spawning, health-checking and restarting `core` and `browser-worker` (`utilityProcess.fork`) with bounded restart backoff;
 - creating `MessageChannelMain` pairs and handing ports to renderer, core and worker;
-- windows, tray/menu, native notifications, focusing Chrome windows on request;
-- `powerMonitor` (suspend/resume/lock) events forwarded to core; optional `powerSaveBlocker` while campaigns are active;
+- windows, tray/menu, native notifications, focusing Chrome windows on request (tray and notifications planned with Phase 5 human control; not implemented yet);
+- `powerMonitor` (suspend/resume/lock) events forwarded to core; optional `powerSaveBlocker` while campaigns are active (keep-awake: planned, Phase 5);
 - secret broker: the only process that calls `safeStorage.encryptString/decryptString`;
 - OAuth system-browser launch and the ephemeral loopback redirect listener (ADR 016);
 - auto-update (post-MVP optional).
@@ -67,7 +67,7 @@ Must not:
 
 React UI: prospects, campaigns, approvals queue, inbox, browser sessions, interventions, timeline, settings.
 
-Hardening: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, strict CSP, no remote content, navigation and `window.open` denied. The preload exposes a minimal typed bridge: `invoke(command)`, `query(query)`, `subscribe(eventTypes)`.
+Hardening: `contextIsolation: true`, `sandbox: true`, `nodeIntegration: false`, strict CSP, no remote content, navigation and `window.open` denied. The preload exposes a minimal typed bridge: `invoke(type, payload)` for queries and commands, `subscribe(eventTypes)`, `onCoreState`, and `saveTextFile` (see `06-API-CONTRACT.md`).
 
 Must not contain channel logic, browser automation, direct provider calls, or its own copy of domain state beyond view caches.
 
@@ -186,7 +186,7 @@ browser-worker  -> protocol, adapter-packs, Playwright; no database
 adapter-packs   -> (data + schemas only)
 ```
 
-Domain code depends on interfaces, never on implementation packages for Playwright, Gmail, IMAP libraries or AI SDKs. Import boundaries are enforced by lint (e.g. dependency-cruiser or eslint-plugin-boundaries).
+Domain code depends on interfaces, never on implementation packages for Playwright, Gmail, IMAP libraries or AI SDKs. Import boundaries are enforced by ESLint `no-restricted-imports` rules per package (`eslint.config.js`).
 
 ## Process supervision and failure
 

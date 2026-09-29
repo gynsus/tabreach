@@ -78,6 +78,23 @@ describe('import commit', () => {
     });
   });
 
+  it('imports time zones by their usual headers; an unknown zone rejects the row', () => {
+    const report = commit(
+      [
+        'Company,Website,Company timezone,Name,Email,Timezone',
+        'Acme,acme.com,Europe/Berlin,Ann,ann@acme.com,Asia/Tokyo',
+        'Beta,beta.com,,Bob,bob@beta.com,Nowhere/Here',
+      ].join('\n'),
+    );
+    expect(report).toMatchObject({ invalid: 1, errors: [{ row: 3, reason: 'timezone.invalid' }] });
+    expect(s.prospects.listContacts({ search: 'ann', limit: 5, offset: 0 }).items[0]).toMatchObject({
+      timezone: 'Asia/Tokyo',
+    });
+    expect(s.prospects.listCompanies({ search: 'acme', limit: 5, offset: 0 }).items[0]).toMatchObject({
+      timezone: 'Europe/Berlin',
+    });
+  });
+
   it('is deterministic: importing the same file again changes nothing', () => {
     commit(csv);
     const counts = () => [

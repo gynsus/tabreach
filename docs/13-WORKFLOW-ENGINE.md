@@ -27,7 +27,7 @@ Core owns a `jobs` table. There is no external broker.
 - **Wake-up**: the dispatcher sleeps until the earliest `run_at` (bounded, e.g. max 30 s) and is woken immediately on enqueue. No busy polling per enrollment.
 - **Concurrency**: per job type limits (e.g. research ×3, browser tasks ×1 per profile, email sends ×1 per account).
 - **Completion**: result and next-state persisted, job marked `succeeded`/`failed`, follow-up jobs enqueued — one transaction.
-- **Retry** (jobs own retries, ADR 021 §2): a retryable error → `pending` with `run_at` = backoff; a non-retryable error → `failed`; after `max_attempts` or max age → `dead` and a `job.dead` event.
+- **Retry** (jobs own retries, ADR 021 §2): a retryable error → `pending` with `run_at` = backoff; a non-retryable error → `failed`; after `max_attempts` or max age → `dead`, logged as `jobs.dead` and shown in Needs attention.
 - **Leases**: 60 s, renewed every 20 s by long handlers; `lease_owner` is the core instance id.
 - **Crash recovery**: every job type declares `sideEffecting`. On startup, expired leases of non-side-effecting jobs go back to `pending`; side-effecting ones go through reconciliation (see Idempotency) — never blindly re-run.
 - **Transactions**: `transaction()` nests via SAVEPOINTs, so a service can enqueue a job inside the caller's state-change transaction; callbacks must be synchronous.
@@ -54,7 +54,7 @@ BrowserSession       owns: control mode (automation/paused/human) and liveness.
                            Gates task execution; never holds workflow state.
 
 SideEffect (ledger)  owns: whether an external action happened (reserved/executing/
-                           completed/failed/unknown). Consulted before any critical execution.
+                           completed/not_sent/unknown). Consulted before any critical execution.
 HumanIntervention    owns: an open request to the user and its resolution.
 BrowserProfile       owns: profile health/login status.
 ```
@@ -64,7 +64,7 @@ Rules:
 - A `task.result` / `challenge.detected` / `session.changed` event updates its own record, then the WorkflowRun handler decides the transition.
 - `WAITING_FOR_HUMAN` exists only on WorkflowRun. The session merely becomes `paused`.
 - An enrollment advances only when its current WorkflowRun reaches `COMPLETED` (or a terminal state that the step's policy maps to "continue"/"stop").
-- Every transition is persisted with an action event in the same transaction.
+- Every transition that means something to the user (approval requested or decided, draft written, message planned/sent/failed, enrollment stopped or completed) is persisted with an action event in the same transaction; internal state steps within a run are not.
 
 ## Generic workflow statuses
 

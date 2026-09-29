@@ -30,6 +30,8 @@ export const companySchema = z.object({
   websiteUrl: z.string().nullable(),
   country: z.string().nullable(),
   city: z.string().nullable(),
+  /** IANA time zone (Europe/Berlin): sending hours are in the recipient's time. */
+  timezone: z.string().nullable(),
   status: recordStatusSchema,
   tags: z.array(z.string()),
   customFields: customFieldsSchema,
@@ -44,6 +46,7 @@ export const companyInputSchema = z.object({
   website: optionalText(500),
   country: optionalText(100),
   city: optionalText(100),
+  timezone: optionalText(100),
   tags: tagsSchema.optional(),
   customFields: customFieldsSchema.optional(),
 });
@@ -69,6 +72,8 @@ export const contactSchema = z.object({
   email: z.string().nullable(),
   emailStatus: emailStatusSchema,
   linkedinUrl: z.string().nullable(),
+  /** IANA time zone; overrides the company's for sending hours. */
+  timezone: z.string().nullable(),
   status: recordStatusSchema,
   tags: z.array(z.string()),
   customFields: customFieldsSchema,
@@ -85,6 +90,7 @@ export const contactInputSchema = z.object({
   jobTitle: optionalText(200),
   email: optionalText(320),
   linkedinUrl: optionalText(500),
+  timezone: optionalText(100),
   tags: tagsSchema.optional(),
   customFields: customFieldsSchema.optional(),
 });
@@ -109,6 +115,7 @@ export const importFieldSchema = z.enum([
   'company.website',
   'company.country',
   'company.city',
+  'company.timezone',
   'company.tags',
   'contact.firstName',
   'contact.lastName',
@@ -116,6 +123,7 @@ export const importFieldSchema = z.enum([
   'contact.email',
   'contact.jobTitle',
   'contact.linkedinUrl',
+  'contact.timezone',
   'contact.tags',
   'contact.custom',
   'company.custom',

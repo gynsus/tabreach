@@ -32,7 +32,7 @@ search_key not null           -- name + domain
 domain_normalized null        -- punycode, no www; UNIQUE when not null
 website_url null
 country, city null
-timezone null             -- set from Phase 2 (quiet hours); not yet editable in the UI
+timezone null             -- IANA zone; sending hours for its contacts (editable, CSV `company_timezone`, audit 4.5)
 status not null
 custom_fields json not null default '{}'
 created_at, updated_at not null
@@ -52,7 +52,8 @@ email_normalized          -- lowercase, IDN domain in punycode; UNIQUE when not 
 name_key null             -- key of full name or first + last
 search_key not null
 email_status check in ('unknown','valid','bounced','invalid')
-timezone null
+timezone null             -- IANA zone; overrides the company's for sending hours (CSV `timezone`)
+reply_hold_released_at null  -- the user allowed campaigns to write again after a reply (migration 11)
 status not null
 custom_fields json not null default '{}'
 created_at, updated_at
@@ -72,7 +73,7 @@ url_normalized
 
 Unique `(channel, url_normalized)`.
 
-### `contact_channel_eligibility` (Phase 2)
+### `contact_channel_eligibility` (planned, Phase 6 — not created yet)
 
 ```text
 contact_id fk
@@ -158,6 +159,7 @@ name
 status check in ('draft','active','paused','archived')
 draft_config json         -- mutable editing state
 active_version_id null fk -> campaign_versions
+lock_version integer      -- optimistic concurrency for status changes
 created_at, updated_at
 ```
 
@@ -514,14 +516,17 @@ Jobs own execution retries: `failed` = non-retryable error class, `dead` = retri
 id pk
 idempotency_key
 target
+subject null
+body
 content_hash
-outcome check in ('completed','not_sent','unknown')   -- forced outcomes for recovery tests
 created_at
 ```
 
+Forced outcomes for recovery tests (`completed`, `not_sent`, `unknown`, hangs) are queued in memory by the test channel, not stored.
+
 ### `settings`
 
-Key/value (`key text pk`, `value json`) for application settings, including contact-policy settings and adapter kill switches.
+Key/value (`key text pk`, `value json`, `updated_at`) for application settings: UI language, contact policy, AI settings and references to encrypted AI keys (`ai.key.<provider>`), later adapter kill switches.
 
 ## Migration discipline
 

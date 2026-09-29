@@ -56,6 +56,7 @@ export const ru: Catalog = {
       'TabReach остановился после повторных ошибок. Закройте и снова откройте приложение. Если это повторится, создайте диагностический архив.',
   },
   fieldNames: {
+    timezone: 'часовой пояс',
     name: 'название',
     website: 'сайт',
     domain: 'домен',
@@ -72,6 +73,11 @@ export const ru: Catalog = {
     email: 'почта',
     linkedinUrl: 'профиль LinkedIn',
     websiteUrl: 'сайт',
+  },
+  prospects: {
+    timezone: 'Часовой пояс',
+    timezoneHint: 'По нему считаются часы отправки. Пусто — пояс компании, иначе кампании.',
+    companyTimezoneHint: 'По нему считаются часы отправки для контактов без своего пояса.',
   },
   companies: {
     suppress: 'Не связываться',
@@ -165,6 +171,8 @@ export const ru: Catalog = {
       companyName: 'Название компании',
       companyWebsite: 'Сайт компании',
       companyCountry: 'Страна компании',
+      companyTimezone: 'Часовой пояс компании',
+      contactTimezone: 'Часовой пояс',
       companyCity: 'Город компании',
       companyTags: 'Теги компании',
       companyCustom: 'Доп. поле компании',

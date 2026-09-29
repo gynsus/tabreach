@@ -65,6 +65,7 @@ export function CompanyPage() {
               { label: t('companies.website'), value: c.websiteUrl ?? none },
               { label: t('companies.country'), value: c.country ?? none },
               { label: t('companies.city'), value: c.city ?? none },
+              { label: t('prospects.timezone'), value: c.timezone ?? none },
               { label: t('companies.tags'), value: c.tags.length ? <Tags tags={c.tags} /> : none },
               ...Object.entries(c.customFields).map(([k, v]) => ({ label: k, value: String(v) })),
               { label: t('common.created'), value: formatDateTime(c.createdAt, i18n.language) },

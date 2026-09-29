@@ -84,4 +84,4 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 
 ## Recommended first command to Claude Code
 
-> Read `CLAUDE.md`, then the documents in its mandatory reading order and ADRs 020–022. Phases 0, 1 and the 1.5 hardening are done. Implement Phase 2 from `docs/22-IMPLEMENTATION-PLAN.md` following ADR 021 for the data model. (`26-FIRST-CLAUDE-CODE-TASK.md` describes the completed Phase 0 and is kept for history.)
+> Read `CLAUDE.md`, then the documents in its mandatory reading order and the ADRs. Phases 0–4 with the 1.5, 3.5 and 4.5 audits are done. Implement Phase 5 from `docs/22-IMPLEMENTATION-PLAN.md` (browser worker and human control), in the order 5a–5d described there. (`26-FIRST-CLAUDE-CODE-TASK.md` describes the completed Phase 0 and is kept for history.)

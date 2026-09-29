@@ -10,6 +10,7 @@ export interface CompanyRow {
   website_url: string | null;
   country: string | null;
   city: string | null;
+  timezone: string | null;
   status: 'active' | 'archived';
   custom_fields: string;
   created_at: string;
@@ -22,6 +23,8 @@ export interface CompanyFields {
   websiteUrl: string | null;
   country: string | null;
   city: string | null;
+  /** IANA zone, for sending hours in the recipient's time (FR-CAM-011). */
+  timezone: string | null;
   status: 'active' | 'archived';
   customFields: CustomFields;
 }
@@ -32,6 +35,7 @@ const columns: Record<Exclude<keyof CompanyFields, 'customFields'>, keyof Compan
   websiteUrl: 'website_url',
   country: 'country',
   city: 'city',
+  timezone: 'timezone',
   status: 'status',
 };
 
@@ -77,8 +81,8 @@ export class CompanyRepository {
     this.db
       .prepare(
         `INSERT INTO companies (id, name, name_key, search_key, domain_normalized, website_url, country, city,
-                                status, custom_fields, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                timezone, status, custom_fields, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -89,6 +93,7 @@ export class CompanyRepository {
         fields.websiteUrl,
         fields.country,
         fields.city,
+        fields.timezone,
         fields.status,
         JSON.stringify(fields.customFields),
         ts,
@@ -173,6 +178,7 @@ export class CompanyRepository {
       websiteUrl: r.website_url,
       country: r.country,
       city: r.city,
+      timezone: r.timezone,
       status: r.status,
       tags: tags.get(r.id) ?? [],
       customFields: readCustomFields(r.custom_fields),

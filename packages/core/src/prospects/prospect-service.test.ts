@@ -122,6 +122,22 @@ describe('contacts', () => {
     });
   });
 
+  it('keeps a recipient time zone for sending hours; only IANA zones (FR-CAM-011)', () => {
+    const company = s.prospects.createCompany({ name: 'Acme', timezone: 'Europe/Berlin' }, ctx());
+    expect(company.timezone).toBe('Europe/Berlin');
+    const ann = s.prospects.createContact(
+      { fullName: 'Ann', timezone: 'Asia/Tokyo', companyId: company.id },
+      ctx(),
+    );
+    expect(ann.timezone).toBe('Asia/Tokyo');
+    expect(s.prospects.updateContact({ id: ann.id, timezone: '' }, ctx()).timezone).toBeNull();
+    expect(
+      fieldsOf(() => s.prospects.createContact({ fullName: 'Bob', timezone: 'Mars/Olympus' }, ctx())),
+    ).toEqual({
+      timezone: 'timezone.invalid',
+    });
+  });
+
   it('updates, clears and re-keys a contact', () => {
     const c = s.prospects.createContact({ fullName: 'Иван Петров', email: 'ivan@x.ru' }, ctx());
     const updated = s.prospects.updateContact(
