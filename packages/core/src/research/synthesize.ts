@@ -17,8 +17,8 @@ const output = z.object({
     .array(
       z.object({
         claim: z.string().max(300),
-        /** Which page it comes from: E1, E2, … */
-        evidenceRef: z.string().regex(/^E\d+$/),
+        /** Which page it comes from: E1, E2, … (models sometimes add the URL; see pageForRef). */
+        evidenceRef: z.string().max(300),
         /** Copied verbatim from that page's text; it is checked. */
         quote: z.string().max(400),
       }),
@@ -46,7 +46,7 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
   build: ({ company, criteria, pages, nonce }) => ({
     system: [
       'You research a company for business outreach, using only the pages provided.',
-      'Facts: statements the pages make. Each fact gives the page ref and a quote copied character for character',
+      'Facts: statements the pages make. Each fact gives the page ref (just E1, E2, …) and a quote copied character for character',
       'from that page (a sentence or part of one, at least a few words). Never paraphrase inside the quote.',
       'Do not state anything the pages do not say: no guessed employee counts, revenue, customers or dates.',
       'Inferences: your interpretation, each based on facts by their index in the facts list.',

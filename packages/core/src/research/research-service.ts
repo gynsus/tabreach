@@ -273,7 +273,11 @@ export class ResearchService {
   }
 
   /** Keeps every claim, but only a quote found on its page makes a fact (docs/15 "Grounding verification"). */
-  private storeSynthesis(runId: string, s: Synthesis, pages: { evidenceId: string; text: string }[]): void {
+  private storeSynthesis(
+    runId: string,
+    s: Synthesis,
+    pages: { evidenceId: string; url: string; text: string }[],
+  ): void {
     transaction(this.d.db, () => {
       const ts = this.d.now().toISOString();
       const insert = this.d.db.prepare(
@@ -284,7 +288,7 @@ export class ResearchService {
       let position = 0;
       let verifiedCount = 0;
       for (const f of s.facts) {
-        const page = pages[Number(f.evidenceRef.slice(1)) - 1];
+        const page = pageForRef(f.evidenceRef, pages);
         const verified = page !== undefined && quoteFound(f.quote, page.text);
         const id = uuidv7();
         insert.run(
@@ -462,4 +466,12 @@ function failureKey(error: unknown): string {
   const errorClass =
     error instanceof RetryableError || error instanceof PermanentError ? error.errorClass : '';
   return errorClass.startsWith('ai_') ? `ai.${errorClass.slice(3)}` : 'research.failed';
+}
+
+/** The page a fact cites: "E2", also "E2 https://…" or the page's URL, as models write it. */
+export function pageForRef<P extends { url: string }>(ref: string, pages: P[]): P | undefined {
+  const n = /\bE(\d+)\b/.exec(ref)?.[1];
+  if (n !== undefined) return pages[Number(n) - 1];
+  const url = ref.trim();
+  return pages.find((p) => p.url === url || p.url === `${url}/`);
 }
