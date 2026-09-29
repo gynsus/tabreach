@@ -12,6 +12,8 @@ import {
   workerSetModeSchema,
   workerTaskRunSchema,
   workerRenderSchema,
+  workerThreadReadSchema,
+  threadReadResultSchema,
   workerFormPrepareSchema,
   formPrepareResultSchema,
   workerFormSubmitSchema,
@@ -613,6 +615,13 @@ export const requests = {
     kind: 'command',
     request: workerFormSubmitSchema,
     response: taskResultSchema,
+  },
+  /** Reads a conversation (FR-LIN-004): nothing is clicked that sends anything. */
+  'thread.read': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerThreadReadSchema,
+    response: threadReadResultSchema,
   },
   /** RenderPageForResearch (docs/16, ADR 027). */
   'task.render': {

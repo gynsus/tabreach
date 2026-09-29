@@ -129,6 +129,13 @@ export const browserTaskTypeSchema = z.enum(['check_state', 'commit']);
 export const browserExecutionModeSchema = z.enum(['auto', 'assisted']);
 export type BrowserExecutionMode = z.infer<typeof browserExecutionModeSchema>;
 
+/** The person a profile page must show: its profile URL and name. */
+export const targetIdentitySchema = z.object({
+  profileUrl: z.url(),
+  name: z.string().trim().min(1).max(300),
+});
+export type TargetIdentity = z.infer<typeof targetIdentitySchema>;
+
 export const workerTaskRunSchema = z
   .object({
     taskId: id,
@@ -141,6 +148,8 @@ export const workerTaskRunSchema = z
     actionId: z.string().min(1).optional(),
     params: z.record(z.string(), z.string().max(20_000)).default({}),
     mode: browserExecutionModeSchema.default('auto'),
+    /** Who the page must be about (FR-LIN-003): checked before any click, and again at the checkpoint. */
+    identity: targetIdentitySchema.optional(),
   })
   .refine((t) => t.taskType !== 'commit' || t.actionId !== undefined, {
     message: 'A commit task names its action',
@@ -183,6 +192,31 @@ export const taskResultSchema = z.object({
   committed: z.boolean().default(false),
 });
 export type TaskResult = z.infer<typeof taskResultSchema>;
+
+/**
+ * Reads a conversation with a pack reader (FR-LIN-004): whether the person answered after our last
+ * message. Only directions are read, never the text of messages.
+ */
+export const workerThreadReadSchema = z.object({
+  taskId: id,
+  sessionId: id,
+  packId: z.string().min(1),
+  url: z.url(),
+  readerId: z.string().min(1),
+  identity: targetIdentitySchema,
+});
+export const threadReadResultSchema = z.object({
+  status: z.enum(['ok', 'unsupported_state', 'needs_human', 'failed']),
+  /** Oldest first. */
+  messages: z.array(z.object({ direction: z.enum(['in', 'out']) })).max(500),
+  /** An inbound message after our last one (or they wrote first). */
+  replied: z.boolean(),
+  stateId: z.string().nullable(),
+  packVersion: z.string(),
+  errorKey: z.string().nullable(),
+  diagnostics: taskDiagnosticsSchema.nullable(),
+});
+export type ThreadReadResult = z.infer<typeof threadReadResultSchema>;
 
 // Research rendering (docs/16, Phase 5d) -------------------------------------------------------
 

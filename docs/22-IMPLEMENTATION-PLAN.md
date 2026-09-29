@@ -194,6 +194,12 @@ Deliver:
 - kill switch and risk notice;
 - `unsupported_state` rate per pack version visible.
 
+Order, each a working slice:
+
+- **7a — worker and pack (done 2026-09-29)**: LinkedIn pack 0.2.0 (profile, invitation, message and conversation states in English and Russian; connect, connect with a note, message; the thread reader; identity rule; default throttles), `commit` steps and identity checks, `thread.read`, LinkedIn-like fixtures.
+- **7b — the campaign channel**: LinkedIn account on a channel-identity profile, kill switch (fails closed) and risk notice, `linkedin` connect/message steps (assisted by default, auto only by opt-in per action class), the mandatory conversation check before follow-ups, per-account throttles, pack version on every action.
+- **7c — visibility and polish**: `unsupported_state` rate per pack version, UI, E2E, docs.
+
 Exit criteria:
 
 - adapter can be disabled globally (fails closed);
