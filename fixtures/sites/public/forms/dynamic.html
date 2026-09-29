@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Contact (dynamic)</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <!-- The form is drawn by a script a moment after load, with placeholders instead of labels. -->
+    <main>
+      <h1>Get in touch</h1>
+      <div id="app"></div>
+    </main>
+    <script>
+      setTimeout(() => {
+        document.getElementById('app').innerHTML =
+          '<form onsubmit="fixtureSubmit(this, event)">' +
+          '<input name="fullname" placeholder="Full name" aria-label="Full name" required>' +
+          '<input name="mail" type="email" placeholder="Work email" aria-label="Work email" required>' +
+          '<input name="phone" type="tel" placeholder="Phone" aria-label="Phone">' +
+          '<textarea name="body" placeholder="How can we help?" aria-label="How can we help?" required></textarea>' +
+          '<button>Submit</button></form>';
+      }, 400);
+    </script>
+  </body>
+</html>

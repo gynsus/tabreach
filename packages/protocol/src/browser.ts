@@ -212,6 +212,95 @@ export const renderResultSchema = z.object({
 });
 export type RenderResult = z.infer<typeof renderResultSchema>;
 
+// Website forms (docs/14 "Website form adapter", Phase 6) ------------------------------------------
+
+/** What a form field means (docs/14 "Standard semantic fields"); the same list as the web-form pack. */
+export const formFieldMeaningSchema = z.enum([
+  'name',
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'company',
+  'website',
+  'subject',
+  'message',
+  'consent',
+]);
+export type FormFieldMeaning = z.infer<typeof formFieldMeaningSchema>;
+
+const formValue = z.string().max(20_000).optional();
+/** What TabReach may write into a form: the sender's details and the message. Never a consent. */
+export const formValuesSchema = z.object({
+  name: formValue,
+  firstName: formValue,
+  lastName: formValue,
+  email: formValue,
+  phone: formValue,
+  company: formValue,
+  website: formValue,
+  subject: formValue,
+  message: formValue,
+});
+export type FormValues = z.infer<typeof formValuesSchema>;
+
+export const formFieldSchema = z.object({
+  /** Position among the form's elements: how the same field is found again. */
+  ref: z.number().int().min(0),
+  kind: z.enum(['text', 'email', 'tel', 'url', 'textarea', 'select', 'checkbox', 'radio', 'other']),
+  /** What the page calls it (label, aria-label or placeholder). */
+  label: z.string().max(300),
+  required: z.boolean(),
+  meaning: formFieldMeaningSchema.nullable(),
+  /** What TabReach writes there; null: left as the page has it (a consent is never ticked). */
+  value: z.string().max(20_000).nullable(),
+});
+export type FormField = z.infer<typeof formFieldSchema>;
+
+/** PrepareFormSubmission: find the contact form from a website, map and fill it, stop before sending. */
+export const workerFormPrepareSchema = z.object({
+  taskId: id,
+  sessionId: id,
+  packId: z.string().min(1).default('web-form'),
+  /** The company's website, or a known form page. */
+  url: z.url(),
+  values: formValuesSchema,
+});
+
+export const formPrepareResultSchema = z.object({
+  /**
+   * ready: every required field has a value. needs_human: a required field TabReach cannot fill,
+   * a required consent, or a challenge. no_form: no contact form found on the site.
+   */
+  status: z.enum(['ready', 'needs_human', 'no_form', 'failed']),
+  /** `form.unmappedRequired`, `form.consentRequired`, `form.challenge`, `form.notFound`, `task.*`. */
+  reason: z.string().nullable(),
+  formUrl: z.string().nullable(),
+  /** The button that opens the form in a dialog, when it is not on its own page. */
+  opener: z.string().max(200).nullable(),
+  /** Hash of the form's fields: sending refuses a form that changed since it was approved. */
+  signature: z.string().nullable(),
+  fields: z.array(formFieldSchema),
+  /** A CAPTCHA or check on the form page: never solved; the person sends it. */
+  challenge: z.string().nullable(),
+  /** PNG of the filled form, base64 — what the approval shows. */
+  screenshot: z.string().max(4_000_000).nullable(),
+  packVersion: z.string(),
+});
+export type FormPrepareResult = z.infer<typeof formPrepareResultSchema>;
+
+/** ExecuteFormSubmission: the approved fields into the same form, checkpoint, send, verify. */
+export const workerFormSubmitSchema = z.object({
+  taskId: id,
+  sessionId: id,
+  packId: z.string().min(1).default('web-form'),
+  formUrl: z.url(),
+  opener: z.string().max(200).nullable(),
+  signature: z.string().min(1),
+  fields: z.array(z.object({ ref: z.number().int().min(0), value: z.string().max(20_000) })).max(50),
+  mode: browserExecutionModeSchema.default('auto'),
+});
+
 // Sign-in checks and interventions (Phase 5b) -------------------------------------------------
 
 /** Channel packs whose sign-in a profile can be checked against. */

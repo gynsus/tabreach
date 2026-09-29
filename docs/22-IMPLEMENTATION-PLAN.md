@@ -165,6 +165,12 @@ Deliver:
 - semantic target resolution via the gateway (ADR 013), bounded;
 - verification or `unknown`; user confirmation path.
 
+Order, each a working slice:
+
+- **6a — worker and forms (done 2026-09-29)**: the `web-form` pack, `form.prepare` / `form.submit` with discovery, heuristic mapping, consent never ticked, screenshot, checkpoint, verification; form fixtures.
+- **6b — the campaign channel**: the sender's details for forms, `web_form` message steps, a PREPARE_FORM state before approval (the approval shows the exact fields and the screenshot), sending through the ledger, `WAITING_FOR_HUMAN` for challenges, unknown fields and taken control (the carried audit 5.5 item), eligibility, UI, E2E.
+- **6c — semantic resolution**: `ai.resolveTarget` (ADR 013) for fields the phrases do not recognize and changed layouts; bounded, recorded, never the submit button in `auto`.
+
 Exit criteria:
 
 - works against all form fixture variants;

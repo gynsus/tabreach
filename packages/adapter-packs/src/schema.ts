@@ -99,17 +99,60 @@ export const packActionSchema = z
   .strict();
 export type PackAction = z.infer<typeof packActionSchema>;
 
+/** What a contact-form field means (docs/14 "Standard semantic fields"). */
+export const FORM_FIELDS = [
+  'name',
+  'firstName',
+  'lastName',
+  'email',
+  'phone',
+  'company',
+  'website',
+  'subject',
+  'message',
+  'consent',
+] as const;
+export type FormField = (typeof FORM_FIELDS)[number];
+
+const phrases = z.array(z.string().trim().toLowerCase().min(1)).min(1);
+
+/**
+ * Generic contact-form knowledge (docs/14 "Website form adapter", Phase 6): lower-case phrases
+ * matched as substrings of a field's label, name, placeholder or autocomplete, of link texts, and
+ * of what a page says after sending. Data, so it can be improved without code (ADR 017).
+ */
+export const formKnowledgeSchema = z
+  .object({
+    /** Link or button texts that lead to a contact form. */
+    contactLinks: phrases,
+    /** Paths worth trying when no link says "contact". */
+    contactPaths: z.array(z.string().regex(/^\/[^\s]*$/)).default([]),
+    fields: z
+      .object(Object.fromEntries(FORM_FIELDS.map((f) => [f, phrases])) as Record<FormField, typeof phrases>)
+      .strict(),
+    /** Texts a site shows once a message was received. */
+    success: phrases,
+    /** Texts a site shows when it refused the form (validation). */
+    rejected: phrases,
+  })
+  .strict();
+export type FormKnowledge = z.infer<typeof formKnowledgeSchema>;
+
 export const adapterPackSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
     version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Semantic version, e.g. 1.0.0'),
     /** generic: states for any site (challenges); the others belong to one channel adapter. */
     channel: z.enum(['generic', 'linkedin', 'web_form']),
-    states: z.array(pageStateSchema).min(1),
+    states: z.array(pageStateSchema).default([]),
     actions: z.array(packActionSchema).default([]),
+    forms: formKnowledgeSchema.optional(),
   })
   .strict()
   .superRefine((pack, ctx) => {
+    if (pack.states.length === 0 && !pack.forms) {
+      ctx.addIssue({ code: 'custom', path: ['states'], message: 'A pack needs states or form knowledge' });
+    }
     const seen = new Set<string>();
     pack.states.forEach((state, i) => {
       if (seen.has(state.id)) {

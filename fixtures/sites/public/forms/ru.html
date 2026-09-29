@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <title>Контакты</title>
+    <script src="submit.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Напишите нам</h1>
+      <form onsubmit="fixtureSubmit(this, event)">
+        <label>Имя <input name="f_name" required /></label>
+        <label>Фамилия <input name="l_name" /></label>
+        <label>Электронная почта <input type="email" name="f_email" required /></label>
+        <label>Телефон <input type="tel" name="f_phone" /></label>
+        <label>Сообщение <textarea name="f_text" required></textarea></label>
+        <label
+          ><input type="checkbox" name="agree" required /> Согласие на обработку персональных данных</label
+        >
+        <button type="submit">Отправить</button>
+      </form>
+    </main>
+  </body>
+</html>
