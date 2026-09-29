@@ -73,7 +73,7 @@ export function ContactPage() {
           ]}
         />
         <ReplyHold contactId={c.id} />
-        <Timeline objectType="contact" objectId={c.id} />
+        <Timeline scope={{ contactId: c.id }} refs={['campaign']} />
       </div>
       {editing ? <ContactForm open contact={c} onClose={() => setEditing(false)} /> : null}
     </>

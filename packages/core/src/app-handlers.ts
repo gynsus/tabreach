@@ -11,6 +11,7 @@ import {
 } from '@tabreach/protocol';
 import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
+import { TimelineService } from './audit/timeline.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
@@ -90,6 +91,7 @@ export class AppServices {
   readonly classifier: ReplyClassifier;
   readonly research: ResearchService;
   readonly drafts: DraftWriter;
+  readonly timeline: TimelineService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -102,6 +104,7 @@ export class AppServices {
     const logger = options.logger ?? silentLogger;
     this.changed = options.onChanged ?? (() => {});
     this.audit = new AuditLog(db, now);
+    this.timeline = new TimelineService(db);
     this.commands = new CommandLog(db, now);
     this.jobs = new JobQueue(db, now, options.onJobEnqueued);
     this.ledger = new SideEffectLedger(db, now);
@@ -441,7 +444,7 @@ export class AppServices {
       .handle('jobs.dismiss', ({ id }, c) =>
         mutate(['job'], () => this.jobAction(id, 'dismiss', c.correlationId)),
       )
-      .handle('activity.list', (p) => ({ items: this.audit.list(p) }));
+      .handle('activity.list', (p) => this.timeline.list(p));
   }
 
   private jobAction(id: string, action: 'retry' | 'dismiss', correlationId: string): { ok: true } {

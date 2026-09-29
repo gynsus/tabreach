@@ -225,6 +225,8 @@ export class CampaignService {
         const at = this.engine.firstActionAt(versionId, contactId);
         insert.run(id, campaignId, versionId, c.company_id, contactId, at.toISOString(), ts, ts);
         if (row.status === 'active') this.engine.scheduleEnrollment(id, at);
+        // Per contact, so the contact's history shows when it joined which campaign.
+        this.record('enrollment.created', id, ctx, {}, 'enrollment');
         report.enrolled++;
       }
       this.record('campaign.enrolled', campaignId, ctx, { ...report });

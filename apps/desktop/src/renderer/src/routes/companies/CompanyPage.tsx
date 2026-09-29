@@ -98,7 +98,7 @@ export function CompanyPage() {
           </section>
         </div>
         <ResearchSection companyId={c.id} hasWebsite={Boolean(c.domain || c.websiteUrl)} />
-        <Timeline objectType="company" objectId={c.id} />
+        <Timeline scope={{ companyId: c.id }} refs={['contact', 'campaign']} />
       </div>
       {editing ? <CompanyForm open company={c} onClose={() => setEditing(false)} /> : null}
       {addingContact ? (

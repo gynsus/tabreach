@@ -34,8 +34,8 @@ import {
   uncertainSendSchema,
 } from './campaigns.js';
 import {
-  actionEventSchema,
   activityListRequestSchema,
+  timelineEntrySchema,
   companyDetailSchema,
   companyInputSchema,
   companySchema,
@@ -421,7 +421,8 @@ export const requests = {
     channel: 'app',
     kind: 'query',
     request: activityListRequestSchema,
-    response: z.object({ items: z.array(actionEventSchema) }),
+    /** hasMore: older events exist; ask again with `before` set to the last item. */
+    response: z.object({ items: z.array(timelineEntrySchema), hasMore: z.boolean() }),
   },
   'worker.health': {
     channel: 'browser',

@@ -1,56 +1,68 @@
-import { useQuery } from '@tanstack/react-query';
+import { activityCategorySchema, type ActivityCategory } from '@tabreach/protocol';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router';
-import { describeEvent, formatDateTime } from '../../components/Timeline';
-import { Alert, Badge, EmptyState, PageHeader } from '../../components/ui';
-import { translateKey } from '../../i18n';
-import { call, errorMessage } from '../../lib/api';
+import { ActivityItem, useActivity } from '../../components/Timeline';
+import { Alert, Button, EmptyState, PageHeader } from '../../components/ui';
+import { errorMessage } from '../../lib/api';
+import { cn } from '../../lib/cn';
 
-const linkFor = (type: string | null, id: string | null) =>
-  id && (type === 'company' || type === 'contact')
-    ? `/${type === 'company' ? 'companies' : 'contacts'}/${id}`
-    : null;
+const FILTERS: (ActivityCategory | 'all')[] = ['all', ...activityCategorySchema.options];
 
-/** The audit trail as the user sees it (FR-AUD-002), newest first. */
+/** The audit trail as the user sees it (FR-AUD-002): newest first, with whom and which campaign. */
 export function ActivityPage() {
-  const { t, i18n } = useTranslation();
-  const query = useQuery({
-    queryKey: ['activity', 'all'],
-    queryFn: () => call('activity.list', { limit: 200 }),
-  });
-  const events = query.data?.items ?? [];
+  const { t } = useTranslation();
+  const [filter, setFilter] = useState<ActivityCategory | 'all'>('all');
+  const query = useActivity({}, filter === 'all' ? undefined : filter, 100);
+  const events = query.data?.pages.flatMap((p) => p.items) ?? [];
   return (
     <>
       <PageHeader title={t('activity.title')} subtitle={t('activity.subtitle')} />
-      <div className="min-h-0 flex-1 overflow-y-auto p-6">
+      <div
+        role="tablist"
+        aria-label={t('activity.title')}
+        className="flex flex-wrap gap-1 border-b border-rule px-6"
+      >
+        {FILTERS.map((f) => (
+          <button
+            key={f}
+            type="button"
+            role="tab"
+            aria-selected={filter === f}
+            onClick={() => setFilter(f)}
+            className={cn(
+              '-mb-px border-b-2 px-3 py-2 text-[13px]',
+              filter === f
+                ? 'border-accent font-medium text-accent'
+                : 'border-transparent text-soft hover:text-ink',
+            )}
+          >
+            {t(`activity.categories.${f}`)}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto p-6">
         {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
         {query.isSuccess && events.length === 0 ? <EmptyState title={t('activity.empty')} /> : null}
         <ol className="grid max-w-3xl gap-3">
-          {events.map((event) => {
-            const d = describeEvent(t, event);
-            const href = linkFor(event.objectType, event.objectId);
-            return (
-              <li key={event.id} className="grid grid-cols-[150px_1fr] gap-4 text-[13px]">
-                <span className="font-mono text-[11px] leading-5 text-faint">
-                  {formatDateTime(event.createdAt, i18n.language)}
-                </span>
-                <span className="grid gap-0.5">
-                  <span className="flex items-center gap-2">
-                    {href ? (
-                      <Link to={href} className="font-medium hover:text-accent">
-                        {d.title}
-                      </Link>
-                    ) : (
-                      <span className="font-medium">{d.title}</span>
-                    )}
-                    <Badge>{translateKey(t, `activity.actors.${event.actorType}`, event.actorType)}</Badge>
-                  </span>
-                  {d.detail ? <span className="text-soft">{d.detail}</span> : null}
-                </span>
-              </li>
-            );
-          })}
+          {events.map((entry) => (
+            <ActivityItem
+              key={entry.id}
+              entry={entry}
+              refs={['contact', 'company', 'campaign']}
+              showDate="column"
+            />
+          ))}
         </ol>
+        {query.hasNextPage ? (
+          <Button
+            variant="ghost"
+            className="mt-4"
+            disabled={query.isFetchingNextPage}
+            onClick={() => void query.fetchNextPage()}
+          >
+            {query.isFetchingNextPage ? t('common.loading') : t('common.loadMore')}
+          </Button>
+        ) : null}
       </div>
     </>
   );

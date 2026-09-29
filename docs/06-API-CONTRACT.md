@@ -146,7 +146,7 @@ command interventions.resolve          # { interventionId, outcome, notes }
 ## Activity and UI settings
 
 ```text
-query   activity.list                  # { objectType?, objectId?, limit } -> newest first
+query   activity.list                  # { contactId? | companyId? | campaignId?, category?, before?, limit } -> { items, hasMore }, newest first; each item names its contact, company and campaign and carries the message text for sends, AI drafts and replies
 query   settings.ui.get                # -> { language: 'en' | 'ru' }
 command settings.ui.update
 ```

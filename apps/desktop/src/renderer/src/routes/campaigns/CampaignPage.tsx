@@ -9,6 +9,7 @@ import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 import { statusTone } from './CampaignsPage';
+import { Timeline } from '../../components/Timeline';
 import { ApprovalSection } from './ApprovalSection';
 import { PeopleSection } from './PeopleSection';
 import { SequenceEditor } from './SequenceEditor';
@@ -206,6 +207,8 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
           <ApprovalSection config={config} disabled={archived || busy} onChange={edit} />
 
           <PeopleSection campaign={campaign} />
+
+          <Timeline scope={{ campaignId: campaign.id }} refs={['contact']} />
         </div>
       </div>
     </>

@@ -203,6 +203,20 @@ export const en = {
     noResults: 'Nothing on the list matches this search.',
   },
   activity: {
+    factsUsed_one: '{{count}} fact used',
+    factsUsed_other: '{{count}} facts used',
+    factsFound_one: '{{count}} verified fact',
+    factsFound_other: '{{count}} verified facts',
+    showMessage: 'Show the message',
+    hideMessage: 'Hide the message',
+    categories: {
+      all: 'All',
+      messages: 'Messages',
+      campaigns: 'Campaigns',
+      prospects: 'Contacts and companies',
+      research: 'Research',
+      settings: 'Settings and accounts',
+    },
     title: 'Activity',
     subtitle: 'Everything TabReach and you did, newest first.',
     empty: 'No activity yet.',
@@ -243,6 +257,7 @@ export const en = {
         enrolled: 'Contacts added to campaign',
       },
       enrollment: {
+        created: 'Added to campaign',
         paused: 'Sequence paused',
         resumed: 'Sequence resumed',
         stopped: 'Sequence stopped',
