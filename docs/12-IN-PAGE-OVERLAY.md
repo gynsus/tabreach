@@ -39,7 +39,7 @@ Script injected into the page runs in the page's main world. The page's own Java
 
 ## Implementation status (Phase 5c-1)
 
-The overlay is installed only in windows opened under automation (`addInitScript` in the automation context; a window the person opens has none). It shows the mode, the current work's title and detail (sent by core with `session.setOverlay`, in the interface language) and the Pause button while automation runs. The binding `__tabreachOverlay` accepts only `pause_requested`; other messages are logged and ignored, and the page cannot resume. The mode is re-applied on each `domcontentloaded`. Highlighting and assisted/manual panels come with the first channel actions (Phase 6/7).
+The overlay is installed only in windows opened under automation (`addInitScript` in the automation context; a window the person opens has none). It shows the mode, the current work's title and detail (sent by core with `session.setOverlay`, in the interface language) and the Pause button while automation runs. The overlay puts itself back if a page removes it. An unknown binding message is logged once per session. Page scripts can read what the overlay shows, so its context is a short label only — no prospect, draft or campaign data (audit 5.5). The binding `__tabreachOverlay` accepts only `pause_requested`; other messages are logged and ignored, and the page cannot resume. The mode is re-applied on each `domcontentloaded`. Highlighting and assisted/manual panels come with the first channel actions (Phase 6/7).
 
 ## Page metadata
 

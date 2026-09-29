@@ -120,6 +120,7 @@ export const en = {
     privacy:
       'Profiles live on this Mac only. TabReach never asks for or stores your site passwords, and never copies profiles into logs or backups.',
     health: {
+      other: 'Checked; the result could not be described.',
       linkedin_feed: 'Signed in to LinkedIn.',
       linkedin_login: 'Not signed in to LinkedIn: open the profile and sign in.',
       task_navigationFailed: 'The site did not open.',
@@ -799,8 +800,19 @@ export const en = {
     resolveHint: 'Check the Sent folder of the account. If it was not sent, TabReach sends it now.',
     attempts_one: '{{count}} attempt',
     attempts_other: '{{count}} attempts',
-    types: { 'workflow.run': 'Sending a message', 'enrollment.advance': 'Moving a sequence forward' },
+    types: {
+      'workflow.run': 'Sending a message',
+      'enrollment.advance': 'Moving a sequence forward',
+      'browser.check': 'Checking a browser profile',
+      'research.run': 'Researching a company',
+      'reply.classify': 'Labelling a reply',
+      'mailbox.poll': 'Reading an inbox',
+      other: 'Background task',
+    },
     errors: {
+      browser_task_failed: 'The browser task did not finish. Check that Chrome works, then retry.',
+      worker_not_running: 'The browser process was not running.',
+      other: 'It failed ({{code}}).',
       send_unknown:
         'Could not confirm whether the message was sent. It is not sent again until that is known.',
       send_not_sent: 'The channel did not accept the message.',
@@ -882,10 +894,15 @@ export const en = {
   },
   errors: {
     session: {
+      busy: 'TabReach is already doing something in this window. Try again in a moment.',
+      notOpen: 'This browser window is closed.',
       nothingToReturn: 'There is no work to return control to.',
       notAutomation: 'The window is not under TabReach’s control.',
     },
     profile: {
+      inUseByYou: 'You have this profile open. Close its window first.',
+      checking: 'TabReach is already checking this profile.',
+      research: 'The research profile never signs in anywhere; check another profile.',
       alreadyOpen: 'This profile is already open.',
       open: 'Close the profile first.',
       inUse: 'Another Chrome window is using this profile. Close it and try again.',
@@ -895,6 +912,10 @@ export const en = {
       nameMismatch: 'The name does not match.',
       notFound: 'This profile no longer exists.',
       invalidId: 'Invalid profile.',
+    },
+    intervention: {
+      notFound: 'This request no longer exists.',
+      closed: 'This request has already been dealt with.',
     },
     chrome: { missing: 'Google Chrome is not installed. Install it to use browser profiles.' },
     worker: { notRunning: 'The browser process is not running. TabReach restarts it automatically.' },

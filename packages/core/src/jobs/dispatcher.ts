@@ -84,6 +84,8 @@ export class Dispatcher {
   private readonly types = new Map<string, JobType<unknown>>();
   private readonly running = new Map<string, number>();
   private readonly inFlight = new Set<Promise<void>>();
+  /** Ids of the jobs this dispatcher is running now. */
+  private readonly runningIds = new Set<string>();
   private readonly abort = new AbortController();
   private timer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
@@ -159,6 +161,9 @@ export class Dispatcher {
     if (this.ticking || !this.started || this.paused) return;
     this.ticking = true;
     try {
+      // After a Mac sleep the renew timers may not have fired yet: a job still running here is
+      // renewed first, so it is never recovered and claimed a second time (audit 5.5).
+      for (const id of this.runningIds) this.options.queue.renew(id, this.owner, this.leaseMs);
       this.options.queue.recoverExpired();
       this.claimBatch();
     } catch (error) {
@@ -178,7 +183,9 @@ export class Dispatcher {
     }
     const claimed = this.options.queue.claim(this.owner, this.leaseMs, limits, 16);
     for (const job of claimed) {
+      this.runningIds.add(job.id);
       const promise = this.execute(job).finally(() => {
+        this.runningIds.delete(job.id);
         this.inFlight.delete(promise);
         this.running.set(job.type, (this.running.get(job.type) ?? 1) - 1);
         this.schedule(0);

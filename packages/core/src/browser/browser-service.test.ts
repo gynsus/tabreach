@@ -1,4 +1,4 @@
-import { RpcError, type RequestOf, type RequestType, type ResponseOf } from '@tabreach/protocol';
+import { RpcError, uuidv7, type RequestOf, type RequestType, type ResponseOf } from '@tabreach/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ctx, testServices } from '../prospects/test-helpers.js';
 
@@ -89,6 +89,32 @@ describe('browser profiles in core (Phase 5a)', () => {
       .prepare(`SELECT COUNT(*) AS n FROM browser_sessions WHERE status = 'interrupted'`)
       .get() as { n: number };
     expect(interrupted.n).toBe(2);
+  });
+
+  it('closes windows nobody drives: unknown to core, or under automation after a reconnect (audit 5.5)', async () => {
+    const mine = browser().create({ name: 'Mine', purpose: 'general' }, ctx());
+    const auto = browser().create({ name: 'Auto', purpose: 'general' }, ctx());
+    await browser().open(mine.id, null, ctx());
+    const autoSession = await browser().openSession(auto.id, 'automation', null, uuidv7());
+    const mineSession = sessionOf(mine.id)!.id;
+    const stray = uuidv7();
+    const closes = () =>
+      worker!.calls
+        .filter((c) => c.type === 'profile.close')
+        .map((c) => (c.payload as { sessionId: string }).sessionId);
+    const beat = [
+      { sessionId: mineSession, currentUrl: null },
+      { sessionId: autoSession, currentUrl: null },
+      { sessionId: stray, currentUrl: null },
+    ];
+    browser().onHeartbeat(beat);
+    expect(closes()).toEqual([stray]); // unknown to core
+
+    browser().onWorkerAttached(); // a new core: the automation window's task is gone
+    browser().onHeartbeat(beat);
+    expect(closes().slice(1).sort()).toEqual([autoSession, stray].sort());
+    // The person's own window is never closed.
+    expect(closes()).not.toContain(mineSession);
   });
 
   it('deleting asks for the exact name and removes the directory through the worker', async () => {

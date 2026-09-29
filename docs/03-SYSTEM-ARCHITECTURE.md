@@ -51,8 +51,8 @@ Responsibilities:
 - application lifecycle, single-instance lock;
 - spawning, health-checking and restarting `core` and `browser-worker` (`utilityProcess.fork`) with bounded restart backoff;
 - creating `MessageChannelMain` pairs and handing ports to renderer, core and worker;
-- windows, tray/menu, native notifications, focusing Chrome windows on request (tray and notifications planned with Phase 5 human control; not implemented yet);
-- `powerMonitor` (suspend/resume/lock) events forwarded to core; optional `powerSaveBlocker` while campaigns are active (keep-awake: planned, Phase 5);
+- windows, tray/menu (Show, Pause all, Resume, Emergency stop), native notifications for requests to the person, focusing Chrome windows on request (Phase 5c);
+- `powerMonitor` (suspend/resume/lock) events forwarded to core; optional `powerSaveBlocker` (`prevent-app-suspension`) while a campaign is active and nothing is paused (keep-awake, Phase 5c);
 - secret broker: the only process that calls `safeStorage.encryptString/decryptString`;
 - OAuth system-browser launch and the ephemeral loopback redirect listener (ADR 016);
 - auto-update (post-MVP optional).

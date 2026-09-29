@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { chmod, mkdir, readdir, rm, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   bundledPack,
@@ -10,6 +10,7 @@ import {
 } from '@tabreach/adapter-packs';
 import type { BrowserExecutionMode, TaskDiagnostics, TaskResult } from '@tabreach/protocol';
 import type { Page } from 'playwright-core';
+import { safeUrl } from './profiles.js';
 
 const RECOGNIZE_TIMEOUT_MS = 15_000;
 const POLL_MS = 500;
@@ -66,6 +67,7 @@ export async function runCheckState(
   const deadline = Date.now() + RECOGNIZE_TIMEOUT_MS;
   for (;;) {
     signal.throwIfAborted();
+    // A page navigating under the probe throws; it is probed again on the next poll.
     const state = await matchState(states, probeOf(page)).catch(() => null);
     if (state) {
       if (state.kind === 'challenge') await page.bringToFront();
@@ -109,6 +111,7 @@ async function recognize(
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     signal.throwIfAborted();
+    // A page navigating under the probe throws; it is probed again on the next poll.
     const state = await matchState(states, probeOf(page)).catch(() => null);
     if (state) return state;
     if (Date.now() > deadline) return null;
@@ -208,19 +211,32 @@ export async function runCommit(
     });
   }
 
+  // The press goes to this very element, and only while the page is still the recognized one
+  // (CLAUDE.md §3.5 "verify target identity"): a page that moved on is never clicked blindly.
+  const startUrl = page.url();
+  const handle = await commit.elementHandle({ timeout: 5_000 }).catch(() => null);
+  if (!handle) return notCommitted({ errorKey: 'task.stateChanged' });
+  const stillThere = async () =>
+    page.url() === startUrl &&
+    (await handle.evaluate((el) => el.isConnected).catch(() => false)) &&
+    (await matchState(byId(action.from), probeOf(page)).catch(() => null))?.id === start.id;
+  if (!(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
+
   signal.throwIfAborted();
   if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
+  // Auto: checked once more after core's answer; not pressed is still a verified "not sent".
+  if (req.mode === 'auto' && !(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
   // From here on the action may have happened: every way out says so.
   const committed = { ...base, url: page.url(), errorKey: null, committed: true } as const;
   try {
     let waitMs = VERIFY_TIMEOUT_MS;
     if (req.mode === 'auto') {
       signal.throwIfAborted();
-      await commit.click({ timeout: 10_000 });
+      await handle.click({ timeout: 10_000 });
     } else {
       // Assisted: the person reviews and presses it (docs/07); focus shows them where.
       await page.bringToFront();
-      await commit.focus().catch(() => {});
+      await handle.focus().catch(() => {}); // only a pointer for the person
       waitMs = ASSISTED_WAIT_MS;
     }
     const after = await recognize(page, [...byId(action.success), ...byId(action.rejected)], waitMs, signal);
@@ -267,7 +283,12 @@ export async function diagnose(
   let screenshot: string | null = `${taskId}.png`;
   try {
     await mkdir(env.diagnosticsDir, { recursive: true, mode: 0o700 });
-    await page.screenshot({ path: join(env.diagnosticsDir, screenshot), timeout: 10_000 });
+    // What was typed into the page is not evidence of a failure: fields are masked (audit 5.5).
+    await page.screenshot({
+      path: join(env.diagnosticsDir, screenshot),
+      timeout: 10_000,
+      mask: [page.locator('input, textarea, select, [contenteditable]:not([contenteditable="false"])')],
+    });
   } catch {
     screenshot = null; // the snapshot below is still useful without it
   }
@@ -277,7 +298,7 @@ export async function diagnose(
     .catch(() => '');
   return {
     title: await page.title().catch(() => null),
-    url: page.url(),
+    url: safeUrl(page.url()),
     screenshot,
     ariaSnapshot: redactSnapshot(snapshot).slice(0, MAX_SNAPSHOT),
     expectedStates,
@@ -289,9 +310,32 @@ export function redactSnapshot(snapshot: string): string {
   return snapshot
     .split('\n')
     .map((line) =>
-      /^\s*- (textbox|searchbox|combobox|spinbutton)\b/.test(line)
+      /^\s*- (textbox|searchbox|combobox|spinbutton|slider)\b/.test(line)
         ? line.replace(/(:\s).*$/, '$1[value]')
-        : line,
+        : // Link targets keep their path; queries and fragments may carry tokens.
+          line.replace(
+            /^(\s*- \/url: )(.*)$/,
+            (_m, prefix: string, url: string) => prefix + url.replace(/[?#].*$/, ''),
+          ),
     )
     .join('\n');
+}
+
+/** Diagnostics are kept for this long, then removed (audit 5.5): they may show personal data. */
+export const DIAGNOSTICS_RETENTION_MS = 30 * 24 * 60 * 60_000;
+
+/** Removes old diagnostics and keeps the folder private to the user. */
+export async function pruneDiagnostics(dir: string, now = Date.now()): Promise<number> {
+  const names = await readdir(dir).catch(() => [] as string[]);
+  await chmod(dir, 0o700).catch(() => {}); // absent until the first failure
+  let removed = 0;
+  for (const name of names) {
+    const file = join(dir, name);
+    const info = await stat(file).catch(() => null);
+    if (info && now - info.mtimeMs > DIAGNOSTICS_RETENTION_MS) {
+      await rm(file, { force: true });
+      removed++;
+    }
+  }
+  return removed;
 }

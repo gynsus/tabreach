@@ -17,7 +17,7 @@ import {
 import { z } from 'zod';
 import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
-import { RetryableError, type JobType } from '../jobs/dispatcher.js';
+import { PermanentError, RetryableError, type JobType } from '../jobs/dispatcher.js';
 import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
 import { coreText } from '../control/texts.js';
@@ -26,6 +26,7 @@ import type { BrowserService } from './browser-service.js';
 export const JOB_BROWSER_CHECK = 'browser.check';
 const WORKFLOW_TYPE = 'browser_check';
 const TASK_TIMEOUT_MS = 150_000;
+const MAX_ATTEMPTS = 3;
 
 interface RunRow {
   id: string;
@@ -72,9 +73,17 @@ export class SignInCheckService {
       sideEffecting: false,
       // One browser task at a time (docs/13 "per profile"; profiles are few in 5b).
       concurrency: 1,
-      maxAttempts: 3,
+      maxAttempts: MAX_ATTEMPTS,
       maxAgeMs: 60 * 60_000,
-      handler: ({ runId }) => this.step(runId),
+      handler: async ({ runId }, ctx) => {
+        try {
+          return await this.step(runId);
+        } catch (error) {
+          // The job gives up after this: the run ends and its window closes (audit 5.5).
+          if (error instanceof PermanentError || ctx.attempt >= MAX_ATTEMPTS) await this.giveUp(runId, error);
+          throw error;
+        }
+      },
     };
     return [type] as unknown as JobType<never>[];
   }
@@ -82,6 +91,8 @@ export class SignInCheckService {
   start(profileId: string, packId: 'linkedin', ctx: CommandContext): BrowserProfile {
     const profile = this.d.browser.get(profileId);
     if (profile.status === 'archived') throw conflict('profile.archived');
+    // The research profile renders pages without a window and signs in nowhere (ADR 027).
+    if (profile.purpose === 'research') throw conflict('profile.research');
     const live = this.d.browser.liveSessionOf(profileId);
     // A window the person holds is theirs: automation never takes it over (docs/11).
     if (live) throw conflict(live.controlMode === 'human' ? 'profile.inUseByYou' : 'profile.checking');
@@ -129,7 +140,14 @@ export class SignInCheckService {
 
     let sessionId = context.sessionId;
     if (!sessionId || this.d.browser.sessionById(sessionId)?.status !== 'open') {
-      sessionId = await this.d.browser.openSession(run.business_id, 'automation', null, run.correlation_id);
+      try {
+        sessionId = await this.d.browser.openSession(run.business_id, 'automation', null, run.correlation_id);
+      } catch (error) {
+        // The person opened the profile meanwhile: it is theirs, the check does not happen.
+        if (error instanceof RpcError && error.problem.code === 'CONFLICT')
+          return this.finish(run, 'cancelled');
+        throw error;
+      }
       this.update(run.id, { status: 'running', context: { ...context, sessionId } });
       await worker
         .request('session.setOverlay', {
@@ -202,7 +220,10 @@ export class SignInCheckService {
         taskId,
         result.status === 'needs_human' ? 'security_challenge' : 'unsupported_state',
       );
-      await this.d.browser.focusSession(sessionId).catch(() => {});
+      await this.d.browser.focusSession(sessionId).catch((error: unknown) =>
+        // The request is listed and notified either way; bringing the window forward is a courtesy.
+        this.d.logger.info({ event: 'browser.focus_failed', err: error }, 'window not brought forward'),
+      );
       return;
     }
     this.d.browser.storeHealth(run.business_id, 'unknown', result.errorKey);
@@ -211,7 +232,10 @@ export class SignInCheckService {
   }
 
   private request(run: RunRow, sessionId: string, taskId: string, reason: InterventionReason): void {
-    transaction(this.d.db, () => {
+    const created = transaction(this.d.db, () => {
+      // Read again: the person may have taken control while this step awaited (audit 5.5).
+      const fresh = this.run(run.id);
+      if (!fresh || (fresh.status !== 'pending' && fresh.status !== 'running')) return false;
       const id = uuidv7();
       this.d.db
         .prepare(
@@ -229,7 +253,9 @@ export class SignInCheckService {
         payload: { reason },
         correlationId: run.correlation_id,
       });
+      return true;
     });
+    if (!created) return;
     this.d.changed(['browser', 'activity']);
     const lang = this.lang();
     const profile = this.d.browser.get(run.business_id).name;
@@ -370,36 +396,70 @@ export class SignInCheckService {
       | undefined;
     if (!row) throw new RpcError('NOT_FOUND', 'Request not found', 'intervention.notFound');
     if (row.status !== 'open') throw conflict('intervention.closed');
+    // Claimed first, so a double click or Done racing Cancel settles it once (audit 5.5).
+    const claimed = this.d.db
+      .prepare(
+        `UPDATE human_interventions SET status = ?, resolution = ?, resolved_at = ? WHERE id = ? AND status = 'open'`,
+      )
+      .run(
+        outcome === 'done' ? 'resolved' : 'cancelled',
+        JSON.stringify({ outcome }),
+        this.d.now().toISOString(),
+        id,
+      );
+    if (Number(claimed.changes) === 0) throw conflict('intervention.closed');
+    this.d.audit.record({
+      actorType: 'user',
+      actionType: outcome === 'done' ? 'intervention.resolved' : 'intervention.cancelled',
+      objectType: 'browser_profile',
+      ...(row.browser_profile_id ? { objectId: row.browser_profile_id } : {}),
+      correlationId: ctx.correlationId,
+    });
     const run = this.run(row.workflow_run_id);
     const session = row.browser_session_id ? this.d.browser.sessionById(row.browser_session_id) : null;
-    if (outcome === 'done' && session?.status === 'open') {
-      await this.d.browser.setControlMode(session.id, 'automation');
+    let resume = outcome === 'done' && session?.status === 'open';
+    if (resume && session) {
+      try {
+        await this.d.browser.setControlMode(session.id, 'automation');
+      } catch (error) {
+        this.d.logger.warn(
+          { event: 'intervention.resume_failed', runId: run?.id, err: error },
+          'not resumed',
+        );
+        resume = false;
+      }
     }
     transaction(this.d.db, () => {
-      this.d.db
-        .prepare(`UPDATE human_interventions SET status = ?, resolution = ?, resolved_at = ? WHERE id = ?`)
-        .run(
-          outcome === 'done' ? 'resolved' : 'cancelled',
-          JSON.stringify({ outcome }),
-          this.d.now().toISOString(),
-          id,
-        );
-      this.d.audit.record({
-        actorType: 'user',
-        actionType: outcome === 'done' ? 'intervention.resolved' : 'intervention.cancelled',
-        objectType: 'browser_profile',
-        ...(row.browser_profile_id ? { objectId: row.browser_profile_id } : {}),
-        correlationId: ctx.correlationId,
-      });
-      if (run && outcome === 'done' && session?.status === 'open') {
+      if (run && resume) {
         this.update(run.id, { status: 'running', state: 'RUN_TASK' });
-        this.d.jobs.enqueue(JOB_BROWSER_CHECK, { runId: run.id }, { correlationId: ctx.correlationId });
+        this.d.jobs.enqueue(
+          JOB_BROWSER_CHECK,
+          { runId: run.id },
+          { dedupeKey: `browser-check:${run.id}`, correlationId: ctx.correlationId },
+        );
       } else if (run) {
         this.finish(run, 'cancelled');
       }
     });
-    if (outcome === 'cancel' && session?.status === 'open') await this.d.browser.closeSession(session.id);
+    if (!resume && session?.status === 'open') await this.d.browser.closeSession(session.id);
     this.d.changed(['browser', 'activity']);
+  }
+
+  /** The job gave up (last attempt, or a permanent error): the run ends, its window closes. */
+  private async giveUp(runId: string, error: unknown): Promise<void> {
+    const run = this.run(runId);
+    if (!run || (run.status !== 'pending' && run.status !== 'running')) return;
+    this.d.logger.warn({ event: 'browser.check_gave_up', runId, err: error }, 'sign-in check gave up');
+    const { sessionId } = JSON.parse(run.context) as { sessionId: string | null };
+    this.finish(run, 'failed');
+    const session = sessionId ? this.d.browser.sessionById(sessionId) : null;
+    if (session?.status === 'open' && session.controlMode !== 'human') {
+      await this.d.browser
+        .closeSession(session.id)
+        .catch((closeError: unknown) =>
+          this.d.logger.warn({ event: 'browser.close_failed', runId, err: closeError }, 'window not closed'),
+        );
+    }
   }
 
   /** The window closed or the worker went away: whatever waited on that session is over. */

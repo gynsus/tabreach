@@ -124,4 +124,51 @@ describe('research rendering in the research profile (Phase 5d)', () => {
     // The same page reaches it when the address is allowed: the check above is what stopped it.
     expect(await probe('127.0.0.1')).toMatchObject({ status: 'ok', title: 'probe reached' });
   }, 90_000);
+
+  it('checks every redirect hop, of the page and of its requests (audit 5.5)', async () => {
+    // 127.0.0.1 (the fixture) is public here; "localhost" resolves to a private address.
+    const [coreSide, workerSide] = createEndpointPair();
+    workers.push(
+      new BrowserWorker({
+        core: workerSide,
+        logger: silentLogger,
+        profiles,
+        render: {
+          resolveHost: () => Promise.resolve(['10.0.0.5']),
+          isPublicAddress: (ip) => ip === '127.0.0.1',
+        },
+      }),
+    );
+    const core = new RpcPeer(coreSide);
+    const sessionId = await openResearch(core);
+    const secret = `${other.url.replace('127.0.0.1', 'localhost')}secret`;
+    const hits = async () => (await (await fetch(`${other.url}hits`)).json()) as string[];
+    const before = (await hits()).length;
+    const newHits = async () => (await hits()).slice(before);
+
+    // The page itself redirects to the local network: refused, nothing reached it.
+    expect(
+      await render(core, sessionId, `${fixtures.url}redirect?to=${encodeURIComponent(secret)}`),
+    ).toMatchObject({
+      status: 'blocked',
+      html: null,
+    });
+    expect(await newHits()).toEqual([]);
+    // A request of the page redirects there: the page renders, the hop never happens.
+    const viaRequest = await render(
+      core,
+      sessionId,
+      `${fixtures.url}spa/?probe=${encodeURIComponent(`${fixtures.url}redirect?to=${encodeURIComponent(secret)}`)}`,
+    );
+    expect(viaRequest).toMatchObject({ status: 'ok', title: 'Northwind Robotics' });
+    expect(await newHits()).toEqual([]);
+    // A request to an IPv6 literal of this machine: refused by the address rules.
+    const mapped = await render(
+      core,
+      sessionId,
+      `${fixtures.url}spa/?probe=${encodeURIComponent(other.url.replace('127.0.0.1', '[::ffff:7f00:1]'))}`,
+    );
+    expect(mapped).toMatchObject({ status: 'ok', title: 'Northwind Robotics' });
+    expect(await newHits()).toEqual([]);
+  }, 90_000);
 });

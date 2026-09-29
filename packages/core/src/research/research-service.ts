@@ -81,7 +81,12 @@ export class ResearchService {
       /** DNS for the research fetcher; tests resolve fixture hosts to a public address. */
       resolveHost?: ResolveHost;
       /** Browser rendering for JavaScript-only pages (Phase 5d); null result: not available. */
-      render?: (url: string, site: string, signal: AbortSignal) => Promise<RenderResult | null>;
+      render?: (
+        url: string,
+        site: string,
+        signal: AbortSignal,
+        correlationId: string,
+      ) => Promise<RenderResult | null>;
     },
   ) {
     this.fetcher = new PageFetcher(d.http, d.sleep, d.resolveHost, (url, error) =>
@@ -241,7 +246,7 @@ export class ResearchService {
       let extractor = EXTRACTOR;
       if (page.text.length < RENDER_BELOW_CHARS && this.d.render) {
         // robots.txt, the site and the address were checked by the static fetch just now.
-        const rendered = await this.d.render(fetched.url, site, signal);
+        const rendered = await this.d.render(fetched.url, site, signal, run.correlation_id);
         if (rendered?.status === 'ok' && rendered.html && rendered.url) {
           const better = extractPage(rendered.html, rendered.url);
           if (better.text.length > page.text.length) {

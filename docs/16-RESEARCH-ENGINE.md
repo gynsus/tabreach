@@ -6,7 +6,7 @@ Produce useful outreach context from public/authorized sources while preserving 
 
 ## Implementation status (Phase 4b, 2026-09-29)
 
-- Static fetching only (`packages/core/src/research`): the company website, then up to 5 likely pages it links to on the same site (about, team, careers, news, services, contact — English and Russian), at most 6 pages. Browser rendering for JS-only sites comes with the worker (Phase 5).
+- Static fetching only (`packages/core/src/research`): the company website, then up to 5 likely pages it links to on the same site (about, team, careers, news, services, contact — English and Russian), at most 6 pages. Browser rendering for JavaScript-only sites: Phase 5d, below.
 - Redirects are followed one hop at a time, each checked like the first request: same site, `robots.txt`, and a public address — IP literals and host names resolving to loopback, private, link-local, carrier-grade NAT or multicast addresses are refused (audit 4.5). A `robots.txt` answering 5xx allows nothing; a failed request for it is asked again next time.
 - `robots.txt` honoured for the user agent `TabReachResearch/0.1 (+local research tool; respects robots.txt)`; one request per second per host; 20 s and 2 MB per page; redirects off the site are refused.
 - Extraction: Readability over linkedom. Scripts, styles and hidden elements (`hidden`, `aria-hidden`, `display:none`, `visibility:hidden`) are removed before extraction — hidden text is not evidence and is where injected prompts hide.
@@ -18,7 +18,8 @@ Produce useful outreach context from public/authorized sources while preserving 
 ## Implementation status (Phase 5d, 2026-09-29)
 
 - A page whose static fetch yields less than 200 characters of readable text is rendered by the worker (`task.render`, RenderPageForResearch) in the research profile, headless, and read with the same extraction; evidence records `extractor: rendered-readability`, and links for the likely pages come from the rendered page. Only pages the static fetch already allowed (robots.txt, same site, public address) are rendered. See ADR 027 for the request guard.
-- No worker, the research profile in the person's hands, a challenge, or a page trying to leave the site: the page keeps its static text (or is skipped).
+- No worker, the app paused, the research profile in the person's hands, a challenge, or a page trying to leave the site: the page keeps its static text (or is skipped).
+- Audit 5.5: every request of a rendered page is made by the worker with the connection pinned to the checked address, redirects are followed hop by hop by the worker (Chrome would follow a 3xx without asking again), and no cookies go out or are kept; the static fetcher's connections are pinned the same way (`pinnedHttp`), so DNS rebinding cannot point research at the user's network. IPv4-mapped, IPv4-compatible, NAT64 and 6to4 IPv6 forms are judged by the IPv4 address they carry.
 
 ## MVP input
 

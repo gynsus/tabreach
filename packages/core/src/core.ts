@@ -160,6 +160,7 @@ export class CoreService {
     this.workerPeer?.close();
     const peer = new RpcPeer(endpoint, this.peerOptions('browser'));
     this.workerPeer = peer;
+    this.services.browser.onWorkerAttached();
     peer.on('session.changed', (change) => this.services.browser.onSessionChanged(change));
     peer.on('worker.heartbeat', ({ sessions }) => this.services.browser.onHeartbeat(sessions));
     peer.on('session.modeChanged', (change) => this.services.signInChecks.onModeChanged(change));

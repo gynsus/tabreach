@@ -10,7 +10,7 @@ It is not a campaign engine and holds no durable state. It executes **browser ta
 
 - Node.js code running in an Electron `utilityProcess` (validated in Phase 0, ADR 012). Worker code talks to its host only through a thin host adapter (message channel + lifecycle) so the host type can be swapped;
 - Playwright (library, not the test runner) for browser control;
-- the user's installed **Google Chrome** via `chromium.launchPersistentContext(profileDir, { channel: 'chrome', headless: false })`;
+- the user's installed **Google Chrome** via `chromium.launchPersistentContext(profileDir, { channel: 'chrome' })`, visible — except the research profile, which renders headless (ADR 027);
 - Playwright's bundled Chromium for tests and fixtures only;
 - CDP over pipe (Playwright default for launched browsers) — no remote-debugging TCP port;
 - adapter packs (`packages/adapter-packs`) for page-state recognition, locators and verification;
@@ -36,37 +36,32 @@ Diagnostic          failure evidence (screenshot, a11y snapshot, ...)
 
 Implemented in Phase 5a: `profile.open` (with a core-chosen `sessionId`), `profile.close`, `profile.healthCheck`, `profile.delete`, `session.focus`; events `session.changed` and `worker.heartbeat`.
 
-Phase 5b: `profile.open` takes a `controlMode`; `session.setMode`; `task.run` for task type `check_state` (open a URL, recognize the page against the channel pack plus the generic challenge pack, polling up to 15 s). The worker refuses a task in any session not under `automation` (`session.notAutomation`) and pauses the session itself when it finds a challenge. `unsupported_state` comes with diagnostics: a screenshot in `<app data>/diagnostics/<task id>.png` and an accessibility snapshot with input values replaced by `[value]`. Checkpoints, overlay and the other task types come with 5c and the channel phases.
+Phase 5b: `profile.open` takes a `controlMode`; `session.setMode`; `task.run` for task type `check_state` (open a URL, recognize the page against the channel pack plus the generic challenge pack, polling up to 15 s). The worker refuses a task in any session not under `automation` (`session.notAutomation`) and pauses the session itself when it finds a challenge. `unsupported_state` comes with diagnostics: a screenshot in `<app data>/diagnostics/<task id>.png` and an accessibility snapshot with input values replaced by `[value]`. Phase 5c–5d added the overlay, control, checkpoints, `commit` and `task.render` (below).
 
-Messages use the common envelope. Families:
+Messages use the common envelope (registry: `packages/protocol/src/messages.ts`, `events.ts`). Implemented:
 
 ```text
-# core -> worker (commands)
-profile.open / profile.close / profile.healthCheck
-session.pause / session.resume
-session.takeControl / session.returnControl
-session.focusWindow
-task.start            { taskId, taskType, sessionId, input, adapterPack, executionMode, deadline }
-task.cancel           { taskId, reason }
-worker.health
+# core -> worker (requests)
+worker.health / worker.launchCheck / worker.emergencyStop
+profile.open { profileId, sessionId, channel, startUrl, controlMode, headless }
+profile.close / profile.healthCheck / profile.delete
+session.focus / session.setMode { controlMode } / session.setOverlay { context }
+task.run     { taskId, sessionId, taskType: check_state | commit, packId, url, actionId?, params, mode }
+task.render  { taskId, sessionId, url, site }          # RenderPageForResearch (ADR 027)
+task.cancel  { taskId }                                 # the waiting job was cancelled
 
-# worker -> core (events/results)
-session.changed       { sessionId, controlMode, status, currentUrl }
-task.progress         { taskId, step, message }
-task.checkpoint       { taskId, checkpoint }        # persisted by core before worker continues past it
-task.needsHuman       { taskId, reason, instructions, screenshotRef }
-task.result           { taskId, status, result, diagnostics? }
-challenge.detected    { sessionId, kind, url }
-ai.resolveTarget      { requestId, instruction, candidates[], context }   # request to core AI gateway
-worker.heartbeat
-
-# core -> worker
-ai.resolveTarget.result { requestId, chosenRef | null, rationale, confidence, model }
+# worker -> core
+task.checkpoint { taskId, phase: 'about_to_commit' } -> { proceed }   # the one request core answers
+session.changed     { sessionId, profileId, status: open | closed | crashed, currentUrl }   (event)
+session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }   (event)
+worker.heartbeat    { sessions: [{ sessionId, currentUrl }] }                               (event)
 ```
+
+One task runs per session at a time (`session.busy`). Stored URLs (heartbeat, diagnostics) keep origin and path only: query strings and fragments can carry tokens. Planned with the channel phases: `task.progress`, semantic target resolution (`ai.resolveTarget`, ADR 013).
 
 Diagnostic primitives (`page.navigate`, `page.click`, `page.type`, `page.extract`, `page.screenshot`) exist for developer tooling only and are disabled in release builds unless a developer setting is on.
 
-`task.result.status` is one of `succeeded | failed | unknown | unsupported_state | needs_human | cancelled`. Success is never implied by the absence of an exception.
+`task.result.status` is one of `succeeded | failed | unknown | unsupported_state | needs_human` (a cancelled task is `failed` with `task.cancelled`), with `committed` for `commit` tasks. Success is never implied by the absence of an exception.
 
 ### Checkpoint rule
 
@@ -138,7 +133,7 @@ Constraints:
 ## Execution modes in the worker
 
 - `auto` — worker performs the final action after the checkpoint acknowledgement.
-- `assisted` — worker prepares, highlights the final control via the overlay, focuses the window, notifies the user, and waits (bounded) for the user's click. It observes the page for the expected post-action state. On timeout or ambiguous outcome it returns `needs_human` and core asks the user to confirm the outcome.
+- `assisted` — worker prepares, focuses the final control, brings the window forward and waits (up to 10 minutes) for the user's click, observing the page for the expected post-action state. On timeout or an ambiguous outcome it returns `unknown` and the person confirms the outcome (Unconfirmed sends). Highlighting the control in the overlay comes with the channel phases.
 - `manual` — worker opens the target and shows the prepared content in the overlay (copy button); the user does everything; core asks for outcome confirmation.
 
 ## Browser action lifecycle (within a task)
@@ -227,6 +222,8 @@ On task failure capture, where safe:
 - worker, Chrome and adapter-pack versions;
 - workflow state;
 - error stack in local developer logs.
+
+Implemented (Phase 5b, tightened in audit 5.5): URL (origin and path), title, a screenshot with every input, textarea, select and editable region masked, the accessibility snapshot with field values replaced by `[value]` and link targets without query strings, and the expected states. The pack version is on the task result. Files live in `<app data>/diagnostics` (mode 0700) and are removed after 30 days. Failed conditions, target description and workflow state are not captured yet.
 
 Never capture or persist password-field values.
 

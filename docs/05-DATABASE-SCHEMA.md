@@ -253,7 +253,7 @@ task_type
 browser_profile_id fk
 browser_session_id null fk
 adapter_pack_id, adapter_pack_version null
-status check in ('dispatched','running','checkpointed','succeeded','failed','unknown','interrupted')
+status check in ('dispatched','running','succeeded','failed','unsupported_state','needs_human','unknown','interrupted')
 checkpoint json null
 result json null
 dispatched_at, finished_at
@@ -361,10 +361,9 @@ The directory is derived from the profile ID (`profiles/{id}`); no path is store
 ```text
 id pk
 browser_profile_id fk
-worker_instance_id
 control_mode check in ('automation','paused','human')
 status
-current_url
+current_url               -- origin and path only (audit 5.5)
 started_at, ended_at
 heartbeat_at
 ```
@@ -375,11 +374,11 @@ heartbeat_at
 id pk
 workflow_run_id fk
 browser_session_id null fk
+browser_profile_id null fk
+browser_task_id null fk   -- its result carries the diagnostics shown to the person
 reason
 status
-instructions
-resolution json           -- incl. user-confirmed outcome
-resolution_notes
+resolution json           -- { outcome: done | cancel }
 requested_at, resolved_at
 ```
 

@@ -11,11 +11,20 @@ import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
 import type { ProfileManager } from './profiles.js';
 import { renderForResearch, type RenderEnvironment } from './render.js';
-import { ASSISTED_WAIT_MS, bundledPacks, runCheckState, runCommit, type TaskEnvironment } from './tasks.js';
+import {
+  ASSISTED_WAIT_MS,
+  bundledPacks,
+  pruneDiagnostics,
+  runCheckState,
+  runCommit,
+  type TaskEnvironment,
+} from './tasks.js';
 
 const HEARTBEAT_MS = 10_000;
 const TASK_TIMEOUT_MS = 120_000;
 const RENDER_TIMEOUT_MS = 60_000;
+
+const cancelled = (): TaskResult => ({ ...controlTaken(), errorKey: 'task.cancelled' });
 
 const controlTaken = (): TaskResult => ({
   status: 'failed',
@@ -93,33 +102,43 @@ export class BrowserWorker {
         })
         .handle('task.render', async (req) => {
           const context = profiles.automationContext(req.sessionId);
-          const signal = AbortSignal.any([
-            profiles.taskSignal(req.sessionId),
-            AbortSignal.timeout(RENDER_TIMEOUT_MS),
-          ]);
-          return renderForResearch(
-            context,
-            req,
-            { generic: this.taskEnv.pack('generic'), ...this.options.render },
-            signal,
-          );
+          const task = profiles.beginTask(req.sessionId, req.taskId);
+          try {
+            return await renderForResearch(
+              context,
+              req,
+              { generic: this.taskEnv.pack('generic'), ...this.options.render },
+              AbortSignal.any([task.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]),
+            );
+          } finally {
+            task.end();
+          }
+        })
+        .handle('task.cancel', ({ taskId }) => {
+          profiles.cancelTask(taskId);
+          return { ok: true as const };
         })
         .handle('task.run', async (req) => {
           const context = profiles.automationContext(req.sessionId);
-          const control = profiles.taskSignal(req.sessionId);
-          const page = context.pages()[0] ?? (await context.newPage());
+          const task = profiles.beginTask(req.sessionId, req.taskId);
           const timeoutMs = TASK_TIMEOUT_MS + (req.mode === 'assisted' ? ASSISTED_WAIT_MS : 0);
-          const signal = AbortSignal.any([control, AbortSignal.timeout(timeoutMs)]);
+          const signal = AbortSignal.any([task.signal, AbortSignal.timeout(timeoutMs)]);
           let result: TaskResult;
           try {
+            const page = context.pages()[0] ?? (await context.newPage());
             result =
               req.taskType === 'commit'
                 ? await runCommit(page, req, this.taskEnv, signal, () => this.checkpoint(req.taskId, signal))
                 : await runCheckState(page, req, this.taskEnv, signal);
           } catch (error) {
-            // The person took control, paused it, or an emergency stop: the task stops here.
-            if (control.aborted) return controlTaken();
+            // The person took control, paused it, an emergency stop, or core cancelled it: the task
+            // stops here (a commit task past its checkpoint reports that itself).
+            if (task.signal.aborted) {
+              return profiles.modeOf(req.sessionId) === 'automation' ? cancelled() : controlTaken();
+            }
             throw error;
+          } finally {
+            task.end();
           }
           // A challenge stops automation at once; core records why and asks the person (docs/11).
           if (result.status === 'needs_human') profiles.setMode(req.sessionId, 'paused', 'challenge');
@@ -129,6 +148,11 @@ export class BrowserWorker {
       profiles.notifyMode = (change) => this.peer.emit('session.modeChanged', change);
       const beat = () => this.peer.emit('worker.heartbeat', { sessions: profiles.heartbeat() });
       beat(); // at once: a new core learns about windows that stayed open
+      void pruneDiagnostics(this.taskEnv.diagnosticsDir).then(
+        (removed) =>
+          removed > 0 && log.info({ event: 'diagnostics.pruned', removed }, 'old diagnostics removed'),
+        (error: unknown) => log.warn({ event: 'diagnostics.prune_failed', err: error }, 'could not prune'),
+      );
       this.heartbeat = setInterval(beat, options.heartbeatMs ?? HEARTBEAT_MS);
     }
   }
@@ -186,11 +210,7 @@ export class BrowserWorker {
     if (channel === 'chrome') {
       const chrome = await detectChrome(this.options.chromeLocations);
       if (!chrome.installed) {
-        throw new RpcError(
-          'BROWSER_CHROME_NOT_FOUND',
-          'Google Chrome is not installed',
-          'Install Google Chrome and try again.',
-        );
+        throw new RpcError('BROWSER_CHROME_NOT_FOUND', 'Google Chrome is not installed', 'chrome.missing');
       }
     }
     return launchCheck(url, { ...this.options.launch, logger: this.options.logger });

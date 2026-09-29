@@ -122,86 +122,9 @@ query   drafts.history                 # { draftId } -> every version of that me
 
 Approval commands re-check the exact target and content hash and fail with `APPROVAL_STALE` on mismatch; deciding an approval that is no longer pending is `CONFLICT` (`approval.notPending`). `drafts.revise` is refused (`draft.alreadySent`) once the send is `executing`, `completed` or `unknown` in the ledger: an edit must never lead to a second message.
 
-## Browser profiles and sessions
-
-```text
-query   browserProfiles.list / browserProfiles.get
-command browserProfiles.create / browserProfiles.update
-command browserProfiles.open / browserProfiles.close / browserProfiles.healthCheck
-command browserProfiles.delete         # requires { confirmName } equal to profile name
-query   browserSessions.list / browserSessions.get
-command browserSessions.pause / browserSessions.resume
-command browserSessions.takeControl / browserSessions.returnControl
-command browserSessions.focusWindow
-```
-
 ## Interventions and reconciliation
 
-```text
-query   interventions.open
-command interventions.resolve          # { interventionId, outcome, notes }
-                                       # outcome e.g. 'action_completed_by_user' | 'not_done' | 'unknown'
-```
-
-## Activity and UI settings
-
-```text
-query   activity.list                  # { contactId? | companyId? | campaignId?, category?, before?, limit } -> { items, hasMore }, newest first; each item names its contact, company and campaign and carries the message text for sends, AI drafts and replies
-query   settings.ui.get                # -> { language: 'en' | 'ru' }
-command settings.ui.update
-```
-
-## Validation errors
-
-`VALIDATION_FAILED` results carry `fields`: field name -> message key (e.g. `{ "email": "email.duplicate" }`).
-Keys, not sentences: the renderer translates them (`errors.*` in the i18n catalogs, ADR 019).
-
-## Channel accounts
-
-```text
-query   accounts.list                  # email accounts; never includes secrets
-command accounts.connectImap           # { address, smtp, imap, username, password, limits } — tested before saving
-command accounts.update                # name, sender name, limits, new password (tested before saving)
-command accounts.test                  # SMTP + IMAP check, reports the Sent folder
-command accounts.disconnect            # deletes the stored password
-command accounts.connectGmail          # { clientId, clientSecret? } -> consent in the system browser, loopback via main (host: oauth.loopback)
-query   sideEffects.uncertain          # sends whose outcome is unknown (or stuck executing), with `checking` while a job still looks
-command sideEffects.resolve            # { id, outcome: completed | not_sent } — refused while a send job for the run is active
-query   contacts.replyHold             # replied | company_replied | null
-command contacts.releaseReplyHold      # campaigns may write again; earlier replies stop counting
-```
-
-## Inbox
-
-```text
-query   conversations.list             # { filter: all | unread | review } -> items, total, unread count
-query   conversations.get              # summary + messages (outbound and inbound)
-command conversations.markRead
-command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
-command conversations.draftReply       # planned, Phase 8 (not implemented)
-```
-
-## Browser profiles (Phase 5a)
-
-```text
-query   profiles.list                  # { includeArchived } -> profiles with their live session and last health
-command profiles.create                # { name, purpose: general | research }
-command profiles.update / profiles.archive
-command profiles.delete                # { id, confirmName } — closed profiles only; the name must match exactly
-command profiles.open                  # { id, startUrl? } — visible Chrome, control mode `human`
-command profiles.close / profiles.focus / profiles.check
-command profiles.checkSignIn          # { id, packId: linkedin } — opens under automation, recognizes the site's page (Phase 5b)
-command profiles.takeControl           # { id } — the person takes over an automated window; the work waits (Phase 5c)
-command profiles.returnControl         # { id } — hand back; the work checks the page again first
-query   app.control.get                # { paused, pausedAt, emergencyStoppedAt, keepAwake }
-command app.pauseAll / app.resumeAll   # no new external action while paused; reading replies goes on
-command app.emergencyStop              # pause, and the worker stops every browser task at once
-command app.setKeepAwake               # { keepAwake } — keep the Mac awake while a campaign is active
-query   interventions.list             # open requests to the person, with diagnostics of unrecognized pages
-command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
-```
-
-`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `session.nothingToReturn`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
+Implemented under **Browser profiles** below (`interventions.list`, `interventions.resolve`, `profiles.takeControl`, `profiles.returnControl`) and **Unconfirmed sends** (`sideEffects.uncertain`, `sideEffects.resolve { id, outcome: completed | not_sent }`); "not sure" is leaving a send undecided.
 
 ## Jobs and diagnostics
 
@@ -212,11 +135,11 @@ command diagnostics.createBundle       # planned, Phase 8 (not implemented)
 query   app.health                     # implemented: versions, core/worker/Chrome health for the status screen
 ```
 
-## App-wide commands (planned: pause and emergency stop in Phase 5, the rest in Phase 8; none implemented yet)
+## App-wide commands
+
+Implemented (Phase 5c) under **Browser profiles**: `app.control.get`, `app.pauseAll`, `app.resumeAll`, `app.emergencyStop`, `app.setKeepAwake`. Planned for Phase 8:
 
 ```text
-command app.globalPause / app.emergencyStop
-command app.setKeepAwake
 query   app.versions                   # app, Electron, Chrome, adapter packs
 command app.backupDatabase
 ```
@@ -232,13 +155,13 @@ Implemented:
 ```text
 data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings'|
                             'job'|'campaign'|'enrollment'|'approval'|'account'|'conversation'|
-                            'research')[] }   # after every mutation
+                            'research'|'browser')[] }   # after every mutation
 ```
 
 Background work announces its changes the same way: a failed or dead job sends `job`, a new approval sends `approval`, a sent message sends `enrollment`.
 
-Browser worker requests beyond Phase 5b: `task.run { taskType: commit }`, `task.checkpoint` (worker → core, Phase 5c) and `task.render { taskId, sessionId, url, site }` → `{ status: ok | challenge | blocked | failed, url, title, html, reason }` (Phase 5d).
+Browser worker requests beyond Phase 5b: `task.run { taskType: commit }`, `task.checkpoint` (worker → core, Phase 5c), `task.cancel { taskId }` and `task.render { taskId, sessionId, url, site }` → `{ status: ok | challenge | blocked | failed, url, title, html, reason }` (Phase 5d). The full list is in docs/07.
 
-Replies need no event of their own: an arriving reply sends `data.changed { conversation }`. Planned: `browser.intervention_required` and `browser.session_changed` (Phase 5).
+Replies need no event of their own: an arriving reply sends `data.changed { conversation }`. Browser changes need none either: a request to the person or a session change sends `data.changed { browser }` (the separate events once planned were dropped).
 
 Core availability is not an event: main reports it through `onCoreState` (ADR 020).

@@ -8,6 +8,7 @@ import { RpcPeer, silentLogger, uuidv7 } from '@tabreach/protocol';
 import { createEndpointPair } from '@tabreach/protocol/testing';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ProfileManager } from './profiles.js';
+import { safeUrl } from './profiles.js';
 import { redactSnapshot } from './tasks.js';
 import { BrowserWorker } from './worker.js';
 
@@ -141,5 +142,13 @@ describe('diagnostics redaction', () => {
     ).toBe(
       '- heading "Sign in" [level=1]\n- textbox "Username": [value]\n- textbox "Password": [value]\n- button "Sign in"',
     );
+  });
+
+  it('keeps link paths but not their queries (audit 5.5)', () => {
+    expect(redactSnapshot('- link "Reset":\n  - /url: https://x.test/reset?token=abc#t')).toBe(
+      '- link "Reset":\n  - /url: https://x.test/reset',
+    );
+    expect(safeUrl('https://x.test/cb?code=123#frag')).toBe('https://x.test/cb');
+    expect(safeUrl('about:blank')).toBe('about:');
   });
 });

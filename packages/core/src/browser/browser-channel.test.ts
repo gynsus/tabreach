@@ -18,7 +18,8 @@ type Script =
   | 'unrecognized'
   | 'crash_before_checkpoint'
   | 'crash_after_checkpoint'
-  | 'unsupported';
+  | 'unsupported'
+  | 'control_taken';
 
 const result = (over: Partial<TaskResult>): TaskResult => ({
   status: 'succeeded',
@@ -47,6 +48,9 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
         return result({ status: 'unsupported_state', stateId: null, committed: false }) as ResponseOf<T>;
       }
       if (script === 'crash_before_checkpoint') throw new Error('worker exited');
+      if (script === 'control_taken') {
+        return result({ status: 'failed', errorKey: 'task.controlTaken', committed: false }) as ResponseOf<T>;
+      }
       // The worker asks core before pressing, exactly as over the port.
       const { proceed } = env.services.checkpoints.reach({ taskId, phase: 'about_to_commit' });
       if (!proceed) {
@@ -189,5 +193,11 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
     expect(env.services.checkpoints.reach({ taskId: uuidv7(), phase: 'about_to_commit' })).toEqual({
       proceed: false,
     });
+  });
+
+  it('a window the person took before the checkpoint stays open for them; nothing was sent (audit 5.5)', async () => {
+    scripts.push('control_taken');
+    expect(await send()).toMatchObject({ outcome: 'not_sent', errorClass: 'user_control' });
+    expect(env.services.browser.list(false)[0]?.session).not.toBeNull();
   });
 });
