@@ -5,6 +5,8 @@ const JUNK = /[\uFFFC\u200B-\u200D\u2060\uFEFF]/g;
 const QUOTE_INTRO: RegExp[] = [
   // Apple Mail, Gmail, Thunderbird (English), possibly already quoted: "On 28 Sep 2026, at 9:10 PM, Ann <a@b> wrote:"
   /^(>\s*)?On\b.{0,200}\bwrote:\s*$/i,
+  // Date first, then the sender (Spark and others): "September 28, 2026 9:10 PM, "Ann" <a@b> wrote:"
+  /^(>\s*)?.{0,200}(\d{4}|<[^<>\s]+@[^<>\s]+>).{0,200}\swrote:\s*$/i,
   // Gmail in Russian: "пн, 28 сент. 2026 г. в 21:10, Ann <a@b>:" and "... пишет:"
   /^(>\s*)?.{0,120}\d{4}.{0,80}<[^<>\s]+@[^<>\s]+>:\s*$/,
   // `\b` is ASCII-only in JavaScript, so Cyrillic words are delimited by whitespace.

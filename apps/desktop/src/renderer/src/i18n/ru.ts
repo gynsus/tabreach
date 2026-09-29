@@ -493,6 +493,7 @@ export const ru: Catalog = {
     emptyFilter: 'Здесь пусто.',
     select: 'Выберите переписку.',
     you: 'Вы',
+    via: 'через {{address}}',
     classifications: {
       reply: 'Ответ',
       out_of_office: 'Автоответ «нет на месте»',

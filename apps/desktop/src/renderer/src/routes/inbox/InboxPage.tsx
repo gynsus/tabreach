@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ConversationMessage, ConversationSummary } from '@tabreach/protocol';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
@@ -123,6 +123,7 @@ function ConversationItem(props: {
             {t(`inbox.classifications.${c.lastClassification}`)}
           </Badge>
         ) : null}
+        {c.lastLabel ? <AiLabel label={c.lastLabel} /> : null}
         {c.needsReview ? <Badge tone="warn">{t('inbox.filters.review')}</Badge> : null}
       </span>
     </button>
@@ -158,7 +159,8 @@ function Thread({ summary }: { summary: ConversationSummary }) {
     <article aria-label={data.title} className="grid max-w-3xl gap-4 p-6">
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="text-[15px] font-semibold">{data.title}</h2>
-        <span className="text-xs text-faint">{data.accountAddress}</span>
+        {data.contactAddress ? <span className="text-xs text-soft">{data.contactAddress}</span> : null}
+        <span className="text-xs text-faint">{t('inbox.via', { address: data.accountAddress })}</span>
         {data.contactId ? (
           <Link
             to={`/contacts/${data.contactId}`}
@@ -168,14 +170,22 @@ function Thread({ summary }: { summary: ConversationSummary }) {
           </Link>
         ) : null}
       </header>
-      {data.messages.map((m) => (
-        <Message key={m.id} message={m} />
+      {data.messages.map((m, i) => (
+        <Message key={m.id} message={m} latest={i === data.messages.length - 1} />
       ))}
     </article>
   );
 }
 
-function Message({ message: m }: { message: ConversationMessage }) {
+/** What AI read in a reply; the prefix says it is the model's reading, not a fact. */
+function AiLabel({ label }: { label: NonNullable<ConversationMessage['label']> }) {
+  const { t } = useTranslation();
+  const labelTone =
+    label === 'interested' ? 'ok' : label === 'opt_out' || label === 'not_interested' ? 'bad' : 'neutral';
+  return <Badge tone={labelTone}>AI · {t(`inbox.labels.${label}`)}</Badge>;
+}
+
+function Message({ message: m, latest }: { message: ConversationMessage; latest: boolean }) {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
@@ -194,8 +204,16 @@ function Message({ message: m }: { message: ConversationMessage }) {
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
   const outbound = m.direction === 'outbound';
+  // Opening a conversation shows its latest message, not the oldest one.
+  const scrollHere = useCallback(
+    (el: HTMLElement | null) => {
+      if (el && latest) el.scrollIntoView({ block: 'start' });
+    },
+    [latest],
+  );
   return (
     <section
+      ref={scrollHere}
       data-testid="message"
       data-direction={m.direction}
       className={cn(
@@ -208,19 +226,7 @@ function Message({ message: m }: { message: ConversationMessage }) {
         {m.classification ? (
           <Badge tone={tone[m.classification]}>{t(`inbox.classifications.${m.classification}`)}</Badge>
         ) : null}
-        {m.label ? (
-          <Badge
-            tone={
-              m.label === 'interested'
-                ? 'ok'
-                : m.label === 'opt_out' || m.label === 'not_interested'
-                  ? 'bad'
-                  : 'neutral'
-            }
-          >
-            AI · {t(`inbox.labels.${m.label}`)}
-          </Badge>
-        ) : null}
+        {m.label ? <AiLabel label={m.label} /> : null}
         <span className="ml-auto font-mono text-[10px] text-faint">
           {formatDateTime(m.occurredAt, i18n.language)}
         </span>
