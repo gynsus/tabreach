@@ -547,6 +547,11 @@ export class CampaignEngine {
           contentHash: hash,
         },
         signal: ctx.signal,
+        onSendError: (error) =>
+          this.d.logger.warn(
+            { event: 'send.threw', runId: run.id, channel: step.channel, error: String(error) },
+            'send threw; outcome unknown',
+          ),
         onReconciled: (settled) =>
           audit(settled === 'completed' ? 'completed' : 'failed', {
             reconciled: true,
@@ -568,13 +573,20 @@ export class CampaignEngine {
           ) {
             throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'run.changed' });
           }
+          // The address may have been edited while the inbox was read (audit 4.5): never the old one.
+          const freshFacts = this.contact(e.contact_id);
           const freshApproval = this.currentApproval(run.id);
-          if (!freshApproval || freshApproval.status !== 'approved' || freshApproval.content_hash !== hash) {
+          if (
+            freshFacts?.email_normalized !== target ||
+            !freshApproval ||
+            freshApproval.status !== 'approved' ||
+            freshApproval.content_hash !== hash
+          ) {
             throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'approval.stale' });
           }
           if (this.earlierAttempt(e, run, intentKey(intent)))
             throw new PermanentError('earlier_attempt_unresolved');
-          const verdict = this.policyVerdict(e, run, step, facts, target);
+          const verdict = this.policyVerdict(e, run, step, freshFacts, target);
           if (verdict.kind !== 'ok') throw new PolicyBlocked(verdict);
           const pacing = this.d.policy.checkChannel(channel, intentKey(intent));
           if (pacing.kind !== 'ok') throw new PolicyBlocked(pacing);
@@ -839,7 +851,10 @@ export class CampaignEngine {
         step.subject,
         step.body,
         signature,
-        ...used.flatMap((f) => [f.claim, f.quote]),
+        // Verified text only: the quotes and the pages they were found on — never the model's own
+        // wording of a claim (audit 4.5).
+        ...used.map((f) => f.quote),
+        ...this.evidenceTexts(used.map((f) => f.id)),
         ...this.previousMessages(e, run.step_position).flatMap((m) => [m.subject ?? '', m.body]),
       ],
     });
@@ -863,12 +878,18 @@ export class CampaignEngine {
       .all(draft.id) as { key: string; passed: number; detail: string | null }[];
     if (!allPassed(checks.map((c) => ({ key: c.key as 'length', passed: c.passed === 1, detail: c.detail }))))
       return false;
+    // The sample is of the same kind of message: this version, this step, this origin — approving
+    // template messages says nothing about what AI writes (audit 4.5).
     const { n } = this.d.db
       .prepare(
-        `SELECT COUNT(*) AS n FROM approvals a JOIN campaign_enrollments ce ON ce.id = a.campaign_enrollment_id
-         WHERE ce.campaign_version_id = ? AND a.status = 'approved' AND a.decided_by = 'user'`,
+        `SELECT COUNT(*) AS n FROM approvals a
+         JOIN campaign_enrollments ce ON ce.id = a.campaign_enrollment_id
+         JOIN workflow_runs r ON r.id = a.workflow_run_id
+         JOIN message_drafts d ON d.id = a.message_draft_id
+         WHERE ce.campaign_version_id = ? AND r.step_position = (SELECT step_position FROM workflow_runs WHERE id = ?)
+           AND d.origin = ? AND a.status = 'approved' AND a.decided_by = 'user'`,
       )
-      .get(e.campaign_version_id) as { n: number };
+      .get(e.campaign_version_id, draft.workflow_run_id, draft.origin) as { n: number };
     return n >= config.sampleSize;
   }
 
@@ -881,6 +902,19 @@ export class CampaignEngine {
          WHERE f.id IN (${ids.map(() => '?').join(', ')}) AND f.verified = 1 AND f.quote IS NOT NULL`,
       )
       .all(...ids) as { id: string; claim: string; quote: string; url: string | null }[];
+  }
+
+  /** The captured text of the pages the given facts were verified on. */
+  private evidenceTexts(factIds: string[]): string[] {
+    if (factIds.length === 0) return [];
+    return (
+      this.d.db
+        .prepare(
+          `SELECT DISTINCT ev.text FROM research_facts f JOIN evidence ev ON ev.id = f.evidence_id
+           WHERE f.id IN (${factIds.map(() => '?').join(', ')}) AND f.verified = 1`,
+        )
+        .all(...factIds) as { text: string }[]
+    ).map((r) => r.text);
   }
 
   /** What was actually sent to this contact in earlier steps of the enrollment. */
@@ -925,7 +959,7 @@ export class CampaignEngine {
           {
             companyId: facts.company_id,
             instructions: step.instructions,
-            stepNumber: run.step_position + 1,
+            stepNumber: run.step_position,
             maxLength: Math.max(100, config.maxLength - signature.text.length - 2),
             recipient: {
               firstName: facts.first_name,

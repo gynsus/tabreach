@@ -33,3 +33,10 @@ AI drafts differ per recipient, so approving a campaign cannot mean approving it
 ## Migration impact
 
 Migration 14 adds `message_drafts.origin` (existing drafts read as `template`) and the `draft_checks` table. Existing campaign configs get the new fields' defaults when parsed.
+
+## Audit 4.5 changes (2026-09-29)
+
+- **Grounding sources** are verified text only: the quotes of the facts the draft used and the captured text of the pages they were found on, plus the contact's and company's fields, the step's instructions, template and signature, and earlier sent messages. The model's own wording of a claim is no longer a source.
+- **Sentence starts are checked.** A capitalised word after `. ! ? …` or at a line start passes only if it is plainly an ordinary word (a listed opener, a Russian verb/adverb/adjective ending, an English -ly/-ing/-ed form) or appears in lower case in the draft; any other one is checked like a name. Brackets, quotes, colons and dashes no longer exempt a word.
+- **Links**: anything shaped like a host name with a TLD of two or more letters (any TLD), besides URLs and email addresses.
+- **Sample for auto-approval** counts only messages of the same campaign version, the same step and the same origin approved by the user: approving template messages is no sample of AI drafts.

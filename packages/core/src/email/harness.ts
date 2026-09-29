@@ -77,6 +77,8 @@ export class Harness {
           : this.chat.http(url, init),
       webHttp: (url, init) => this.webHttp(url, init),
       sleep: async () => {},
+      // Fixture hosts (acme.test) stand for public sites.
+      resolveHost: async () => ['93.184.216.34'],
       logger: capturingLogger(this.logs),
     });
     this.dispatcher = new Dispatcher({

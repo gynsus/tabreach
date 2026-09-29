@@ -31,6 +31,8 @@ export async function executeSideEffect(opts: {
   guard?: () => void;
   /** Told when reconciliation settled an earlier attempt, for the audit trail. */
   onReconciled?: (outcome: 'completed' | 'not_sent') => void;
+  /** Told why a send threw (the outcome is `unknown` either way), for the logs. */
+  onSendError?: (error: unknown) => void;
 }): Promise<ExecutionOutcome> {
   const { ledger, channel, signal } = opts;
   const key = intentKey(opts.intent);
@@ -75,8 +77,9 @@ export async function executeSideEffect(opts: {
   let result;
   try {
     result = await channel.send({ ...opts.message, idempotencyKey: key }, signal);
-  } catch {
+  } catch (error) {
     // We cannot tell whether it left; treat as possibly sent.
+    opts.onSendError?.(error);
     settle(() => ledger.markUnknown(id, 'send_threw'));
     return { outcome: 'unknown', sideEffectId: id, errorClass: 'send_threw' };
   }

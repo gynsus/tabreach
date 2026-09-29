@@ -45,6 +45,7 @@ export function extractPage(html: string, url: string): ExtractedPage {
     ).parse();
     text = article?.textContent ?? '';
   } catch {
+    // Readability gives up on some markup; the page's whole visible text is used instead (below).
     text = '';
   }
   if (text.trim().length < 50) text = document.body?.textContent ?? '';

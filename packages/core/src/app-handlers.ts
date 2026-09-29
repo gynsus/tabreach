@@ -60,6 +60,8 @@ export interface AppServicesOptions {
   webHttp?: Http;
   /** Waiting between requests to the same site (research pacing); tests skip it. */
   sleep?: (ms: number) => Promise<void>;
+  /** DNS for research fetching (tests map fixture hosts to a public address). */
+  resolveHost?: (host: string) => Promise<string[]>;
 }
 
 const noCipher: SecretCipher = {
@@ -179,6 +181,7 @@ export class AppServices {
       changed: (entities) => this.changed(entities),
       language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
       ...(options.sleep ? { sleep: options.sleep } : {}),
+      ...(options.resolveHost ? { resolveHost: options.resolveHost } : {}),
     });
     this.drafts = new DraftWriter({
       ai: this.ai,

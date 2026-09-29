@@ -91,10 +91,9 @@ describe('AI gateway', () => {
       ctx(),
     );
     h.anthropic.answer({ input: { summary: 'b', score: 0 }, inputTokens: 2_000_000, outputTokens: 100_000 });
-    await call(); // first call has no price → cost unknown for the month
+    await call(); // the first call had no price → the month's total is shown as unknown
     expect(h.services.ai.usage().costUsd).toBeNull();
-    h.db.prepare('DELETE FROM ai_calls WHERE cost_usd IS NULL').run();
-    expect(h.services.ai.usage().costUsd).toBeCloseTo(7.5);
+    // …but an unpriced call does not switch the budget off: the known 7.5 already exceeds 7 (audit 4.5).
     await expect(call()).rejects.toMatchObject({ kind: 'budget' });
     expect(h.anthropic.requests).toHaveLength(2);
   });

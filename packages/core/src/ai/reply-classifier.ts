@@ -97,7 +97,11 @@ export class ReplyClassifier {
     try {
       result = await this.d.gateway.run(
         classifyReply,
-        { subject: m.subject, text: m.body ?? '', nonce: AiGateway.nonce() },
+        {
+          subject: m.subject?.slice(0, 500) ?? null,
+          text: (m.body ?? '').slice(0, 20_000),
+          nonce: AiGateway.nonce(),
+        },
         { correlationId, signal },
       );
     } catch (error) {

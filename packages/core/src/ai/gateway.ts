@@ -184,6 +184,13 @@ export class AiGateway {
     };
   }
 
+  private knownSpend(month: string = this.now().toISOString().slice(0, 7)): number {
+    const row = this.db
+      .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM ai_calls WHERE substr(created_at, 1, 7) = ?`)
+      .get(month) as { spent: number };
+    return row.spent;
+  }
+
   /**
    * Runs a template. Throws AiError; the answer is validated (and once repaired) before it is
    * returned, so callers get typed data or nothing.
@@ -203,8 +210,9 @@ export class AiGateway {
         correlationId: ctx.correlationId,
       });
 
-    const spent = this.usage().costUsd;
-    if (config.monthlyBudgetUsd !== null && spent !== null && spent >= config.monthlyBudgetUsd) {
+    // Unpriced calls cannot be counted, but they must not switch the budget off: what is known counts.
+    const spent = this.knownSpend();
+    if (config.monthlyBudgetUsd !== null && spent >= config.monthlyBudgetUsd) {
       record('refused', { inputTokens: 0, outputTokens: 0 }, Date.now(), 'budget');
       throw new AiError('budget', 'Monthly AI budget reached');
     }
