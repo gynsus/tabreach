@@ -72,6 +72,13 @@ Diagnostic primitives (`page.navigate`, `page.click`, `page.type`, `page.extract
 
 Before the worker performs the irreversible part of a critical task (the final click/submit), it sends `task.checkpoint { phase: 'about_to_commit' }` and waits for core's acknowledgement. Core persists the checkpoint and sets the side-effect ledger entry to `executing` first. This guarantees that a crash after the click is always recognizable as "possibly sent" and handled as `unknown`.
 
+Implemented (Phase 5c-2):
+
+- Worker → core request `task.checkpoint { taskId, phase: 'about_to_commit' }` → `{ proceed }`. The worker presses only on `proceed: true`; a refusal, a timeout or a core that does not answer means no press (`failed`, `task.checkpointRefused`, `committed: false`).
+- Core (`BrowserCheckpoints`) answers only a checkpoint it expects for that task, once; it refuses while the app is paused (the task stops at its safe point) or when the ledger row can no longer turn `executing` (a person decided meanwhile). Otherwise it commits `executing` and records `{ phase, at }` on the task before answering.
+- The generic executor is the `commit` task: a pack **action** (`actions[]` in the pack, ADR 017) names the states it may start from, the fields to fill (control by role and accessible name → task parameter), the one commit control, and the `success` and `rejected` states. After the press a recognized success is `succeeded`; a recognized rejection is `failed`/`task.rejected` (verified not sent); anything else — including taking control, an emergency stop or a broken page — is `unknown`. Results carry `committed`: `false` guarantees nothing was pressed. `assisted` mode stops at the checkpoint, focuses the control and waits up to 10 minutes for the person's press.
+- `BrowserActionChannel` in core is a `MessageChannel` with `commitsAtCheckpoint`: `executeSideEffect` leaves the ledger `reserved` until the checkpoint, so a failure before it is `not_sent` (`failed_before_commit`, safe to run again) and a worker lost after it is `unknown` (`worker_lost_after_checkpoint`). `reconcile` cannot look anything up and returns `unknown`: a person confirms under Status → Needs attention → Unconfirmed sends, with the window left open and paused. Web forms (Phase 6) and LinkedIn (Phase 7) register their channels on it.
+
 ## Browser tasks
 
 Examples (the set grows with adapters):

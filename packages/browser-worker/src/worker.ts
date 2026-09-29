@@ -10,7 +10,7 @@ import { version as playwrightVersion } from 'playwright-core/package.json';
 import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
 import type { ProfileManager } from './profiles.js';
-import { bundledPacks, runCheckState, type TaskEnvironment } from './tasks.js';
+import { ASSISTED_WAIT_MS, bundledPacks, runCheckState, runCommit, type TaskEnvironment } from './tasks.js';
 
 const HEARTBEAT_MS = 10_000;
 const TASK_TIMEOUT_MS = 120_000;
@@ -23,6 +23,7 @@ const controlTaken = (): TaskResult => ({
   url: null,
   diagnostics: null,
   errorKey: 'task.controlTaken',
+  committed: false,
 });
 
 export interface WorkerOptions {
@@ -90,14 +91,14 @@ export class BrowserWorker {
           const context = profiles.automationContext(req.sessionId);
           const control = profiles.taskSignal(req.sessionId);
           const page = context.pages()[0] ?? (await context.newPage());
+          const timeoutMs = TASK_TIMEOUT_MS + (req.mode === 'assisted' ? ASSISTED_WAIT_MS : 0);
+          const signal = AbortSignal.any([control, AbortSignal.timeout(timeoutMs)]);
           let result: TaskResult;
           try {
-            result = await runCheckState(
-              page,
-              req,
-              this.taskEnv,
-              AbortSignal.any([control, AbortSignal.timeout(TASK_TIMEOUT_MS)]),
-            );
+            result =
+              req.taskType === 'commit'
+                ? await runCommit(page, req, this.taskEnv, signal, () => this.checkpoint(req.taskId, signal))
+                : await runCheckState(page, req, this.taskEnv, signal);
           } catch (error) {
             // The person took control, paused it, or an emergency stop: the task stops here.
             if (control.aborted) return controlTaken();
@@ -122,6 +123,24 @@ export class BrowserWorker {
       diagnosticsDir: this.options.tasks?.diagnosticsDir ?? 'diagnostics',
       pack: this.options.tasks?.pack ?? bundledPacks,
     };
+  }
+
+  /**
+   * Waits for core to record the checkpoint (docs/07). No answer means no press: a core that cannot
+   * record "executing" must not have the action happen behind its back.
+   */
+  private async checkpoint(taskId: string, signal: AbortSignal): Promise<boolean> {
+    try {
+      const ack = await this.peer.request(
+        'task.checkpoint',
+        { taskId, phase: 'about_to_commit' },
+        { timeoutMs: 30_000 },
+      );
+      return ack.proceed && !signal.aborted;
+    } catch (error) {
+      this.options.logger.warn({ event: 'task.checkpoint_failed', taskId, err: error }, 'no checkpoint ack');
+      return false;
+    }
   }
 
   async health(): Promise<WorkerHealth> {

@@ -114,17 +114,42 @@ export const workerHeartbeatSchema = z.object({
 
 // Browser tasks (docs/07 "Browser tasks", Phase 5b) --------------------------------------------
 
-/** check_state: go to a page and say which pack state it is in (e.g. "is this profile signed in?"). */
-export const browserTaskTypeSchema = z.enum(['check_state']);
+/**
+ * check_state: go to a page and say which pack state it is in (e.g. "is this profile signed in?").
+ * commit: perform one critical pack action (docs/07 "Checkpoint rule", Phase 5c).
+ */
+export const browserTaskTypeSchema = z.enum(['check_state', 'commit']);
 
-export const workerTaskRunSchema = z.object({
-  taskId: id,
-  sessionId: id,
-  taskType: browserTaskTypeSchema,
-  /** The channel pack whose states are expected; generic challenge states always apply. */
-  packId: z.string().min(1),
-  url: z.url(),
-});
+/**
+ * auto: the worker presses the commit control after core acknowledges the checkpoint.
+ * assisted: the worker prepares and waits for the person to press it (docs/07, ADR 015).
+ */
+export const browserExecutionModeSchema = z.enum(['auto', 'assisted']);
+export type BrowserExecutionMode = z.infer<typeof browserExecutionModeSchema>;
+
+export const workerTaskRunSchema = z
+  .object({
+    taskId: id,
+    sessionId: id,
+    taskType: browserTaskTypeSchema,
+    /** The channel pack whose states are expected; generic challenge states always apply. */
+    packId: z.string().min(1),
+    url: z.url(),
+    /** commit: the pack action, the values of its fields, and who presses the final control. */
+    actionId: z.string().min(1).optional(),
+    params: z.record(z.string(), z.string().max(20_000)).default({}),
+    mode: browserExecutionModeSchema.default('auto'),
+  })
+  .refine((t) => t.taskType !== 'commit' || t.actionId !== undefined, {
+    message: 'A commit task names its action',
+    path: ['actionId'],
+  });
+
+/** Worker → core, before the irreversible press: core records "executing" first, then answers. */
+export const taskCheckpointSchema = z.object({ taskId: id, phase: z.literal('about_to_commit') });
+export type TaskCheckpoint = z.infer<typeof taskCheckpointSchema>;
+/** proceed: false — do not press (paused, the intent changed); nothing has been sent. */
+export const taskCheckpointAckSchema = z.object({ proceed: z.boolean() });
 
 /** Failure evidence (docs/07 "Diagnostics"): never field values, never passwords. */
 export const taskDiagnosticsSchema = z.object({
@@ -140,7 +165,8 @@ export type TaskDiagnostics = z.infer<typeof taskDiagnosticsSchema>;
 
 /** Success is never implied by the absence of an error (docs/07). */
 export const taskResultSchema = z.object({
-  status: z.enum(['succeeded', 'unsupported_state', 'needs_human', 'failed']),
+  /** unknown: the commit control was pressed and the result could not be recognized. */
+  status: z.enum(['succeeded', 'unsupported_state', 'needs_human', 'failed', 'unknown']),
   stateId: z.string().nullable(),
   stateKind: z.enum(['page', 'logged_in', 'login', 'challenge']).nullable(),
   packVersion: z.string(),
@@ -148,6 +174,11 @@ export const taskResultSchema = z.object({
   diagnostics: taskDiagnosticsSchema.nullable(),
   /** Translatable key for `failed` (`task.navigationFailed`, …). */
   errorKey: z.string().nullable(),
+  /**
+   * commit tasks: the commit control was pressed (or the person may have pressed it). A result
+   * with `committed: false` guarantees nothing was sent.
+   */
+  committed: z.boolean().default(false),
 });
 export type TaskResult = z.infer<typeof taskResultSchema>;
 

@@ -69,6 +69,7 @@ No retry unless the user changes inputs.
 5. for each interrupted task, look at the last persisted checkpoint:
    - before `about_to_commit` → safe to re-run the task from the start (re-open, re-verify);
    - at/after `about_to_commit` → side effect is `executing`; run reconciliation, never re-execute blindly;
+   - implemented in Phase 5c-2 by `BrowserActionChannel`: the ledger stays `reserved` until the checkpoint, so the first case is `not_sent` (`failed_before_commit`) and the second `unknown` (`worker_lost_after_checkpoint`), settled by a person;
 6. resume.
 
 ## Core crash / app quit

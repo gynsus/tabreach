@@ -13,6 +13,7 @@ import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
 import { TimelineService } from './audit/timeline.js';
 import { BrowserService } from './browser/browser-service.js';
+import { BrowserCheckpoints } from './browser/checkpoints.js';
 import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
@@ -107,6 +108,8 @@ export class AppServices {
   readonly timeline: TimelineService;
   readonly browser: BrowserService;
   readonly signInChecks: SignInCheckService;
+  /** The `about_to_commit` checkpoints of browser channels (docs/07). */
+  readonly checkpoints: BrowserCheckpoints;
   readonly appControl: AppControlService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
@@ -144,6 +147,12 @@ export class AppServices {
       paused: () => this.appControl.isPaused(),
       notify: options.notify ?? (() => {}),
       language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
+    });
+    this.checkpoints = new BrowserCheckpoints({
+      db,
+      now,
+      logger: logger.child({ component: 'browser' }),
+      paused: () => this.appControl.isPaused(),
     });
     this.ledger = new SideEffectLedger(db, now);
     this.prospects = new ProspectService(db, this.audit, now);

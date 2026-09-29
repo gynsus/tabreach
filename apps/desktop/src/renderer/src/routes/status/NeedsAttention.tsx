@@ -80,6 +80,9 @@ function JobRow({ job }: { job: Job }) {
   );
 }
 
+/** Channels whose sends are browser actions: the person checks the site, not a Sent folder. */
+const BROWSER_CHANNELS = new Set(['web_form', 'linkedin']);
+
 const useUncertainSends = () =>
   useQuery({ queryKey: ['jobs', 'uncertain'], queryFn: () => call('sideEffects.uncertain', {}) });
 
@@ -136,6 +139,9 @@ function UncertainRow({ item }: { item: UncertainSend }) {
           {formatDateTime(item.attemptedAt, i18n.language)}
         </span>
         {item.checking ? <span className="text-xs text-warn">{t('attention.checking')}</span> : null}
+        {BROWSER_CHANNELS.has(item.channel) ? (
+          <span className="text-xs text-soft">{t('attention.browserHint')}</span>
+        ) : null}
       </span>
       <span className="flex gap-1">
         <Button

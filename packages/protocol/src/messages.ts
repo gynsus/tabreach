@@ -11,6 +11,8 @@ import {
   workerSessionRefSchema,
   workerSetModeSchema,
   workerTaskRunSchema,
+  taskCheckpointSchema,
+  taskCheckpointAckSchema,
   taskResultSchema,
   profileCheckSignInSchema,
   interventionSchema,
@@ -135,8 +137,8 @@ export const secretCipherTextSchema = z.object({ ciphertext: z.base64() });
 /**
  * Request/response registry. `channel` names the process pair:
  * - app:     renderer -> core
- * - browser: core -> browser worker
- * - host:    core -> main (Electron-only capabilities)
+ * - browser: core -> browser worker (and `task.checkpoint`, worker -> core)
+ * - host:    core -> main (Electron-only capabilities; and `control.fromTray`, main -> core)
  */
 export const requests = {
   'app.health': {
@@ -550,6 +552,13 @@ export const requests = {
     response: browserProfileSchema,
   },
   /** Runs one browser task in a session under automation; refused in any other control mode. */
+  /** Worker → core (the one browser request core answers): the `about_to_commit` checkpoint. */
+  'task.checkpoint': {
+    channel: 'browser',
+    kind: 'command',
+    request: taskCheckpointSchema,
+    response: taskCheckpointAckSchema,
+  },
   'task.run': {
     channel: 'browser',
     kind: 'command',

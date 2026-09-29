@@ -63,6 +63,42 @@ export const pageStateSchema = z
   .strict();
 export type PageState = z.infer<typeof pageStateSchema>;
 
+const stateId = z
+  .string()
+  .regex(/^[a-z0-9_]+(\.[a-z0-9_]+)+$/, 'State ids are dotted lowercase, e.g. linkedin.profile.connectable');
+
+/** A control found by role and accessible name (never by CSS or DOM position — docs/07). */
+export const controlSchema = z
+  .object({
+    role: nonEmpty,
+    nameAny: z.array(nonEmpty).min(1),
+  })
+  .strict();
+export type Control = z.infer<typeof controlSchema>;
+
+/**
+ * A critical action (docs/07 "Checkpoint rule", Phase 5c): from a recognized state, fill the
+ * named fields, stop at the checkpoint, press the commit control once, then recognize the result.
+ * Only a `success` state counts as done; a `rejected` state is a verified "not sent"; anything
+ * else after the press is `unknown`.
+ */
+export const packActionSchema = z
+  .object({
+    id: stateId,
+    /** States the action may start from. */
+    from: z.array(stateId).min(1),
+    fill: z
+      .array(z.object({ control: controlSchema, param: z.string().regex(/^[a-z][a-zA-Z0-9]*$/) }).strict())
+      .default([]),
+    /** The control whose press is irreversible. */
+    commit: controlSchema,
+    success: z.array(stateId).min(1),
+    /** The site refused before anything left (a validation error on the same form, say). */
+    rejected: z.array(stateId).default([]),
+  })
+  .strict();
+export type PackAction = z.infer<typeof packActionSchema>;
+
 export const adapterPackSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
@@ -70,6 +106,7 @@ export const adapterPackSchema = z
     /** generic: states for any site (challenges); the others belong to one channel adapter. */
     channel: z.enum(['generic', 'linkedin', 'web_form']),
     states: z.array(pageStateSchema).min(1),
+    actions: z.array(packActionSchema).default([]),
   })
   .strict()
   .superRefine((pack, ctx) => {
@@ -83,6 +120,24 @@ export const adapterPackSchema = z
         });
       }
       seen.add(state.id);
+    });
+    const actions = new Set<string>();
+    pack.actions.forEach((action, i) => {
+      if (actions.has(action.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'id'],
+          message: `Duplicate action id ${action.id}`,
+        });
+      }
+      actions.add(action.id);
+      for (const key of ['from', 'success', 'rejected'] as const) {
+        action[key].forEach((ref, j) => {
+          if (!seen.has(ref)) {
+            ctx.addIssue({ code: 'custom', path: ['actions', i, key, j], message: `Unknown state ${ref}` });
+          }
+        });
+      }
     });
   });
 export type AdapterPack = z.infer<typeof adapterPackSchema>;
