@@ -8,7 +8,13 @@ import {
   type PageProbe,
   type PageState,
 } from '@tabreach/adapter-packs';
-import type { BrowserExecutionMode, TaskDiagnostics, TaskResult } from '@tabreach/protocol';
+import type {
+  BrowserExecutionMode,
+  TargetIdentity,
+  TaskDiagnostics,
+  TaskResult,
+  ThreadReadResult,
+} from '@tabreach/protocol';
 import type { Page } from 'playwright-core';
 import { safeUrl } from './profiles.js';
 
@@ -147,6 +153,7 @@ export async function runCommit(
     actionId?: string | undefined;
     params: Record<string, string>;
     mode: BrowserExecutionMode;
+    identity?: TargetIdentity | undefined;
   },
   env: TaskEnvironment,
   signal: AbortSignal,
@@ -178,7 +185,16 @@ export async function runCommit(
   } catch {
     return notCommitted({ errorKey: 'task.navigationFailed' });
   }
-  const start = await recognize(page, [...challenges, ...byId(action.from)], RECOGNIZE_TIMEOUT_MS, signal);
+  const logins = pack.states.filter((st) => st.kind === 'login');
+  const start = await recognize(
+    page,
+    [...challenges, ...logins, ...byId(action.from)],
+    RECOGNIZE_TIMEOUT_MS,
+    signal,
+  );
+  if (start?.kind === 'login') {
+    return notCommitted({ stateId: start.id, stateKind: 'login', errorKey: 'task.loginRequired' });
+  }
   if (!start || start.kind === 'challenge') {
     if (start) await page.bringToFront();
     return notCommitted({
@@ -188,6 +204,43 @@ export async function runCommit(
       diagnostics: start ? null : await diagnose(page, req.taskId, action.from, env),
     });
   }
+  // The page must be about the intended person before anything is clicked (FR-LIN-003).
+  if (action.identity) {
+    if (!req.identity || !pack.identity) return notCommitted({ errorKey: 'task.identityRequired' });
+    if (!(await identityMatches(page, pack.identity, req.identity))) {
+      return notCommitted({
+        status: 'unsupported_state',
+        stateId: start.id,
+        errorKey: 'task.identityMismatch',
+      });
+    }
+  }
+  // Non-critical clicks that lead to the action (open a dialog, "Add a note"), each landing in an
+  // expected state, or nothing more happens.
+  let at = start;
+  for (const step of action.steps) {
+    signal.throwIfAborted();
+    const control = await findControl(page, step.click);
+    if (!control) {
+      return notCommitted({
+        status: 'unsupported_state',
+        stateId: at.id,
+        diagnostics: await diagnose(page, req.taskId, step.expect, env),
+      });
+    }
+    await control.click({ timeout: 10_000 });
+    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
+    if (!next || next.kind === 'challenge') {
+      if (next) await page.bringToFront();
+      return notCommitted({
+        status: next ? 'needs_human' : 'unsupported_state',
+        stateId: next?.id ?? at.id,
+        stateKind: next?.kind ?? null,
+        diagnostics: next ? null : await diagnose(page, req.taskId, step.expect, env),
+      });
+    }
+    at = next;
+  }
 
   for (const field of action.fill) {
     const value = req.params[field.param];
@@ -195,7 +248,7 @@ export async function runCommit(
     if (value === undefined || !control) {
       return notCommitted({
         status: 'unsupported_state',
-        stateId: start.id,
+        stateId: at.id,
         diagnostics: await diagnose(page, req.taskId, action.from, env),
       });
     }
@@ -216,10 +269,15 @@ export async function runCommit(
   const startUrl = page.url();
   const handle = await commit.elementHandle({ timeout: 5_000 }).catch(() => null);
   if (!handle) return notCommitted({ errorKey: 'task.stateChanged' });
+  const where = action.steps.at(-1)?.expect ?? action.from;
   const stillThere = async () =>
     page.url() === startUrl &&
     (await handle.evaluate((el) => el.isConnected).catch(() => false)) &&
-    (await matchState(byId(action.from), probeOf(page)).catch(() => null))?.id === start.id;
+    (await matchState(byId(where), probeOf(page)).catch(() => null))?.id === at.id &&
+    (!action.identity ||
+      !pack.identity ||
+      !req.identity ||
+      (await identityMatches(page, pack.identity, req.identity)));
   if (!(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
 
   signal.throwIfAborted();
@@ -338,4 +396,145 @@ export async function pruneDiagnostics(dir: string, now = Date.now()): Promise<n
     }
   }
   return removed;
+}
+
+/** Lower case, without accents, spaces collapsed: "Ánn  Lee" ~ "ann lee". */
+export function normalizeName(name: string): string {
+  return name.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/** The profile slug after the pack's profile path: `/in/ann-lee/` → `ann-lee`. */
+export function profileSlug(url: string, profilePath: string): string | null {
+  try {
+    const path = decodeURIComponent(new URL(url).pathname).toLowerCase();
+    const at = path.indexOf(profilePath);
+    if (at === -1) return null;
+    return path.slice(at + profilePath.length).split('/')[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+/** FR-LIN-003: the page's profile path and the name in its heading are the intended person's. */
+export async function identityMatches(
+  page: Page,
+  rule: NonNullable<AdapterPack['identity']>,
+  expected: TargetIdentity,
+): Promise<boolean> {
+  const slug = profileSlug(page.url(), rule.profilePath);
+  if (!slug || slug !== profileSlug(expected.profileUrl, rule.profilePath)) return false;
+  const headings = page.getByRole(rule.name.role as Parameters<Page['getByRole']>[0], {
+    ...(rule.name.level ? { level: rule.name.level } : {}),
+  });
+  if ((await headings.count()) < 1) return false;
+  const shown = normalizeName(
+    (await headings
+      .first()
+      .textContent({ timeout: 5_000 })
+      .catch(() => '')) ?? '',
+  );
+  const want = normalizeName(expected.name);
+  // A heading may add a pronoun or a badge after the name; it never starts with someone else's.
+  return shown === want || shown.startsWith(`${want} `);
+}
+
+/**
+ * Reads a conversation (FR-LIN-004): opens it with the reader's steps (clicks that send nothing)
+ * and lists the directions of its messages. `replied`: an inbound message after our last one.
+ */
+export async function readThread(
+  page: Page,
+  req: { taskId: string; packId: string; url: string; readerId: string; identity: TargetIdentity },
+  env: TaskEnvironment,
+  signal: AbortSignal,
+): Promise<ThreadReadResult> {
+  const pack = env.pack(req.packId);
+  const reader = pack?.readers.find((r) => r.id === req.readerId);
+  const base: Omit<ThreadReadResult, 'status'> = {
+    messages: [],
+    replied: false,
+    stateId: null,
+    packVersion: pack?.version ?? 'none',
+    errorKey: null,
+    diagnostics: null,
+  };
+  if (!pack || !reader) return { ...base, status: 'failed', errorKey: 'task.unknownAction' };
+  const byId = (ids: string[]) => pack.states.filter((st) => ids.includes(st.id));
+  const challenges = [...(env.pack('generic')?.states ?? []), ...pack.states].filter(
+    (st) => st.kind === 'challenge',
+  );
+  const logins = pack.states.filter((st) => st.kind === 'login');
+  try {
+    await page.goto(req.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  } catch {
+    return { ...base, status: 'failed', errorKey: 'task.navigationFailed' };
+  }
+  let at = await recognize(
+    page,
+    [...challenges, ...logins, ...byId(reader.from)],
+    RECOGNIZE_TIMEOUT_MS,
+    signal,
+  );
+  if (at?.kind === 'login')
+    return { ...base, status: 'failed', stateId: at.id, errorKey: 'task.loginRequired' };
+  if (!at || at.kind === 'challenge') {
+    return {
+      ...base,
+      status: at ? 'needs_human' : 'unsupported_state',
+      stateId: at?.id ?? null,
+      diagnostics: at ? null : await diagnose(page, req.taskId, reader.from, env),
+    };
+  }
+  if (reader.identity && (!pack.identity || !(await identityMatches(page, pack.identity, req.identity)))) {
+    return { ...base, status: 'unsupported_state', stateId: at.id, errorKey: 'task.identityMismatch' };
+  }
+  for (const step of reader.steps) {
+    signal.throwIfAborted();
+    const control = await findControl(page, step.click);
+    if (!control) {
+      return {
+        ...base,
+        status: 'unsupported_state',
+        stateId: at.id,
+        diagnostics: await diagnose(page, req.taskId, step.expect, env),
+      };
+    }
+    await control.click({ timeout: 10_000 });
+    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
+    if (!next || next.kind === 'challenge') {
+      return {
+        ...base,
+        status: next ? 'needs_human' : 'unsupported_state',
+        stateId: next?.id ?? at.id,
+        diagnostics: next ? null : await diagnose(page, req.taskId, step.expect, env),
+      };
+    }
+    at = next;
+  }
+  const list = await findControl(page, reader.list);
+  if (!list) {
+    // No conversation yet is an empty thread only when the page says so by having no list; the
+    // reader does not guess: an unrecognized page is unsupported.
+    return {
+      ...base,
+      status: 'unsupported_state',
+      stateId: at.id,
+      diagnostics: await diagnose(page, req.taskId, [reader.id], env),
+    };
+  }
+  const items = list.getByRole(reader.item as Parameters<Page['getByRole']>[0]);
+  const count = Math.min(await items.count(), 500);
+  const messages: { direction: 'in' | 'out' }[] = [];
+  for (let i = 0; i < count; i++) {
+    const item = items.nth(i);
+    const label = (
+      (await item.getAttribute('aria-label').catch(() => null)) ??
+      (await item.textContent({ timeout: 5_000 }).catch(() => '')) ??
+      ''
+    ).toLowerCase();
+    messages.push({ direction: reader.outgoingAny.some((p) => label.includes(p)) ? 'out' : 'in' });
+  }
+  const lastOut = messages.map((m) => m.direction).lastIndexOf('out');
+  const replied = messages.some((m, i) => m.direction === 'in' && i > lastOut);
+  return { ...base, status: 'ok', stateId: at.id, messages, replied };
 }

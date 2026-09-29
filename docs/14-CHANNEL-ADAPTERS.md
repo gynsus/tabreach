@@ -207,6 +207,10 @@ LinkedIn's UI changes often. Page states, locators (with UI-language variants), 
 - MVP: packs are bundled with the app, schema-validated at load, versioned; the pack version is recorded on every action event.
 - Post-MVP: packs can be delivered as signed files (Ed25519, public key in the app) without an app release.
 
+### Implementation status (Phase 7a, 2026-09-29)
+
+The `linkedin` pack 0.2.0 recognizes profile states (can connect, can message, invitation pending), the invitation dialog and its note, the message composer and the confirmation texts, the sign-in wall and the security checkpoint, in English and Russian. Actions: `linkedin.connect` (without a note), `linkedin.connect.note`, `linkedin.message`; each checks the target's identity first — the profile slug after `/in/` and the name in the page's first-level heading (accents and case ignored; the heading may continue after the name) — and again at the checkpoint, runs its non-critical steps (open the dialog, "Add a note", open the composer) each into an expected state, fills, and presses once after the `about_to_commit` checkpoint. The reader `linkedin.thread` opens the conversation and returns only the direction of each message and whether the person answered after our last one (FR-LIN-004). A sign-in wall is `task.loginRequired`; a page about someone else is `task.identityMismatch`; a pending invitation is not a state to act from. Default throttles live in the pack (`limits`: 15 invitations a day, 80 a week, 30 messages and 60 profile visits a day, 90 s apart). The states were built against LinkedIn-like fixtures with own markup (`fixtures/sites/public/li`); real pages are checked by hand before the pack is trusted, and every action records the pack version.
+
 ## Webhook adapter
 
 Lightweight integration output:

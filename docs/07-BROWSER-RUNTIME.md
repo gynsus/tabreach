@@ -49,6 +49,7 @@ session.focus / session.setMode { controlMode } / session.setOverlay { context }
 task.run     { taskId, sessionId, taskType: check_state | commit, packId, url, actionId?, params, mode }
 task.render  { taskId, sessionId, url, site }          # RenderPageForResearch (ADR 027)
 task.cancel  { taskId }                                 # the waiting job was cancelled
+thread.read  { taskId, sessionId, packId, url, readerId, identity } -> { status, messages, replied }  # Phase 7
 form.prepare / form.submit                              # website forms (Phase 6, docs/14)
 
 # worker -> core

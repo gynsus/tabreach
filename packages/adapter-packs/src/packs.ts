@@ -77,9 +77,18 @@ const generic = {
  * LinkedIn sign-in states (Phase 5b). Only what "is this profile signed in?" needs; the adapter's
  * action states come with Phase 7.
  */
+/**
+ * LinkedIn (Phase 7, docs/14): sign-in states, profile states, the invitation and message
+ * actions, the thread reader and the product's own throttles. Names list the English and Russian
+ * interface. These states were built against representative fixtures; real LinkedIn pages are
+ * checked by hand and the pack is versioned whenever they change (ADR 017).
+ */
+const IN = 'https://www.linkedin.com/in/*';
+const heading = { role: 'heading', level: 1 };
+const button = (...nameAny: string[]) => ({ role: 'button', nameAny });
 const linkedin = {
   id: 'linkedin',
-  version: '0.1.0',
+  version: '0.2.0',
   channel: 'linkedin',
   states: [
     {
@@ -95,6 +104,7 @@ const linkedin = {
         'https://www.linkedin.com/login*',
         'https://www.linkedin.com/uas/login*',
         'https://www.linkedin.com/checkpoint/lg/*',
+        'https://www.linkedin.com/authwall*',
         'https://www.linkedin.com/',
         'https://www.linkedin.com/?*',
       ],
@@ -108,7 +118,97 @@ const linkedin = {
       url: ['https://www.linkedin.com/feed*'],
       requires: [{ role: 'navigation' }, { role: 'main' }],
     },
+    // Dialogs first: over a profile, the profile's own buttons are still there.
+    {
+      id: 'linkedin.invite.note',
+      url: [IN],
+      requires: [{ role: 'dialog' }, { role: 'textbox', nameAny: ['Add a note', 'Добавьте заметку'] }],
+    },
+    {
+      id: 'linkedin.invite.dialog',
+      url: [IN],
+      requires: [{ role: 'dialog' }, button('Send without a note', 'Отправить без заметки')],
+    },
+    {
+      id: 'linkedin.message.sent',
+      url: [IN],
+      requires: [
+        { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
+        { textAny: ['Message sent', 'Сообщение отправлено'] },
+      ],
+    },
+    {
+      id: 'linkedin.composer',
+      url: [IN],
+      requires: [
+        { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
+        { role: 'textbox', nameAny: ['Write a message', 'Напишите сообщение'] },
+      ],
+    },
+    {
+      id: 'linkedin.invite.sent',
+      url: [IN],
+      requires: [heading, { textAny: ['Invitation sent', 'Приглашение отправлено'] }],
+    },
+    { id: 'linkedin.profile.pending', url: [IN], requires: [heading, button('Pending', 'Ожидание')] },
+    {
+      id: 'linkedin.profile.connectable',
+      url: [IN],
+      requires: [heading, button('Connect', 'Установить контакт')],
+    },
+    { id: 'linkedin.profile.messageable', url: [IN], requires: [heading, button('Message', 'Сообщение')] },
   ],
+  actions: [
+    {
+      id: 'linkedin.connect',
+      from: ['linkedin.profile.connectable'],
+      identity: true,
+      steps: [{ click: button('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] }],
+      commit: button('Send without a note', 'Отправить без заметки'),
+      success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
+    },
+    {
+      id: 'linkedin.connect.note',
+      from: ['linkedin.profile.connectable'],
+      identity: true,
+      steps: [
+        { click: button('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] },
+        { click: button('Add a note', 'Добавить заметку'), expect: ['linkedin.invite.note'] },
+      ],
+      fill: [{ control: { role: 'textbox', nameAny: ['Add a note', 'Добавьте заметку'] }, param: 'note' }],
+      commit: button('Send', 'Отправить'),
+      success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
+    },
+    {
+      id: 'linkedin.message',
+      from: ['linkedin.profile.messageable'],
+      identity: true,
+      steps: [{ click: button('Message', 'Сообщение'), expect: ['linkedin.composer'] }],
+      fill: [
+        { control: { role: 'textbox', nameAny: ['Write a message', 'Напишите сообщение'] }, param: 'body' },
+      ],
+      commit: button('Send', 'Отправить'),
+      success: ['linkedin.message.sent'],
+    },
+  ],
+  readers: [
+    {
+      id: 'linkedin.thread',
+      from: ['linkedin.profile.messageable'],
+      identity: true,
+      steps: [{ click: button('Message', 'Сообщение'), expect: ['linkedin.composer'] }],
+      list: { role: 'list', nameAny: ['Conversation', 'Переписка'] },
+      item: 'listitem',
+      outgoingAny: ['message from you', 'сообщение от вас', 'you sent'],
+    },
+  ],
+  identity: { name: { role: 'heading', level: 1 }, profilePath: '/in/' },
+  // Product defaults, not LinkedIn's limits and no guarantee against restrictions (FR-LIN-005).
+  limits: {
+    perDay: { connect: 15, message: 30, visit: 60 },
+    perWeek: { connect: 80 },
+    minSpacingSeconds: 90,
+  },
 };
 
 /**

@@ -16,6 +16,7 @@ import {
   ASSISTED_WAIT_MS,
   bundledPacks,
   pruneDiagnostics,
+  readThread,
   runCheckState,
   runCommit,
   type TaskEnvironment,
@@ -147,6 +148,23 @@ export class BrowserWorker {
               return profiles.modeOf(req.sessionId) === 'automation' ? cancelled() : controlTaken();
             }
             throw error;
+          } finally {
+            task.end();
+          }
+        })
+        .handle('thread.read', async (req) => {
+          const context = profiles.automationContext(req.sessionId);
+          const task = profiles.beginTask(req.sessionId, req.taskId);
+          try {
+            const page = context.pages()[0] ?? (await context.newPage());
+            const result = await readThread(
+              page,
+              req,
+              this.taskEnv,
+              AbortSignal.any([task.signal, AbortSignal.timeout(TASK_TIMEOUT_MS)]),
+            );
+            if (result.status === 'needs_human') profiles.setMode(req.sessionId, 'paused', 'challenge');
+            return result;
           } finally {
             task.end();
           }

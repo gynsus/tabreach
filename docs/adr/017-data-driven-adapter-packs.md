@@ -40,3 +40,7 @@ Post-MVP: packs may be delivered independently as Ed25519-signed files verified 
 
 - Packs gain `actions[]`: a critical action as data — `from` states, `fill` (a control by role and accessible names, with UI-language variants, and the task parameter that fills it), one `commit` control, `success` and `rejected` states. Every state an action names must exist in the same pack. Controls are found by role and exact accessible name and must be unique and visible; otherwise the task is `unsupported_state` and nothing is pressed.
 - The worker's `commit` task executes an action with the `about_to_commit` checkpoint (docs/07). Web-form and LinkedIn packs will define their actions in Phases 6 and 7.
+
+## Implementation (Phase 7a, 2026-09-29)
+
+- Actions gain `steps` (non-critical clicks, each into an expected state) and `identity` (the target is checked before any click and at the checkpoint); packs gain `identity` (where a profile page names the person, and the profile path), `readers` (a list control whose items are messages; `outgoingAny` phrases mark ours; only directions are read) and `limits` (product throttles per action class and minimum spacing). A pack's own `login` states make a task report `task.loginRequired`.

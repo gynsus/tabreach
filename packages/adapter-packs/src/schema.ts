@@ -87,6 +87,14 @@ export const packActionSchema = z
     id: stateId,
     /** States the action may start from. */
     from: z.array(stateId).min(1),
+    /**
+     * Non-critical clicks before filling, in order (open the invitation dialog, "Add a note", open
+     * the message composer): each control must be unique and visible, and after it the page must
+     * be in one of `expect`. Nothing here sends anything.
+     */
+    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    /** The target is checked (profile URL and name, docs/14) on the start page before any click. */
+    identity: z.boolean().default(false),
     fill: z
       .array(z.object({ control: controlSchema, param: z.string().regex(/^[a-z][a-zA-Z0-9]*$/) }).strict())
       .default([]),
@@ -98,6 +106,47 @@ export const packActionSchema = z
   })
   .strict();
 export type PackAction = z.infer<typeof packActionSchema>;
+
+/**
+ * Reads a conversation (FR-LIN-004): from a recognized state, the listed steps open the thread;
+ * the messages are the `item`s inside the `list` control, and an item whose accessible name or
+ * text says one of `outgoingAny` is ours. Only directions are read, never message text.
+ */
+export const packReaderSchema = z
+  .object({
+    id: stateId,
+    from: z.array(stateId).min(1),
+    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    identity: z.boolean().default(false),
+    list: controlSchema,
+    item: nonEmpty,
+    outgoingAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
+  })
+  .strict();
+export type PackReader = z.infer<typeof packReaderSchema>;
+
+/** Where the person's name is on a profile page, for identity checks (FR-LIN-003). */
+export const identitySchema = z
+  .object({
+    /** The heading that names the person. */
+    name: z.object({ role: nonEmpty, level: z.number().int().min(1).max(6).optional() }).strict(),
+    /** The profile path: `/in/<slug>` is compared, not the full URL. */
+    profilePath: z.string().regex(/^\/[a-z]+\/$/),
+  })
+  .strict();
+
+/**
+ * Product safety throttles for a channel account (docs/14, FR-LIN-005): conservative defaults, not
+ * the platform's published limits. Spacing keeps actions reviewable; it is never randomized.
+ */
+export const packLimitsSchema = z
+  .object({
+    perDay: z.record(z.string(), z.number().int().min(0).max(1_000)),
+    perWeek: z.record(z.string(), z.number().int().min(0).max(5_000)).default({}),
+    minSpacingSeconds: z.number().int().min(0).max(3_600),
+  })
+  .strict();
+export type PackLimits = z.infer<typeof packLimitsSchema>;
 
 /** What a contact-form field means (docs/14 "Standard semantic fields"). */
 export const FORM_FIELDS = [
@@ -146,6 +195,9 @@ export const adapterPackSchema = z
     channel: z.enum(['generic', 'linkedin', 'web_form']),
     states: z.array(pageStateSchema).default([]),
     actions: z.array(packActionSchema).default([]),
+    readers: z.array(packReaderSchema).default([]),
+    identity: identitySchema.optional(),
+    limits: packLimitsSchema.optional(),
     forms: formKnowledgeSchema.optional(),
   })
   .strict()
@@ -180,6 +232,29 @@ export const adapterPackSchema = z
             ctx.addIssue({ code: 'custom', path: ['actions', i, key, j], message: `Unknown state ${ref}` });
           }
         });
+      }
+      action.steps.forEach((step, j) =>
+        step.expect.forEach((ref) => {
+          if (!seen.has(ref))
+            ctx.addIssue({
+              code: 'custom',
+              path: ['actions', i, 'steps', j],
+              message: `Unknown state ${ref}`,
+            });
+        }),
+      );
+      if (action.identity && !pack.identity) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'identity'],
+          message: 'The pack has no identity rule',
+        });
+      }
+    });
+    pack.readers.forEach((reader, i) => {
+      for (const ref of [...reader.from, ...reader.steps.flatMap((st) => st.expect)]) {
+        if (!seen.has(ref))
+          ctx.addIssue({ code: 'custom', path: ['readers', i], message: `Unknown state ${ref}` });
       }
     });
   });
