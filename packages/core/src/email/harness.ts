@@ -91,6 +91,7 @@ export class Harness {
       ...this.services.inbox.jobTypes(),
       ...this.services.classifier.jobTypes(),
       ...this.services.research.jobTypes(),
+      ...this.services.signInChecks.jobTypes(),
     ]) {
       this.dispatcher.register(type);
     }

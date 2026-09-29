@@ -81,6 +81,8 @@ export const ru: Catalog = {
     companyTimezoneHint: 'По нему считаются часы отправки для контактов без своего пояса.',
   },
   browser: {
+    checkLinkedIn: 'Проверить вход в LinkedIn',
+    checking: 'Проверяю…',
     title: 'Профили браузера',
     subtitle: 'Отдельные личности Chrome. Входите на сайты сами в окне профиля — он это запомнит.',
     new: 'Новый профиль',
@@ -120,11 +122,34 @@ export const ru: Catalog = {
     privacy:
       'Профили хранятся только на этом Mac. TabReach никогда не спрашивает и не хранит пароли от сайтов и не копирует профили в логи и резервные копии.',
     health: {
+      linkedin_feed: 'Вход в LinkedIn выполнен.',
+      linkedin_login: 'Вход в LinkedIn не выполнен: откройте профиль и войдите.',
+      task_navigationFailed: 'Сайт не открылся.',
+      task_unknownPack: 'Неизвестный сайт.',
       profile_inUse: 'Этот профиль использует другой Chrome. Закройте его и проверьте снова.',
       profile_notWritable: 'В папку профиля нельзя записать.',
       profile_open: 'Сейчас открыт.',
       profile_new: 'Ещё не открывался.',
     },
+  },
+  interventions: {
+    title: 'Нужны вы',
+    reasons: {
+      security_challenge: 'Проверка безопасности в «{{profile}}»',
+      login_required: 'Нужен вход в «{{profile}}»',
+      unsupported_state: 'TabReach не узнаёт страницу в «{{profile}}»',
+    },
+    instructions: {
+      security_challenge:
+        'Сайт просит подтвердить, что перед ним человек. TabReach никогда не проходит это сам: сделайте это в окне Chrome и нажмите «Готово».',
+      login_required: 'Войдите сами в окне Chrome и нажмите «Готово».',
+      unsupported_state:
+        'Страница выглядит не так, как ожидает TabReach. Посмотрите на окно; если всё в порядке, нажмите «Готово» — проверка повторится.',
+    },
+    done: 'Готово — проверить снова',
+    cancel: 'Отмена',
+    diagnostics: 'Что увидел TabReach',
+    expected: 'Ожидаемые страницы',
   },
   companies: {
     suppress: 'Не связываться',

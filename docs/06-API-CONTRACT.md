@@ -190,6 +190,9 @@ command profiles.update / profiles.archive
 command profiles.delete                # { id, confirmName } — closed profiles only; the name must match exactly
 command profiles.open                  # { id, startUrl? } — visible Chrome, control mode `human`
 command profiles.close / profiles.focus / profiles.check
+command profiles.checkSignIn          # { id, packId: linkedin } — opens under automation, recognizes the site's page (Phase 5b)
+query   interventions.list             # open requests to the person, with diagnostics of unrecognized pages
+command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
 ```
 
 `data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `chrome.missing`, `worker.notRunning`.

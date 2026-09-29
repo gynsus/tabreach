@@ -17,6 +17,7 @@ import { useLiveUpdates } from '../lib/live';
 import { cn } from '../lib/cn';
 import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
 import { useInboxCounts } from '../routes/inbox/InboxPage';
+import { useInterventions } from '../routes/status/Interventions';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
   const Icon = props.icon;
@@ -76,6 +77,7 @@ export function AppShell() {
   const { t } = useTranslation();
   const pending = usePendingApprovals();
   const inbox = useInboxCounts();
+  const interventions = useInterventions();
   return (
     <div className="flex h-full">
       <nav
@@ -104,7 +106,12 @@ export function AppShell() {
         <div className="mt-auto">
           <NavGroup label={t('nav.system')}>
             <NavItem to="/browser" icon={Globe} label={t('nav.browser')} />
-            <NavItem to="/status" icon={Gauge} label={t('nav.status')} />
+            <NavItem
+              to="/status"
+              icon={Gauge}
+              label={t('nav.status')}
+              count={interventions.data?.items.length ?? 0}
+            />
             <NavItem to="/settings" icon={Settings} label={t('nav.settings')} />
           </NavGroup>
         </div>

@@ -12,6 +12,12 @@ Human involvement is a first-class runtime state, used when:
 - the step's execution mode is `assisted` or `manual`;
 - the user explicitly wants control.
 
+## Implementation status (Phase 5b, 2026-09-29)
+
+- `human_interventions` (migration 16) with reasons `security_challenge`, `login_required`, `unsupported_state`. The first user is the profile sign-in check: a challenge or an unrecognized page pauses the session, brings the window forward and lists a request under **Status → Needs you**, with the diagnostics of an unrecognized page.
+- **Done** puts the session back under automation and checks again in the same window (the check is the revalidation); **Cancel** closes the window and ends the run; closing the window or losing the worker cancels open requests.
+- Take control / return control, the overlay and outcome confirmation come with 5c.
+
 ## Session control modes
 
 A browser session has exactly one control mode:

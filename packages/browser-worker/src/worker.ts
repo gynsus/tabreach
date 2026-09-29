@@ -3,8 +3,10 @@ import { version as playwrightVersion } from 'playwright-core/package.json';
 import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
 import type { ProfileManager } from './profiles.js';
+import { bundledPacks, runCheckState, type TaskEnvironment } from './tasks.js';
 
 const HEARTBEAT_MS = 10_000;
+const TASK_TIMEOUT_MS = 120_000;
 
 export interface WorkerOptions {
   /** Channel to core, provided by the host adapter (ADR 012). */
@@ -14,6 +16,8 @@ export interface WorkerOptions {
   profiles?: ProfileManager;
   /** How often the worker tells core which sessions are alive. */
   heartbeatMs?: number;
+  /** Diagnostics folder and packs for browser tasks. */
+  tasks?: Partial<TaskEnvironment>;
   /** Overrides for tests: fixture Chrome locations, headless mode, Chromium. */
   chromeLocations?: string[];
   launch?: Omit<LaunchCheckOptions, 'logger'>;
@@ -52,6 +56,18 @@ export class BrowserWorker {
         .handle('session.focus', async ({ sessionId }) => {
           await profiles.focus(sessionId);
           return { ok: true as const };
+        })
+        .handle('session.setMode', ({ sessionId, controlMode }) => {
+          profiles.setMode(sessionId, controlMode);
+          return { ok: true as const };
+        })
+        .handle('task.run', async (req) => {
+          const context = profiles.automationContext(req.sessionId);
+          const page = context.pages()[0] ?? (await context.newPage());
+          const result = await runCheckState(page, req, this.taskEnv, AbortSignal.timeout(TASK_TIMEOUT_MS));
+          // A challenge stops automation at once; core records why and asks the person (docs/11).
+          if (result.status === 'needs_human') profiles.setMode(req.sessionId, 'paused');
+          return result;
         });
       profiles.notify = (change) => this.peer.emit('session.changed', change);
       const beat = () => this.peer.emit('worker.heartbeat', { sessions: profiles.heartbeat() });
@@ -61,6 +77,13 @@ export class BrowserWorker {
   }
 
   private readonly heartbeat: ReturnType<typeof setInterval> | null = null;
+
+  private get taskEnv(): TaskEnvironment {
+    return {
+      diagnosticsDir: this.options.tasks?.diagnosticsDir ?? 'diagnostics',
+      pack: this.options.tasks?.pack ?? bundledPacks,
+    };
+  }
 
   async health(): Promise<WorkerHealth> {
     const chrome = await detectChrome(this.options.chromeLocations);

@@ -120,6 +120,21 @@ export class BrowserService {
 
   /** Opens a visible Chrome window with the profile, under the user's control. */
   async open(id: string, startUrl: string | null, ctx: CommandContext): Promise<BrowserProfile> {
+    await this.openSession(id, 'human', startUrl, ctx.correlationId);
+    this.record('profile.opened', id, ctx);
+    return this.get(id);
+  }
+
+  /**
+   * Starts Chrome with the profile. `human`: the user's window; `automation`: a browser task's
+   * (docs/11). Returns the session id.
+   */
+  async openSession(
+    id: string,
+    controlMode: ControlMode,
+    startUrl: string | null,
+    correlationId: string,
+  ): Promise<string> {
     const row = this.row(id);
     if (row.status === 'archived') throw conflict('profile.archived');
     if (this.liveSession(id)) throw conflict('profile.alreadyOpen');
@@ -129,15 +144,15 @@ export class BrowserService {
     this.d.db
       .prepare(
         `INSERT INTO browser_sessions (id, browser_profile_id, control_mode, status, started_at)
-         VALUES (?, ?, 'human', 'opening', ?)`,
+         VALUES (?, ?, ?, 'opening', ?)`,
       )
-      .run(sessionId, id, ts);
+      .run(sessionId, id, controlMode, ts);
     this.d.changed(['browser']);
     try {
       const opened = await worker.request(
         'profile.open',
-        { profileId: id, sessionId, channel: row.browser_channel, startUrl },
-        { timeoutMs: OPEN_TIMEOUT_MS, correlationId: ctx.correlationId },
+        { profileId: id, sessionId, channel: row.browser_channel, startUrl, controlMode },
+        { timeoutMs: OPEN_TIMEOUT_MS, correlationId },
       );
       transaction(this.d.db, () => {
         const now = this.d.now().toISOString();
@@ -151,7 +166,6 @@ export class BrowserService {
             `UPDATE browser_profiles SET status = 'open', last_opened_at = ?, updated_at = ? WHERE id = ?`,
           )
           .run(now, now, id);
-        this.record('profile.opened', id, ctx, { chrome: opened.chromeVersion });
       });
     } catch (error) {
       this.endSession(sessionId, 'closed');
@@ -159,8 +173,45 @@ export class BrowserService {
     } finally {
       this.d.changed(['browser', 'activity']);
     }
-    return this.get(id);
+    return sessionId;
   }
+
+  /** Changes who drives a session, in the worker first (it enforces it), then in the record. */
+  async setControlMode(sessionId: string, controlMode: ControlMode): Promise<void> {
+    await this.requireWorker().request('session.setMode', { sessionId, controlMode });
+    this.d.db
+      .prepare('UPDATE browser_sessions SET control_mode = ? WHERE id = ?')
+      .run(controlMode, sessionId);
+    this.d.changed(['browser']);
+  }
+
+  async closeSession(sessionId: string): Promise<void> {
+    const worker = this.d.worker();
+    if (worker) await worker.request('profile.close', { sessionId });
+    this.endSession(sessionId, 'closed');
+    this.d.changed(['browser']);
+  }
+
+  async focusSession(sessionId: string): Promise<void> {
+    await this.requireWorker().request('session.focus', { sessionId });
+  }
+
+  sessionById(
+    sessionId: string,
+  ): { id: string; profileId: string; controlMode: ControlMode; status: SessionStatus } | null {
+    const s = this.session(sessionId);
+    return s
+      ? { id: s.id, profileId: s.browser_profile_id, controlMode: s.control_mode, status: s.status }
+      : null;
+  }
+
+  liveSessionOf(profileId: string): { id: string; controlMode: ControlMode } | null {
+    const s = this.liveSession(profileId);
+    return s ? { id: s.id, controlMode: s.control_mode } : null;
+  }
+
+  /** Told when a session ends for any reason (closed window, worker gone), e.g. to end its tasks. */
+  onSessionEnded: (sessionId: string) => void = () => {};
 
   async close(id: string, ctx: CommandContext): Promise<BrowserProfile> {
     const session = this.liveSession(id);
@@ -277,18 +328,20 @@ export class BrowserService {
         )
         .run(ts, s.browser_profile_id);
     });
+    this.onSessionEnded(sessionId);
   }
 
-  private storeHealth(id: string, status: ProfileHealthStatus, detail: string | null): void {
+  storeHealth(id: string, status: ProfileHealthStatus, detail: string | null): void {
     const ts = this.d.now().toISOString();
     this.d.db
       .prepare(
         `UPDATE browser_profiles SET health = ?, last_health_check_at = ?, updated_at = ?,
            status = CASE WHEN status IN ('archived', 'open') THEN status
-                         WHEN ? = 'unhealthy' THEN 'unhealthy' ELSE 'ready' END
+                         WHEN ? = 'unhealthy' THEN 'unhealthy'
+                         WHEN ? = 'needs_login' THEN 'needs_login' ELSE 'ready' END
          WHERE id = ?`,
       )
-      .run(JSON.stringify({ status, detail, checkedAt: ts }), ts, ts, status, id);
+      .run(JSON.stringify({ status, detail, checkedAt: ts }), ts, ts, status, status, id);
     this.d.changed(['browser']);
   }
 

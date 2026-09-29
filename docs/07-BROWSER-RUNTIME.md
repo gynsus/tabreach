@@ -34,7 +34,9 @@ Diagnostic          failure evidence (screenshot, a11y snapshot, ...)
 
 ## Browser protocol (core ↔ worker)
 
-Implemented in Phase 5a: `profile.open` (with a core-chosen `sessionId`), `profile.close`, `profile.healthCheck`, `profile.delete`, `session.focus`; events `session.changed` and `worker.heartbeat`. The rest below comes with 5b–5d.
+Implemented in Phase 5a: `profile.open` (with a core-chosen `sessionId`), `profile.close`, `profile.healthCheck`, `profile.delete`, `session.focus`; events `session.changed` and `worker.heartbeat`.
+
+Phase 5b: `profile.open` takes a `controlMode`; `session.setMode`; `task.run` for task type `check_state` (open a URL, recognize the page against the channel pack plus the generic challenge pack, polling up to 15 s). The worker refuses a task in any session not under `automation` (`session.notAutomation`) and pauses the session itself when it finds a challenge. `unsupported_state` comes with diagnostics: a screenshot in `<app data>/diagnostics/<task id>.png` and an accessibility snapshot with input values replaced by `[value]`. Checkpoints, overlay and the other task types come with 5c and the channel phases.
 
 Messages use the common envelope. Families:
 

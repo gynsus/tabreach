@@ -82,7 +82,10 @@ export const workerProfileOpenSchema = z.object({
   channel: browserChannelSchema,
   /** A page to show first, e.g. a site to sign in to. */
   startUrl: z.url().nullable(),
+  /** `human` when the user opens it; `automation` when a browser task does (docs/11). */
+  controlMode: controlModeSchema.default('human'),
 });
+export const workerSetModeSchema = z.object({ sessionId: id, controlMode: controlModeSchema });
 export const workerProfileOpenResultSchema = z.object({
   chromeVersion: z.string().nullable(),
   currentUrl: z.string().nullable(),
@@ -107,4 +110,74 @@ export type SessionChanged = z.infer<typeof sessionChangedSchema>;
 /** Worker → core, every few seconds: which sessions are alive and where they are. */
 export const workerHeartbeatSchema = z.object({
   sessions: z.array(z.object({ sessionId: id, currentUrl: z.string().nullable() })),
+});
+
+// Browser tasks (docs/07 "Browser tasks", Phase 5b) --------------------------------------------
+
+/** check_state: go to a page and say which pack state it is in (e.g. "is this profile signed in?"). */
+export const browserTaskTypeSchema = z.enum(['check_state']);
+
+export const workerTaskRunSchema = z.object({
+  taskId: id,
+  sessionId: id,
+  taskType: browserTaskTypeSchema,
+  /** The channel pack whose states are expected; generic challenge states always apply. */
+  packId: z.string().min(1),
+  url: z.url(),
+});
+
+/** Failure evidence (docs/07 "Diagnostics"): never field values, never passwords. */
+export const taskDiagnosticsSchema = z.object({
+  title: z.string().nullable(),
+  url: z.string().nullable(),
+  /** File name of the screenshot in the diagnostics folder. */
+  screenshot: z.string().nullable(),
+  /** Accessibility snapshot with the values of inputs removed; truncated. */
+  ariaSnapshot: z.string(),
+  expectedStates: z.array(z.string()),
+});
+export type TaskDiagnostics = z.infer<typeof taskDiagnosticsSchema>;
+
+/** Success is never implied by the absence of an error (docs/07). */
+export const taskResultSchema = z.object({
+  status: z.enum(['succeeded', 'unsupported_state', 'needs_human', 'failed']),
+  stateId: z.string().nullable(),
+  stateKind: z.enum(['page', 'logged_in', 'login', 'challenge']).nullable(),
+  packVersion: z.string(),
+  url: z.string().nullable(),
+  diagnostics: taskDiagnosticsSchema.nullable(),
+  /** Translatable key for `failed` (`task.navigationFailed`, …). */
+  errorKey: z.string().nullable(),
+});
+export type TaskResult = z.infer<typeof taskResultSchema>;
+
+// Sign-in checks and interventions (Phase 5b) -------------------------------------------------
+
+/** Channel packs whose sign-in a profile can be checked against. */
+export const signInPackSchema = z.enum(['linkedin']);
+export const profileCheckSignInSchema = z.object({ id, packId: signInPackSchema });
+
+export const interventionReasonSchema = z.enum(['security_challenge', 'login_required', 'unsupported_state']);
+export type InterventionReason = z.infer<typeof interventionReasonSchema>;
+
+/** Something only the person can do (docs/11): solve a challenge, sign in, or look at a page. */
+export const interventionSchema = z.object({
+  id,
+  reason: interventionReasonSchema,
+  profileId: id.nullable(),
+  profileName: z.string().nullable(),
+  /** The Chrome window is still open to act in. */
+  sessionOpen: z.boolean(),
+  /** The recognized state (e.g. `generic.captcha.recaptcha`), when there was one. */
+  stateId: z.string().nullable(),
+  url: z.string().nullable(),
+  diagnostics: taskDiagnosticsSchema.nullable(),
+  requestedAt: z.iso.datetime(),
+});
+export type Intervention = z.infer<typeof interventionSchema>;
+
+export const interventionResolveSchema = z.object({
+  id,
+  /** done: the person dealt with it, TabReach checks again. cancel: stop the work. */
+  outcome: z.enum(['done', 'cancel']),
 });

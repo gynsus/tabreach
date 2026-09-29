@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@mozilla/readability": "0.6.0",
+    "@tabreach/adapter-packs": "workspace:*",
     "@tabreach/protocol": "workspace:*",
     "imapflow": "2.1.2",
     "linkedom": "0.18.13",

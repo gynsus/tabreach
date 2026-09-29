@@ -292,6 +292,9 @@ importers:
 
   packages/browser-worker:
     dependencies:
+      '@tabreach/adapter-packs':
+        specifier: workspace:*
+        version: link:../adapter-packs
       '@tabreach/protocol':
         specifier: workspace:*
         version: link:../protocol
@@ -308,6 +311,9 @@ importers:
       '@mozilla/readability':
         specifier: 0.6.0
         version: 0.6.0
+      '@tabreach/adapter-packs':
+        specifier: workspace:*
+        version: link:../adapter-packs
       '@tabreach/protocol':
         specifier: workspace:*
         version: link:../protocol

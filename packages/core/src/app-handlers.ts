@@ -13,6 +13,7 @@ import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
 import { TimelineService } from './audit/timeline.js';
 import { BrowserService } from './browser/browser-service.js';
+import { SignInCheckService } from './browser/sign-in-check.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
@@ -100,6 +101,7 @@ export class AppServices {
   readonly drafts: DraftWriter;
   readonly timeline: TimelineService;
   readonly browser: BrowserService;
+  readonly signInChecks: SignInCheckService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -124,6 +126,16 @@ export class AppServices {
     });
     this.commands = new CommandLog(db, now);
     this.jobs = new JobQueue(db, now, options.onJobEnqueued);
+    this.signInChecks = new SignInCheckService({
+      db,
+      now,
+      audit: this.audit,
+      jobs: this.jobs,
+      browser: this.browser,
+      worker: options.worker ?? (() => null),
+      changed: (entities) => this.changed(entities),
+      logger: logger.child({ component: 'browser' }),
+    });
     this.ledger = new SideEffectLedger(db, now);
     this.prospects = new ProspectService(db, this.audit, now);
     this.imports = new ImportService(db, this.prospects, this.audit);
@@ -477,7 +489,13 @@ export class AppServices {
         await this.browser.focus(p.id);
         return { ok: true as const };
       })
-      .handle('profiles.check', (p) => this.browser.check(p.id));
+      .handle('profiles.check', (p) => this.browser.check(p.id))
+      .handle('profiles.checkSignIn', (p, c) => this.signInChecks.start(p.id, p.packId, ctx(c)))
+      .handle('interventions.list', () => ({ items: this.signInChecks.interventions() }))
+      .handle('interventions.resolve', async (p, c) => {
+        await this.signInChecks.resolve(p.id, p.outcome, ctx(c));
+        return { ok: true as const };
+      });
   }
 
   private jobAction(id: string, action: 'retry' | 'dismiss', correlationId: string): { ok: true } {
