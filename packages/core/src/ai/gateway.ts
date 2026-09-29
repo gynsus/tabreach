@@ -5,6 +5,7 @@ import {
   DEFAULT_AI_SETTINGS,
   uuidv7,
   type AiSettings,
+  type AiProviderName,
   type AiSettingsInput,
   type AiUsage,
   type AiUseCase,
@@ -17,11 +18,15 @@ import type { CommandContext } from '../prospects/prospect-service.js';
 import type { SecretStore } from '../secrets/secrets.js';
 import type { SettingsRepository } from '../settings/settings.js';
 import { AnthropicProvider } from './anthropic.js';
+import { OpenAiCompatibleProvider } from './openai-compatible.js';
 import type { PromptTemplate } from './prompts.js';
 import { AiError, type AiProvider, type Usage } from './provider.js';
 
 const SETTINGS_KEY = 'ai';
-const KEY_REF = 'ai.key';
+/** Before several providers there was one key, for Anthropic; it is still read as Anthropic's. */
+const LEGACY_KEY_REF = 'ai.key';
+const keyRefName = (provider: AiProviderName) => `ai.key.${provider}`;
+const PROVIDERS: AiProviderName[] = ['anthropic', 'openrouter', 'openai'];
 const keyRefSchema = z.object({ secretId: z.string() });
 const CALL_TIMEOUT_MS = 120_000;
 
@@ -36,7 +41,7 @@ export interface AiCallContext {
  * repair attempt), and records every call's tokens and cost — never the prompt or the content.
  */
 export class AiGateway {
-  private readonly provider: AiProvider;
+  private readonly providers: Record<AiProviderName, AiProvider>;
 
   constructor(
     private readonly db: DatabaseSync,
@@ -47,11 +52,24 @@ export class AiGateway {
     private readonly now: () => Date,
     private readonly logger: Logger,
   ) {
-    this.provider = new AnthropicProvider(http, () => this.apiKey());
+    this.providers = {
+      anthropic: new AnthropicProvider(http, () => this.apiKey('anthropic')),
+      openrouter: new OpenAiCompatibleProvider('openrouter', 'https://openrouter.ai/api/v1', http, () =>
+        this.apiKey('openrouter'),
+      ),
+      openai: new OpenAiCompatibleProvider('openai', 'https://api.openai.com/v1', http, () =>
+        this.apiKey('openai'),
+      ),
+    };
   }
 
   settings(): AiSettings {
-    return { ...this.config(), keySet: this.keyRef() !== undefined };
+    const config = this.config();
+    const keys = Object.fromEntries(PROVIDERS.map((p) => [p, this.keyRef(p) !== undefined])) as Record<
+      AiProviderName,
+      boolean
+    >;
+    return { ...config, keySet: keys[config.provider], keys };
   }
 
   update(input: AiSettingsInput, ctx: CommandContext): AiSettings {
@@ -65,29 +83,37 @@ export class AiGateway {
     return this.settings();
   }
 
-  async setKey(apiKey: string, ctx: CommandContext): Promise<void> {
+  async setKey(provider: AiProviderName, apiKey: string, ctx: CommandContext): Promise<void> {
     const secretId = await this.secrets.put('ai_api_key', apiKey);
-    const previous = this.keyRef();
-    this.settingsRepo.set(KEY_REF, { secretId });
-    if (previous) this.secrets.delete(previous.secretId);
+    const previous = this.keyRef(provider);
+    this.settingsRepo.set(keyRefName(provider), { secretId });
+    if (previous) this.dropKey(provider, previous.secretId);
     this.audit.record({
       actorType: 'user',
       actionType: 'ai.key_set',
       objectType: 'settings',
+      payload: { provider },
       correlationId: ctx.correlationId,
     });
   }
 
-  removeKey(ctx: CommandContext): void {
-    const ref = this.keyRef();
-    if (ref) this.secrets.delete(ref.secretId);
-    this.db.prepare('DELETE FROM settings WHERE key = ?').run(KEY_REF);
+  removeKey(provider: AiProviderName, ctx: CommandContext): void {
+    const ref = this.keyRef(provider);
+    if (ref) this.dropKey(provider, ref.secretId);
     this.audit.record({
       actorType: 'user',
       actionType: 'ai.key_removed',
       objectType: 'settings',
+      payload: { provider },
       correlationId: ctx.correlationId,
     });
+  }
+
+  private dropKey(provider: AiProviderName, secretId: string): void {
+    this.secrets.delete(secretId);
+    this.db
+      .prepare('DELETE FROM settings WHERE key IN (?, ?)')
+      .run(keyRefName(provider), provider === 'anthropic' ? LEGACY_KEY_REF : '');
   }
 
   /** A minimal real call with the classification model: proves the key, the model name and the network. */
@@ -168,7 +194,7 @@ export class AiGateway {
       const started = Date.now();
       let answer;
       try {
-        answer = await this.provider.structured({
+        answer = await this.provider().structured({
           model,
           system,
           user: prompt,
@@ -210,10 +236,11 @@ export class AiGateway {
     errorClass: string | null;
     correlationId: string;
   }): void {
+    // A price the user entered wins; otherwise what the provider reported (OpenRouter does).
     const price = this.config().prices[r.model];
     const cost = price
       ? (r.usage.inputTokens / 1e6) * price.inputPerMTok + (r.usage.outputTokens / 1e6) * price.outputPerMTok
-      : null;
+      : (r.usage.costUsd ?? null);
     this.db
       .prepare(
         `INSERT INTO ai_calls (id, use_case, provider, model, template_key, template_version, status, input_tokens,
@@ -223,7 +250,7 @@ export class AiGateway {
       .run(
         uuidv7(),
         r.template.useCase,
-        this.provider.name,
+        this.provider().name,
         r.model,
         r.template.key,
         r.template.version,
@@ -239,7 +266,7 @@ export class AiGateway {
     this.logger.info(
       {
         event: 'ai.call',
-        provider: this.provider.name,
+        provider: this.provider().name,
         model: r.model,
         template: `${r.template.key}@${r.template.version}`,
         status: r.status,
@@ -255,13 +282,20 @@ export class AiGateway {
     return this.settingsRepo.get(SETTINGS_KEY, aiSettingsInputSchema) ?? DEFAULT_AI_SETTINGS;
   }
 
-  private keyRef(): { secretId: string } | undefined {
-    return this.settingsRepo.get(KEY_REF, keyRefSchema);
+  private keyRef(provider: AiProviderName): { secretId: string } | undefined {
+    return (
+      this.settingsRepo.get(keyRefName(provider), keyRefSchema) ??
+      (provider === 'anthropic' ? this.settingsRepo.get(LEGACY_KEY_REF, keyRefSchema) : undefined)
+    );
   }
 
-  private async apiKey(): Promise<string | null> {
-    const ref = this.keyRef();
+  private async apiKey(provider: AiProviderName): Promise<string | null> {
+    const ref = this.keyRef(provider);
     return ref ? this.secrets.reveal(ref.secretId) : null;
+  }
+
+  private provider(): AiProvider {
+    return this.providers[this.config().provider];
   }
 }
 

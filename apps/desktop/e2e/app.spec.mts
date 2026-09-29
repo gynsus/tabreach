@@ -235,7 +235,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
 });
 
 test('connecting an email account fills in known servers and reports a wrong server', async () => {
-  await go('#/settings');
+  await go('#/settings/email');
   await page.getByRole('button', { name: 'Connect an account' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect an email account' });
   await dialog.getByLabel('Email address').fill('someone@gmail.com');
@@ -262,7 +262,7 @@ test('connecting an email account fills in known servers and reports a wrong ser
 });
 
 test('the Gmail wizard explains the setup and checks the client ID before opening a browser', async () => {
-  await go('#/settings');
+  await go('#/settings/email');
   await page.getByRole('button', { name: 'Connect Gmail' }).click();
   const dialog = page.getByRole('dialog', { name: 'Connect Gmail through your own Google Cloud project' });
   await expect(dialog.getByText('enable the Gmail API')).toBeVisible();
@@ -274,7 +274,7 @@ test('the Gmail wizard explains the setup and checks the client ID before openin
 });
 
 test('stores an AI key encrypted without showing it again, and removes it', async () => {
-  await go('#/settings');
+  await go('#/settings/ai');
   await expect(page.getByRole('heading', { name: 'AI', exact: true })).toBeVisible();
   await expect(page.getByText('Not set', { exact: true })).toBeVisible();
   // A made-up key: nothing is called with it (no "Test key" here — that would reach the real API).
@@ -287,12 +287,33 @@ test('stores an AI key encrypted without showing it again, and removes it', asyn
   await expect(page.getByText('Not set', { exact: true })).toBeVisible();
 });
 
+test('settings are split into tabs, and each AI provider keeps its own key', async () => {
+  await go('#/settings');
+  await expect(page.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
+  await page.getByRole('tab', { name: 'AI', exact: true }).click();
+  await expect(page.getByRole('radio', { name: /Anthropic/ })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: /OpenRouter/ }).click();
+  await expect(page.getByRole('radio', { name: /OpenRouter/ })).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByLabel('Model for reply labels')).toHaveValue('deepseek/deepseek-v4.1-flash');
+  await expect(page.getByText(/openrouter\.ai\/keys/)).toBeVisible();
+  await page.getByLabel('New API key').fill('sk-or-v1-e2e-not-a-real-key-000000');
+  await page.getByRole('button', { name: 'Save' }).first().click();
+  await expect(page.getByText('Stored encrypted', { exact: true })).toBeVisible();
+  // Anthropic has no key of its own; switching back shows that.
+  await page.getByRole('radio', { name: /Anthropic/ }).click();
+  await expect(page.getByText('Not set', { exact: true })).toBeVisible();
+  await page.getByRole('radio', { name: /OpenRouter/ }).click();
+  await page.getByRole('button', { name: 'Remove key' }).click();
+  await expect(page.getByText('Not set', { exact: true })).toBeVisible();
+  await page.getByRole('radio', { name: /Anthropic/ }).click();
+});
+
 test('a company page offers research, which needs an AI key', async () => {
   await go('#/companies');
   await page.getByRole('link', { name: 'Acme' }).first().click();
   await expect(page.getByRole('heading', { name: 'Research', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Research company' }).click();
-  await expect(page.getByText('Add an Anthropic API key in Settings → AI.')).toBeVisible();
+  await expect(page.getByText('Add an AI provider key in Settings → AI.')).toBeVisible();
 });
 
 test('the inbox opens with its filters and says when there are no replies', async () => {

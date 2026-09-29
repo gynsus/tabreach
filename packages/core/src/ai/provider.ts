@@ -14,6 +14,8 @@ export interface StructuredRequest {
 export interface Usage {
   inputTokens: number;
   outputTokens: number;
+  /** Cost as reported by the provider (OpenRouter does), in USD. */
+  costUsd?: number;
 }
 
 export interface AiProvider {
@@ -27,6 +29,8 @@ export type AiErrorKind =
   | 'no_key'
   /** The provider refused the key. */
   | 'auth'
+  /** The provider account has no credits or billing. */
+  | 'payment'
   /** Monthly budget reached. */
   | 'budget'
   /** Rate limit or overload: try later. */

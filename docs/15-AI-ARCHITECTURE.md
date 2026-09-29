@@ -15,8 +15,9 @@ There is exactly one component that calls AI providers: the **AI gateway** in co
 ## Implementation status (Phase 4a, 2026-09-29)
 
 - `packages/core/src/ai/`: `AiGateway` (the only caller), `AnthropicProvider` (Messages API over `fetch`; structured output as a forced tool call whose `input_schema` is the template's Zod schema converted with `z.toJSONSchema`), versioned `PromptTemplate`s, `untrusted()` fencing with a per-call nonce (closing tags inside the material are defused).
-- Settings (`ai`): provider, model per use case (defaults: `claude-haiku-4-5-20251001` for classification, `claude-sonnet-5` for research and drafting), prices per model entered by the user, monthly budget. The key is a `SecretStore` secret (`ai_api_key`).
-- `ai_calls` records template key/version, model, status, tokens, estimated cost and latency — never prompts or content. Cost and the budget work only for models with a price set; token counts are always shown.
+- Settings (`ai`): provider, model per use case (suggested per provider on switch: `DEFAULT_AI_MODELS`), prices per model entered by the user, monthly budget, prices per model entered by the user, monthly budget. Each provider has its own key (`SecretStore` secret `ai_api_key`, referenced by the `ai.key.<provider>` setting; the pre-provider `ai.key` reference is still read as Anthropic's), so switching provider keeps the other keys.
+- Providers (2026-09-29): `anthropic` (`AnthropicProvider`), and `openrouter` / `openai` through `OpenAiCompatibleProvider` — `POST {base}/chat/completions`, structured output as `response_format: json_schema` with `strict: true` (JSON Schema keywords strict mode rejects, such as `minLength` or `maximum`, are stripped; Zod still validates the answer). For OpenRouter the request asks for `provider.require_parameters` (only routes that honour the schema) and `usage.include`, and the reported `usage.cost` is recorded when the user entered no price. HTTP 402 maps to the `payment` error. Suggested OpenRouter model: `deepseek/deepseek-v4.1-flash`.
+- `ai_calls` records template key/version, model, status, tokens, estimated cost and latency — never prompts or content. Cost and the budget work for models with a price set or a provider-reported cost (OpenRouter); token counts are always shown.
 - First use case: reply labels (`reply.classify` v1) — interested / not interested / opt-out / out-of-office / other. An opt-out adds the sender to the do-not-contact list. Without a key, replies are not sent anywhere.
 
 ## Provider abstraction
@@ -28,7 +29,7 @@ Provider-neutral interface for:
 - classification;
 - optional vision (screenshot input for target resolution, off by default).
 
-Anthropic is the primary initial provider. The interface must allow OpenAI-compatible and local providers (e.g. Ollama) later.
+Anthropic, OpenRouter and OpenAI are supported; the user picks one in Settings → AI. Other OpenAI-compatible and local providers (e.g. Ollama) can be added behind the same interface.
 
 Model selection is configuration per use case (e.g. a smaller/cheaper model for classification and target resolution, a stronger one for research synthesis and drafting). Do not hard-code model IDs in domain code.
 

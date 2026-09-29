@@ -48,3 +48,50 @@ export class FakeAnthropic {
     );
   };
 }
+
+export interface SeenChatRequest {
+  url: string;
+  authorization: string | null;
+  body: {
+    model: string;
+    messages: { role: string; content: string }[];
+    response_format: { type: string; json_schema: { strict: boolean; schema: unknown } };
+    provider?: unknown;
+    usage?: unknown;
+  };
+}
+
+type ChatAnswer =
+  | { status: number; body: unknown }
+  | { content: string; promptTokens?: number; completionTokens?: number; cost?: number };
+
+/** OpenAI Chat Completions as OpenRouter and OpenAI speak it, in memory. */
+export class FakeChatCompletions {
+  readonly requests: SeenChatRequest[] = [];
+  private readonly answers: ChatAnswer[] = [];
+
+  answer(...a: ChatAnswer[]): void {
+    this.answers.push(...a);
+  }
+
+  readonly http: Http = async (url, init) => {
+    this.requests.push({
+      url,
+      authorization: new Headers(init.headers).get('authorization'),
+      body: JSON.parse(String(init.body)) as SeenChatRequest['body'],
+    });
+    const a = this.answers.shift() ?? { content: '{"ok":true}' };
+    if ('status' in a) return new Response(JSON.stringify(a.body), { status: a.status });
+    return new Response(
+      JSON.stringify({
+        choices: [{ message: { content: a.content } }],
+        usage: {
+          prompt_tokens: a.promptTokens ?? 500,
+          completion_tokens: a.completionTokens ?? 50,
+          ...(a.cost !== undefined ? { cost: a.cost } : {}),
+        },
+      }),
+      { status: 200 },
+    );
+  };
+}

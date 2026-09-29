@@ -364,14 +364,14 @@ export class AppServices {
       .handle('research.get', ({ id }) => this.research.get(id))
       .handle('ai.settings.get', () => this.ai.settings())
       .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
-      .handle('ai.setKey', async ({ apiKey }, c) => {
-        await this.ai.setKey(apiKey, ctx(c));
+      .handle('ai.setKey', async ({ provider, apiKey }, c) => {
+        await this.ai.setKey(provider, apiKey, ctx(c));
         this.changed(['settings', 'activity']);
         return { ok: true as const };
       })
-      .handle('ai.removeKey', (_p, c) =>
+      .handle('ai.removeKey', ({ provider }, c) =>
         mutate(['settings'], () => {
-          this.ai.removeKey(ctx(c));
+          this.ai.removeKey(provider, ctx(c));
           return { ok: true as const };
         }),
       )

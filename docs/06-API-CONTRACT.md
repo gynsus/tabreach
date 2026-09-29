@@ -78,9 +78,9 @@ command policy.settings.update
 ## AI settings
 
 ```text
-query   ai.settings.get                # provider, models per use case, prices, budget, keySet
+query   ai.settings.get                # provider (anthropic|openrouter|openai), models per use case, prices, budget, keySet, keys per provider
 command ai.settings.update
-command ai.setKey / ai.removeKey       # the key is stored encrypted and never returned
+command ai.setKey / ai.removeKey       # per provider; the key is stored encrypted and never returned
 command ai.testKey                     # one minimal call with the classification model
 query   ai.usage                       # { month } -> calls, tokens, estimated cost, per use case
 ```

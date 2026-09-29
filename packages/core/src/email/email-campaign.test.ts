@@ -438,7 +438,7 @@ describe('replies', () => {
 
   it('with an AI key, labels replies; an opt-out goes to the do-not-contact list', async () => {
     const s = await sentToAcme();
-    await h.services.ai.setKey('sk-ant-test-0123456789abcdef', ctx());
+    await h.services.ai.setKey('anthropic', 'sk-ant-test-0123456789abcdef', ctx());
     h.anthropic.answer({ input: { label: 'opt_out', confidence: 0.95, reason: 'Asks to be removed.' } });
     await deliver(
       inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId, body: 'Please remove me from your list.' }),
