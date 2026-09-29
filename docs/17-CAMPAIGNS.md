@@ -2,10 +2,11 @@
 
 ## Implementation status (Phase 4c, 2026-09-29)
 
-- A message step is `template` (subject and body with placeholders) or `ai`: the user writes instructions (offer, tone, call to action, language) and a signature. AI steps research the company first (research older than 30 days is refreshed; a failed research is not retried for a day and the message is written without facts), then `draft.write` v1 writes subject and body from the verified facts; the signature is appended by TabReach, never by the model.
+- A message step is `template` (subject and body with placeholders) or `ai`: the user writes instructions (offer, tone, call to action, language) and a signature. AI steps research the company first (research older than 30 days is refreshed; a failed research is not retried for a day and the message is written without facts), then `draft.write` v2 writes subject and body from the verified facts; the signature is appended by TabReach, never by the model. Fact refs such as `(F3)` and a closing line repeating the start of the signature are removed from what the model wrote.
 - Every draft version gets the automated checks (ADR 025): grounding, length, forbidden phrases, links, signature, target. They are shown in the approval together with the facts the draft used.
 - `approve_campaign`: after `sampleSize` messages of the campaign version were approved by hand, a template or AI draft that passes every check is approved by the policy (`decided_by = campaign_policy`, `scope = campaign`); any failing draft waits for a person. An edited draft always does.
 - Launch validation: an AI step needs instructions and a stored AI key.
+- Live check with `deepseek/deepseek-v4.1-flash` (2026-09-29, a company with 20 verified facts): about 2k input and 0.7–0.8k output tokens, 4–8 s per draft. v1 put fact refs in the text, added its own sign-off and opened a first message with "continuing our conversation"; v2 and the clean-up fixed all three.
 
 ## Campaign model
 

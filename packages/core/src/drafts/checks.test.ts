@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allPassed, runDraftChecks, type DraftCheckInput } from './checks.js';
+import { cleanDraftBody, cleanSubject } from './draft-writer.js';
 
 const base: DraftCheckInput = {
   origin: 'ai',
@@ -75,5 +76,36 @@ describe('draft checks', () => {
       detail: 'ann@new.test',
     });
     expect(allPassed([])).toBe(false);
+  });
+
+  it('grounding checks a hyphenated compound by its capitalised parts', () => {
+    const body = 'Здравствуйте, Анна! Про ваше ИИ-направление и Berlin-офис.\n\nBest,\nBob';
+    expect(check({ subject: null, body, sources: ['ИИ', 'Berlin', 'Анна'] }, 'grounding')?.passed).toBe(true);
+    // The sources' compounds count by their parts too (live check: "B2B-рассылок" in the instructions).
+    expect(
+      check(
+        {
+          subject: null,
+          body: 'Здравствуйте, Анна! Про B2B-продажи.\n\nBest,\nBob',
+          sources: ['Анна', 'B2B-рассылки'],
+        },
+        'grounding',
+      )?.passed,
+    ).toBe(true);
+    expect(check({ subject: null, body, sources: ['ИИ', 'Анна'] }, 'grounding')).toMatchObject({
+      passed: false,
+      detail: 'Berlin-офис',
+    });
+  });
+});
+
+describe('cleaning what the model wrote (live check, DeepSeek)', () => {
+  it('removes fact refs and a closing line that repeats the start of the signature', () => {
+    const body = 'Анна, здравствуйте!\n\nВы развиваете ИИ (F15) и RAG-базу [F13, F3].\n\nС уважением';
+    expect(cleanDraftBody(body, 'С уважением,\nКоманда TabReach')).toBe(
+      'Анна, здравствуйте!\n\nВы развиваете ИИ и RAG-базу.',
+    );
+    expect(cleanDraftBody('Hi Ann,\nThanks.\nBest regards', 'Bob')).toBe('Hi Ann,\nThanks.\nBest regards');
+    expect(cleanSubject('Your Berlin office (F1)')).toBe('Your Berlin office');
   });
 });

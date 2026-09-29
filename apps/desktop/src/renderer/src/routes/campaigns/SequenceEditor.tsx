@@ -7,7 +7,9 @@ import {
 } from '@tabreach/protocol';
 import { ArrowDown, ArrowUp, Mail, Plus, Split, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 import { Button, Field, Input, Select } from '../../components/ui';
+import { translateKey } from '../../i18n';
 import { cn } from '../../lib/cn';
 
 const DAY_SECONDS = 24 * 60 * 60;
@@ -178,31 +180,107 @@ function MessageFields(props: {
           </Select>
         )}
       </Field>
-      <Field label={t('campaigns.subject')} errorKey={props.errors[`steps.${index}.subject`]}>
-        {(id, describedBy) => (
-          <Input
-            id={id}
-            value={step.subject}
-            disabled={props.disabled}
-            aria-describedby={describedBy}
-            aria-invalid={props.errors[`steps.${index}.subject`] ? true : undefined}
-            onChange={(e) => props.onChange({ ...step, subject: e.target.value })}
-          />
-        )}
-      </Field>
-      <Field label={t('campaigns.body')} errorKey={props.errors[`steps.${index}.body`]} hint={hint}>
-        {(id, describedBy) => (
-          <textarea
-            id={id}
-            className={cn(textarea)}
-            value={step.body}
-            disabled={props.disabled}
-            aria-describedby={describedBy}
-            aria-invalid={props.errors[`steps.${index}.body`] ? true : undefined}
-            onChange={(e) => props.onChange({ ...step, body: e.target.value })}
-          />
-        )}
-      </Field>
+      <fieldset className="grid gap-2">
+        <legend className="mb-1 text-xs font-medium text-soft">{t('campaigns.mode')}</legend>
+        <div role="radiogroup" aria-label={t('campaigns.mode')} className="flex flex-wrap gap-2">
+          {(['template', 'ai'] as const).map((mode) => (
+            <label
+              key={mode}
+              className={cn(
+                'grid max-w-72 cursor-pointer gap-0.5 rounded-md border px-3 py-2 text-[13px]',
+                step.mode === mode ? 'border-accent bg-accent-soft' : 'border-rule bg-raised',
+                props.disabled && 'cursor-default opacity-60',
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                <input
+                  type="radio"
+                  name={`mode-${index}`}
+                  checked={step.mode === mode}
+                  disabled={props.disabled}
+                  onChange={() => props.onChange({ ...step, mode })}
+                />
+                {t(`campaigns.modes.${mode}.name`)}
+              </span>
+              <span className="text-xs text-soft">{t(`campaigns.modes.${mode}.description`)}</span>
+            </label>
+          ))}
+        </div>
+        {props.errors[`steps.${index}.mode`] ? (
+          <p className="text-xs text-bad">
+            {translateKey(t, `errors.${props.errors[`steps.${index}.mode`]}`, t('errors.generic'))}{' '}
+            <Link to="/settings/ai" className="text-accent hover:underline">
+              {t('campaigns.openAiSettings')}
+            </Link>
+          </p>
+        ) : null}
+      </fieldset>
+      {step.mode === 'ai' ? (
+        <>
+          <Field
+            label={t('campaigns.instructions')}
+            hint={t('campaigns.instructionsHint')}
+            errorKey={props.errors[`steps.${index}.instructions`]}
+          >
+            {(id, describedBy) => (
+              <textarea
+                id={id}
+                className={cn(textarea)}
+                value={step.instructions}
+                placeholder={t('campaigns.instructionsPlaceholder')}
+                disabled={props.disabled}
+                aria-describedby={describedBy}
+                aria-invalid={props.errors[`steps.${index}.instructions`] ? true : undefined}
+                onChange={(e) => props.onChange({ ...step, instructions: e.target.value })}
+              />
+            )}
+          </Field>
+          <Field
+            label={t('campaigns.signature')}
+            hint={t('campaigns.signatureHint')}
+            errorKey={props.errors[`steps.${index}.signature`]}
+          >
+            {(id, describedBy) => (
+              <textarea
+                id={id}
+                className={cn(textarea, 'min-h-20')}
+                value={step.signature}
+                disabled={props.disabled}
+                aria-describedby={describedBy}
+                onChange={(e) => props.onChange({ ...step, signature: e.target.value })}
+              />
+            )}
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field label={t('campaigns.subject')} errorKey={props.errors[`steps.${index}.subject`]}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                value={step.subject}
+                disabled={props.disabled}
+                aria-describedby={describedBy}
+                aria-invalid={props.errors[`steps.${index}.subject`] ? true : undefined}
+                onChange={(e) => props.onChange({ ...step, subject: e.target.value })}
+              />
+            )}
+          </Field>
+          <Field label={t('campaigns.body')} errorKey={props.errors[`steps.${index}.body`]} hint={hint}>
+            {(id, describedBy) => (
+              <textarea
+                id={id}
+                className={cn(textarea)}
+                value={step.body}
+                disabled={props.disabled}
+                aria-describedby={describedBy}
+                aria-invalid={props.errors[`steps.${index}.body`] ? true : undefined}
+                onChange={(e) => props.onChange({ ...step, body: e.target.value })}
+              />
+            )}
+          </Field>
+        </>
+      )}
     </>
   );
 }

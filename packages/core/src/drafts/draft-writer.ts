@@ -29,26 +29,33 @@ const output = z.object({
 });
 export type WrittenDraft = z.infer<typeof output>;
 
-/** docs/15 "AI use cases: personalised draft", docs/17. Version 1. */
+/**
+ * docs/15 "AI use cases: personalised draft", docs/17. Version 2: no fact refs or sign-off in the
+ * text, and a first message does not pretend to continue a conversation (live check, DeepSeek).
+ */
 export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
   key: 'draft.write',
-  version: 1,
+  version: 2,
   purpose: 'Write one personalised outreach email from the sender instructions and verified research facts.',
   useCase: 'drafting',
   input,
   output,
   maxTokens: 6_000,
-  build: ({ instructions, stepNumber, maxLength, recipient, facts, previous, nonce }) => ({
+  build: ({ instructions, maxLength, recipient, facts, previous, nonce }) => ({
     system: [
       'You write one business outreach email on behalf of the sender, following the sender instructions.',
       'Write in the language of the sender instructions. Plain text, no Markdown, no placeholders.',
-      'Do not write a signature or sign-off name: the sender signature is added automatically.',
+      'Do not write a signature, a sign-off name or a closing line such as "Best regards" or "С уважением":',
+      'the sender signature, which has them, is added automatically.',
+      'Never put fact refs (F1, F2, …) or brackets with them in the subject or the text; they are only for usedFacts.',
       'Personalise only with the facts listed and the recipient fields. Never state a number, name, date, place,',
       'product, customer or event that is not in the facts, the recipient fields or the sender instructions.',
       'If the facts give nothing useful, write a short honest message without personal specifics.',
       'No links or email addresses unless the sender instructions contain them.',
       `Keep the body under ${maxLength} characters. usedFacts lists the refs (F1, F2, …) of the facts you relied on.`,
-      stepNumber > 1 ? 'This is a follow-up to the earlier messages shown; do not repeat them.' : '',
+      previous.length > 0
+        ? 'This is a follow-up to the earlier messages shown; do not repeat them.'
+        : 'This is the first message to this recipient: do not refer to any earlier contact or conversation.',
       UNTRUSTED_RULES,
     ]
       .filter(Boolean)
@@ -98,6 +105,8 @@ export type DraftResult =
       facts: { id: string; claim: string; quote: string }[];
       researchRunId: string | null;
       model: string;
+      /** `key@version` of the prompt that wrote it. */
+      template: string;
     }
   | { kind: 'wait'; until: Date }
   | { kind: 'failed'; reason: AiErrorKind };
@@ -152,6 +161,7 @@ export class DraftWriter {
       facts: refs.filter((f) => used.has(f.ref)).map(({ id, claim, quote }) => ({ id, claim, quote })),
       researchRunId: research.kind === 'facts' ? research.runId : null,
       model: this.d.ai.settings().models.drafting,
+      template: `${writeDraft.key}@${writeDraft.version}`,
     };
   }
 
@@ -184,4 +194,27 @@ export class DraftWriter {
     }
     return found ? { kind: 'facts', runId: found.runId, facts: found.facts } : { kind: 'none' };
   }
+}
+
+const FACT_REFS = /\s*[([](?:F\d+(?:\s*[,;]\s*F\d+)*)[)\]]/g;
+const bare = (line: string) =>
+  line
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+
+/**
+ * What the model wrote, tidied the way the prompt asks even when a model does not listen: fact refs
+ * such as "(F3)" are removed, and a closing line that repeats the start of the signature is dropped.
+ */
+export function cleanDraftBody(body: string, signature: string): string {
+  const lines = body.replace(FACT_REFS, '').trimEnd().split('\n');
+  const first = bare(signature.trim().split('\n')[0] ?? '');
+  const last = lines.at(-1);
+  if (first && last !== undefined && bare(last) === first) lines.pop();
+  return lines.join('\n').trim();
+}
+
+export function cleanSubject(subject: string): string {
+  return subject.replace(FACT_REFS, '').trim();
 }

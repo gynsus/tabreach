@@ -201,6 +201,19 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await step.getByLabel('Channel').selectOption('test');
   await step.getByLabel('Subject', { exact: true }).fill('Hello {{firstName|there}}');
   await step.getByLabel('Message', { exact: true }).fill('Hi {{firstName|there}}, this is a test.');
+  // An AI step needs instructions and an AI key; this run has neither, and says so at the step.
+  await step.getByRole('radio', { name: /Written by AI/ }).check();
+  await expect(step.getByLabel('Instructions for AI')).toBeVisible();
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(step.getByText('Write instructions for AI.')).toBeVisible();
+  await expect(step.getByText(/AI messages need an AI key/)).toBeVisible();
+  await step.getByRole('radio', { name: /Template/ }).check();
+  await expect(step.getByLabel('Message', { exact: true })).toHaveValue(
+    'Hi {{firstName|there}}, this is a test.',
+  );
+  await page.getByLabel('Approval', { exact: true }).selectOption('approve_campaign');
+  await expect(page.getByText(/You approve the first 5 messages yourself/)).toBeVisible();
+  await page.getByLabel('Approval', { exact: true }).selectOption('approve_each');
   // Any day and hour, so the test does not depend on when CI runs.
   await page.getByLabel('Fallback time zone').fill('UTC');
   await page.getByLabel('Use the default sending hours from Settings').uncheck();
@@ -222,6 +235,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(page.getByTestId('approval-body')).toHaveText('Hi there, this is a test.', {
     timeout: 15_000,
   });
+  await expect(page.getByTestId('draft-checks')).toContainText('All checks passed');
   // Focus something in the queue first: on CI the window may not have OS focus, and a bare
   // keyboard.press then reaches no element. The shortcut handler itself is what is tested.
   await page.getByRole('button', { name: 'Approve' }).press('a');

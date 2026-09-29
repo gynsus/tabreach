@@ -9,7 +9,7 @@ AI drafts differ per recipient, so approving a campaign cannot mean approving it
 ## Decision
 
 - **Checks run on every draft version** (template, AI or edited) and are stored with it in `draft_checks`, keyed by the draft id — a version's content never changes, so there is nothing to re-bind:
-  - `grounding` — every number and every capitalised word that does not start a sentence must appear in a source: the facts the draft used (claim and quote), the contact's and company's fields, the step's instructions or template, the signature, or messages already sent. Numbers compare by their digits (`1 490 000` = `1490000`); words compare by a stem, so Russian case forms match (`Москве` / `Москва`). Unsupported items are listed.
+  - `grounding` — every number and every capitalised word that does not start a sentence must appear in a source: the facts the draft used (claim and quote), the contact's and company's fields, the step's instructions or template, the signature, or messages already sent. Numbers compare by their digits (`1 490 000` = `1490000`); words compare by a stem, so Russian case forms match (`Москве` / `Москва`). Hyphenated compounds are checked by their capitalised parts, and count by their parts in the sources (`B2B-рассылок` supports `B2B`). Unsupported items are listed.
   - `length` — at least 20 characters, at most the campaign's `maxLength` (default 1500), signature included.
   - `forbidden_phrases` — case- and whitespace-insensitive.
   - `links` — URLs, bare domains and email addresses only on `allowedLinkDomains` (default: none); the signature is exempt, the user wrote it.

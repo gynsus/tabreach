@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
-import { Alert, Button, DetailList, EmptyState, Field, Input, PageHeader } from '../../components/ui';
+import { Alert, Badge, Button, DetailList, EmptyState, Field, Input, PageHeader } from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
@@ -220,9 +220,17 @@ function ApprovalDetail(props: {
           <p data-testid="approval-body" className="text-[13px] whitespace-pre-wrap">
             {a.body}
           </p>
-          <p className="font-mono text-[11px] text-faint">{t('approvals.version', { n: a.draftVersion })}</p>
+          <p className="flex items-center gap-2 font-mono text-[11px] text-faint">
+            {t('approvals.version', { n: a.draftVersion })}
+            <Badge tone={a.origin === 'ai' ? 'accent' : 'neutral'}>
+              {t(`approvals.origins.${a.origin}`)}
+            </Badge>
+          </p>
         </div>
       )}
+      {props.editing ? null : <Checks approval={a} />}
+      {props.editing || a.facts.length === 0 ? null : <FactsUsed approval={a} />}
+      {props.editing || a.draftVersion < 2 ? null : <History draftId={a.draftId} />}
       {props.editing ? null : (
         <>
           <div className="flex flex-wrap gap-2">
@@ -253,5 +261,97 @@ function ApprovalDetail(props: {
         </>
       )}
     </article>
+  );
+}
+
+/** The automated draft checks for exactly this version (ADR 025). */
+function Checks({ approval: a }: { approval: Approval }) {
+  const { t } = useTranslation();
+  if (a.checks.length === 0) return null;
+  const failed = a.checks.filter((c) => !c.passed);
+  return (
+    <section aria-labelledby="checks-heading" className="grid gap-2" data-testid="draft-checks">
+      <h3 id="checks-heading" className="text-xs font-semibold text-soft">
+        {failed.length ? t('approvals.checksFailed', { count: failed.length }) : t('approvals.checksPassed')}
+      </h3>
+      <ul className="grid gap-1 text-[13px]">
+        {a.checks.map((c) => (
+          <li key={c.key} className="flex flex-wrap items-baseline gap-2">
+            <span aria-hidden className={c.passed ? 'text-ok' : 'text-bad'}>
+              {c.passed ? '✓' : '✗'}
+            </span>
+            <span className={c.passed ? 'text-soft' : 'font-medium'}>
+              {t(`approvals.checks.${c.key}`)}
+              <span className="sr-only">: {c.passed ? t('approvals.passed') : t('approvals.failed')}</span>
+            </span>
+            {c.detail ? <span className="text-xs text-bad [overflow-wrap:anywhere]">{c.detail}</span> : null}
+          </li>
+        ))}
+      </ul>
+      {a.origin === 'ai' && failed.some((c) => c.key === 'grounding') ? (
+        <p className="text-xs text-soft">{t('approvals.groundingHint')}</p>
+      ) : null}
+    </section>
+  );
+}
+
+/** The research facts the draft relies on, with the quote that proves each one. */
+function FactsUsed({ approval: a }: { approval: Approval }) {
+  const { t } = useTranslation();
+  return (
+    <section aria-labelledby="facts-heading" className="grid gap-2">
+      <h3 id="facts-heading" className="text-xs font-semibold text-soft">
+        {t('approvals.factsUsed', { count: a.facts.length })}
+      </h3>
+      <ul className="grid gap-2 text-[13px]">
+        {a.facts.map((f) => (
+          <li key={f.id} className="grid gap-0.5 border-l-2 border-accent pl-3">
+            <span>{f.claim}</span>
+            <span className="text-xs text-soft">«{f.quote}»</span>
+            {f.url ? <span className="font-mono text-[11px] break-all text-faint">{f.url}</span> : null}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** Earlier versions of this message: what AI wrote, what a person changed. */
+function History({ draftId }: { draftId: string }) {
+  const { t, i18n } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const history = useQuery({
+    queryKey: ['approvals', 'history', draftId],
+    queryFn: () => call('drafts.history', { draftId }),
+    enabled: open,
+  });
+  return (
+    <section className="grid gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="justify-self-start"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        {open ? t('approvals.hideHistory') : t('approvals.showHistory')}
+      </Button>
+      {open && history.data ? (
+        <ol className="grid gap-2">
+          {history.data.items.map((v) => (
+            <li key={v.id} className="grid gap-1 rounded-md border border-rule bg-sunken p-3 text-[13px]">
+              <span className="flex flex-wrap items-center gap-2 font-mono text-[11px] text-faint">
+                {t('approvals.version', { n: v.version })}
+                <Badge tone="neutral">{t(`approvals.origins.${v.origin}`)}</Badge>
+                {formatDateTime(v.createdAt, i18n.language)}
+              </span>
+              {v.subject ? <span className="font-medium">{v.subject}</span> : null}
+              <span className="whitespace-pre-wrap text-soft">{v.body}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {history.isError ? <Alert>{errorMessage(t, history.error)}</Alert> : null}
+    </section>
   );
 }
