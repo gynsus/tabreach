@@ -1,8 +1,8 @@
 import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { matchState, type AdapterPack } from '@tabreach/adapter-packs';
 import { isPublicAddress, sameSite, type RenderResult } from '@tabreach/protocol';
-import type { BrowserContext, Route } from 'playwright-core';
+import type { BrowserContext, Page, Route } from 'playwright-core';
+import { BlockedAddressError, guardedFetch, RedirectRefusedError } from './guarded-fetch.js';
 import { probeOf } from './tasks.js';
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
@@ -22,10 +22,12 @@ export interface RenderEnvironment {
 const dnsResolve = async (host: string) => (await lookup(host, { all: true })).map((a) => a.address);
 
 /**
- * RenderPageForResearch (docs/16, Phase 5d): the page of a JavaScript-only site, rendered in the
- * research profile. Every request of the page is checked: the page itself stays on the company's
- * site, and nothing — page, script, frame — reaches a non-public address (the user's own network).
- * Images, media and fonts are not loaded; popups are closed; WebSockets are refused.
+ * RenderPageForResearch (docs/16, ADR 027): the page of a JavaScript-only site, rendered in the
+ * research profile. Every request of the context — this page, its frames, redirect hops, anything
+ * it opens — is made by the worker itself (`guardedFetch`), pinned to an address it checked: the
+ * page stays on the company's site and nothing reaches a non-public address (the user's own
+ * network). No cookies are sent or kept. Images, media and fonts are not loaded; other pages are
+ * closed; WebSockets are refused.
  */
 export async function renderForResearch(
   context: BrowserContext,
@@ -33,22 +35,9 @@ export async function renderForResearch(
   env: RenderEnvironment,
   signal: AbortSignal,
 ): Promise<RenderResult> {
-  const isPublic = env.isPublicAddress ?? isPublicAddress;
-  const resolve = env.resolveHost ?? dnsResolve;
-  const hosts = new Map<string, Promise<boolean>>();
-  const publicHost = (hostname: string): Promise<boolean> => {
-    const host = hostname.replace(/^\[|\]$/g, '');
-    let known = hosts.get(host);
-    if (!known) {
-      known = isIP(host)
-        ? Promise.resolve(isPublic(host))
-        : resolve(host).then(
-            (addresses) => addresses.length > 0 && addresses.every(isPublic),
-            () => false,
-          );
-      hosts.set(host, known);
-    }
-    return known;
+  const rules = {
+    isPublic: env.isPublicAddress ?? isPublicAddress,
+    resolve: env.resolveHost ?? dnsResolve,
   };
   const result = (over: Partial<RenderResult>): RenderResult => ({
     status: 'failed',
@@ -61,6 +50,8 @@ export async function renderForResearch(
 
   const page = await context.newPage();
   let refused: 'offsite' | 'blocked_address' | null = null;
+  /** The page's own URL after server redirects (Chrome still shows the first one). */
+  let finalUrl: string | null = null;
   const guard = async (route: Route) => {
     const request = route.request();
     const u = new URL(request.url());
@@ -71,17 +62,42 @@ export async function renderForResearch(
       refused = 'offsite';
       return route.abort('blockedbyclient');
     }
-    if (!(await publicHost(u.hostname))) {
-      if (mainNavigation) refused = 'blocked_address';
-      return route.abort('blockedbyclient');
-    }
     if (SKIPPED_TYPES.has(request.resourceType())) return route.abort('blockedbyclient');
-    return route.continue();
+    let response;
+    try {
+      response = await guardedFetch(
+        u,
+        { method: request.method(), headers: await request.allHeaders(), body: request.postDataBuffer() },
+        rules,
+        signal,
+        (next) => !mainNavigation || sameSite(next.hostname, req.site),
+      );
+    } catch (error) {
+      if (error instanceof BlockedAddressError || error instanceof RedirectRefusedError) {
+        if (mainNavigation) refused = error instanceof BlockedAddressError ? 'blocked_address' : 'offsite';
+        return route.abort('blockedbyclient');
+      }
+      // Unreachable, too large, timed out: the page goes without it.
+      return route.abort('failed');
+    }
+    // Redirected: the document keeps its first URL in Chrome, so its relative links would point
+    // to the wrong place; a <base> makes them resolve against where it really came from.
+    const redirected = response.url.href !== u.href;
+    if (mainNavigation && redirected) finalUrl = response.url.href;
+    const body =
+      redirected && /text\/html/i.test(response.headers['content-type'] ?? '')
+        ? withBase(response.body, response.url.href)
+        : response.body;
+    return route.fulfill({ status: response.status, headers: response.headers, body });
+  };
+  const others = (other: Page) => {
+    // Popups and other pages are not read; closing one that already went away is fine.
+    if (other !== page) void other.close().catch(() => {});
   };
   try {
-    await page.route('**/*', guard);
-    await page.routeWebSocket('**/*', (ws) => ws.close());
-    page.on('popup', (popup) => void popup.close().catch(() => {}));
+    await context.route('**/*', guard);
+    await context.routeWebSocket('**/*', (ws) => ws.close());
+    context.on('page', others);
     signal.throwIfAborted();
     try {
       await page.goto(req.url, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
@@ -94,18 +110,39 @@ export async function renderForResearch(
     }
     if (refused) return result({ status: 'blocked', url: page.url(), reason: refused });
     // Scripts fill the page after it loads; a busy page is read as it is after a few seconds.
+    // A page that never goes quiet is read as it is (the timeout is the expected outcome).
     await page.waitForLoadState('networkidle', { timeout: SETTLE_MS }).catch(() => {});
     signal.throwIfAborted();
-    if (refused) return result({ status: 'blocked', url: page.url(), reason: refused });
+    // A script may have navigated away meanwhile: only the company's own site is read.
+    if (refused || !sameSite(new URL(page.url()).hostname, req.site)) {
+      return result({ status: 'blocked', url: page.url(), reason: refused ?? 'offsite' });
+    }
     const challenge = await matchState(
       (env.generic?.states ?? []).filter((s) => s.kind === 'challenge'),
       probeOf(page),
-    ).catch(() => null);
+    ).catch(() => null); // a page that changes under the probe is simply not a challenge page
     if (challenge) return result({ status: 'challenge', url: page.url(), reason: challenge.id });
     const html = await page.content();
     if (html.length > MAX_HTML) return result({ url: page.url(), reason: 'too_large' });
-    return result({ status: 'ok', url: page.url(), title: await page.title().catch(() => null), html });
+    return result({
+      status: 'ok',
+      url: finalUrl ?? page.url(),
+      title: await page.title().catch(() => null),
+      html,
+    });
   } finally {
+    context.off('page', others);
+    // Cleanup of a page that may already be gone (session closed, emergency stop).
+    await context.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
     await page.close().catch(() => {});
   }
+}
+
+/** Adds `<base href>` unless the document has its own. */
+function withBase(body: Buffer, href: string): Buffer {
+  const html = body.toString('utf8');
+  if (/<base[\s>]/i.test(html)) return body;
+  const tag = `<base href="${href.replace(/"/g, '&quot;')}">`;
+  const withTag = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + tag) : tag + html;
+  return Buffer.from(withTag, 'utf8');
 }

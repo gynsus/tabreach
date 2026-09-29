@@ -17,6 +17,7 @@ import { BrowserCheckpoints } from './browser/checkpoints.js';
 import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
+import { pinnedHttp } from './research/pinned-http.js';
 import { ResearchRenderer } from './research/renderer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
@@ -234,6 +235,7 @@ export class AppServices {
       browser: this.browser,
       worker: options.worker ?? (() => null),
       logger: logger.child({ component: 'research' }),
+      paused: () => this.appControl.isPaused(),
     });
     this.research = new ResearchService({
       db,
@@ -241,13 +243,14 @@ export class AppServices {
       audit: this.audit,
       ai: this.ai,
       jobs: this.jobs,
-      http: options.webHttp ?? ((url, init) => fetch(url, init)),
+      http: options.webHttp ?? pinnedHttp(options.resolveHost),
       logger: logger.child({ component: 'research' }),
       changed: (entities) => this.changed(entities),
       language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
       ...(options.sleep ? { sleep: options.sleep } : {}),
       ...(options.resolveHost ? { resolveHost: options.resolveHost } : {}),
-      render: (url, site, signal) => this.researchRenderer.render(url, site, signal),
+      render: (url, site, signal, correlationId) =>
+        this.researchRenderer.render(url, site, signal, correlationId),
     });
     this.drafts = new DraftWriter({
       ai: this.ai,

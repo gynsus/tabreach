@@ -10,7 +10,7 @@ Static fetching (docs/16) reads nothing from sites drawn by JavaScript. docs/16 
 
 - Research pages are rendered in the research profile (`purpose: research`, created on first use, never a channel identity), in headless Chrome (`headless: true` on `profile.open`), one page at a time, under automation, without the overlay. The window closes after a minute without work. If the person has the research profile open themselves, nothing is rendered.
 - A page is rendered only after the static fetch of the same URL passed robots.txt, the same-site rule and the public-address check, and only when that fetch yielded less than 200 characters of readable text.
-- Every request of the rendered page goes through a guard (`page.route`): the top-level page may not leave the company's site; no request — document, script, frame, XHR — may reach an IP literal or a host name that resolves to a non-public address (the same rules as the static fetcher, now in `@tabreach/protocol`); non-HTTP schemes are refused; images, media and fonts are not loaded; WebSockets are closed; popups are closed; service workers are blocked.
+- Every request of the research context goes through a guard (`context.route`) and is **made by the worker itself** (`guardedFetch`, Node HTTP with a pinned lookup) and handed to Chrome with `route.fulfill`: the connection goes to the address that was checked (no DNS rebinding), redirects are followed by the worker hop by hop (Chrome does not ask the route again for a redirect it is given), and each hop is checked. The top-level page may not leave the company's site; no request — document, script, frame, XHR, redirect hop — may reach an IP literal or a host name that resolves to a non-public address (the same rules as the static fetcher, in `@tabreach/protocol`, with IPv4-in-IPv6 forms unwrapped); no cookies are sent or kept; non-HTTP schemes are refused; images, media and fonts are not loaded; WebSockets are closed; other pages are closed; service workers and downloads are blocked; WebRTC may not use non-proxied UDP (audit 5.5).
 - A challenge on the page is recognized and the page is skipped: never solved, never handed to the person (research can do without the page).
 - Headless Chrome identifies itself as such (`HeadlessChrome` in its user agent); nothing about it is disguised (ADR 009).
 
@@ -23,7 +23,7 @@ Static fetching (docs/16) reads nothing from sites drawn by JavaScript. docs/16 
 ## Consequences
 
 - Research of JavaScript-only sites works and stays bounded to the company's own public pages.
-- DNS answers can change between the guard's lookup and Chrome's own (DNS rebinding); the window is small and the result is text evidence only. Accepted for the MVP.
+- Requests are slower than Chrome's own networking (no connection reuse, bodies buffered up to 10 MB); acceptable for a few pages per company.
 - The profiles screen can show the research profile as open while a page renders.
 
 ## Migration impact

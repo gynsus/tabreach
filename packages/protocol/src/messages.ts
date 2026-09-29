@@ -553,7 +553,6 @@ export const requests = {
     request: byId,
     response: browserProfileSchema,
   },
-  /** Runs one browser task in a session under automation; refused in any other control mode. */
   /** Worker → core (the one browser request core answers): the `about_to_commit` checkpoint. */
   'task.checkpoint': {
     channel: 'browser',
@@ -561,12 +560,21 @@ export const requests = {
     request: taskCheckpointSchema,
     response: taskCheckpointAckSchema,
   },
+  /** The job waiting for a task was cancelled: the worker stops it at its next step. */
+  'task.cancel': {
+    channel: 'browser',
+    kind: 'command',
+    request: z.object({ taskId: z.uuid() }),
+    response: ok,
+  },
+  /** RenderPageForResearch (docs/16, ADR 027). */
   'task.render': {
     channel: 'browser',
     kind: 'command',
     request: workerRenderSchema,
     response: renderResultSchema,
   },
+  /** Runs one browser task in a session under automation; refused in any other control mode. */
   'task.run': {
     channel: 'browser',
     kind: 'command',

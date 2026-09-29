@@ -354,4 +354,34 @@ describe('research of a JavaScript-only site (Phase 5d)', () => {
     expect(calls.some((c) => c.type === 'task.render')).toBe(false);
     expect(h.services.browser.list(false)).toHaveLength(1); // the person's profile is the research one
   });
+
+  it('renders nothing while paused; a research window left paused by an emergency stop is replaced (audit 5.5)', async () => {
+    h.worker = worker;
+    h.services.appControl.pauseAll(ctx());
+    const paused = start();
+    await h.run();
+    expect(calls.some((c) => c.type === 'task.render')).toBe(false);
+    expect(h.services.research.get(paused.id)).toMatchObject({ error: 'research.noPages' });
+    h.services.appControl.resumeAll(ctx());
+
+    await h.services.researchRenderer.render(
+      'https://northwind.test/',
+      'northwind.test',
+      new AbortController().signal,
+    );
+    const [research] = h.services.browser.list(false);
+    const first = research!.session!.id;
+    h.services.signInChecks.onModeChanged({ sessionId: first, controlMode: 'paused', by: 'emergency_stop' });
+    expect(
+      await h.services.researchRenderer.render(
+        'https://northwind.test/',
+        'northwind.test',
+        new AbortController().signal,
+      ),
+    ).toMatchObject({ status: 'ok' });
+    expect(calls.filter((c) => c.type === 'profile.close').map((c) => c.payload)).toEqual([
+      { sessionId: first },
+    ]);
+    expect(h.services.browser.list(false)[0]?.session?.id).not.toBe(first);
+  });
 });

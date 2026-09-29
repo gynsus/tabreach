@@ -43,6 +43,10 @@ interface Session {
   /** Sessions opened for automation carry the in-page overlay (docs/12). */
   overlay: boolean;
   overlayContext: OverlayContext | null;
+  /** The task running in this session: one at a time (audit 5.5). */
+  task: { id: string; abort: AbortController } | null;
+  /** An unknown overlay message was logged once; a page cannot flood the log. */
+  ignoredLogged: boolean;
 }
 
 export interface ProfileManagerOptions {
@@ -66,6 +70,20 @@ export interface ProfileManagerOptions {
  * restarts, the Chrome windows stay open and the next heartbeat tells the new core about them.
  * Chrome's own profile lock keeps a directory to one browser at a time.
  */
+/**
+ * A URL as it may be stored (audit 5.5): origin and path only. Query strings and fragments carry
+ * reset links, sign-in codes and session ids of whatever the person is browsing.
+ */
+export function safeUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) ? `${u.origin}${u.pathname}` : `${u.protocol}`;
+  } catch {
+    return null;
+  }
+}
+
 export class ProfileManager {
   private readonly sessions = new Map<string, Session>();
   /** Where session changes go; set by the current core connection. */
@@ -100,7 +118,14 @@ export class ProfileManager {
         ...(req.channel === 'chrome' ? { channel: 'chrome' } : {}),
         headless: (req.headless ?? false) || (this.options.headless ?? false),
         // A research page cannot install a worker that outlives it or escapes the page's routes.
-        ...(req.headless ? { serviceWorkers: 'block' as const } : {}),
+        // Research (ADR 027): no downloads, and WebRTC cannot reach around the request guard.
+        ...(req.headless
+          ? {
+              serviceWorkers: 'block' as const,
+              acceptDownloads: false,
+              args: ['--force-webrtc-ip-handling-policy=disable_non_proxied_udp'],
+            }
+          : {}),
         // Chrome's sandbox stays on (Playwright turns it off by default).
         chromiumSandbox: true,
         ignoreDefaultArgs: [
@@ -130,12 +155,16 @@ export class ProfileManager {
       abort: new AbortController(),
       overlay: req.controlMode === 'automation' && !req.headless,
       overlayContext: null,
+      task: null,
+      ignoredLogged: false,
     };
     this.sessions.set(req.sessionId, session);
     if (session.overlay) await this.installOverlay(req.sessionId, session);
     context.on('close', () => {
       if (!this.sessions.delete(req.sessionId)) return;
-      this.notify({ sessionId: req.sessionId, profileId: req.profileId, status: 'closed', currentUrl: null });
+      // Not closed by us or by the person closing its last window: Chrome went away (crash, quit).
+      const status = session.closing ? 'closed' : 'crashed';
+      this.notify({ sessionId: req.sessionId, profileId: req.profileId, status, currentUrl: null });
     });
     // On macOS Chrome keeps running without windows; the last window closed ends the session.
     context.on('page', (page) =>
@@ -214,6 +243,40 @@ export class ProfileManager {
     if (by && changed) this.notifyMode({ sessionId, controlMode: mode, by });
   }
 
+  /**
+   * Starts the one task a session may run (audit 5.5): a second one — say from a core that
+   * restarted while the first still runs — is refused. The signal ends with the task, when the
+   * session leaves automation, or when core cancels it (`task.cancel`).
+   */
+  beginTask(sessionId: string, taskId: string): { signal: AbortSignal; end: () => void } {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    if (session.task) throw new RpcError('CONFLICT', 'A task is running in this session', 'session.busy');
+    const abort = new AbortController();
+    const task = { id: taskId, abort };
+    session.task = task;
+    return {
+      signal: AbortSignal.any([abort.signal, session.abort.signal]),
+      end: () => {
+        if (session.task === task) session.task = null;
+      },
+    };
+  }
+
+  modeOf(sessionId: string): ControlMode | null {
+    return this.sessions.get(sessionId)?.controlMode ?? null;
+  }
+
+  cancelTask(taskId: string): boolean {
+    for (const s of this.sessions.values()) {
+      if (s.task?.id === taskId) {
+        s.task.abort.abort(new Error('cancelled'));
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** Aborted when the session leaves automation (take control, pause, emergency stop). */
   taskSignal(sessionId: string): AbortSignal {
     const session = this.sessions.get(sessionId);
@@ -240,7 +303,8 @@ export class ProfileManager {
     await session.context.exposeBinding(OVERLAY_BINDING, (_source, message: unknown) => {
       if (message === PAUSE_REQUESTED && session.controlMode === 'automation') {
         this.setMode(sessionId, 'paused', 'overlay');
-      } else if (message !== PAUSE_REQUESTED) {
+      } else if (message !== PAUSE_REQUESTED && !session.ignoredLogged) {
+        session.ignoredLogged = true;
         this.options.logger.warn(
           { event: 'overlay.ignored_message', sessionId },
           'page sent an unknown overlay message',
@@ -252,6 +316,7 @@ export class ProfileManager {
     session.context.on('page', watch);
     for (const page of session.context.pages()) {
       watch(page);
+      // The overlay is explanatory (docs/12): a page mid-navigation gets it on its next load.
       await page.evaluate(OVERLAY_SCRIPT).catch(() => {});
     }
     this.applyOverlay(session);
@@ -260,6 +325,7 @@ export class ProfileManager {
   private applyOverlay(session: Session): void {
     if (!session.overlay) return;
     const expression = overlaySetExpression({ mode: session.controlMode, context: session.overlayContext });
+    // Explanatory only; a page mid-navigation is updated on its domcontentloaded.
     for (const page of session.context.pages()) void page.evaluate(expression).catch(() => {});
   }
 
@@ -283,7 +349,7 @@ export class ProfileManager {
   heartbeat(): { sessionId: string; currentUrl: string | null }[] {
     return [...this.sessions].map(([sessionId, s]) => ({
       sessionId,
-      currentUrl: s.context.pages()[0]?.url() ?? null,
+      currentUrl: safeUrl(s.context.pages()[0]?.url() ?? null),
     }));
   }
 

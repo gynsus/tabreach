@@ -70,10 +70,14 @@ export class BrowserActionChannel implements MessageChannel {
     const worker = this.d.worker();
     if (!worker) return { outcome: 'not_sent', errorClass: 'worker_not_running' };
     const effect = this.d.db
-      .prepare('SELECT workflow_run_id FROM side_effects WHERE idempotency_key = ?')
-      .get(message.idempotencyKey) as { workflow_run_id: string } | undefined;
+      .prepare(
+        `SELECT s.workflow_run_id, r.correlation_id FROM side_effects s
+         LEFT JOIN workflow_runs r ON r.id = s.workflow_run_id WHERE s.idempotency_key = ?`,
+      )
+      .get(message.idempotencyKey) as { workflow_run_id: string; correlation_id: string | null } | undefined;
     if (!effect) throw new Error('Unknown side effect');
-    const correlationId = uuidv7();
+    // The run's correlation id follows the action into the worker's logs (CLAUDE.md §5).
+    const correlationId = effect.correlation_id ?? uuidv7();
     let sessionId: string;
     try {
       sessionId = await this.d.browser.openSession(this.accountId, 'automation', null, correlationId);
@@ -105,6 +109,7 @@ export class BrowserActionChannel implements MessageChannel {
     try {
       result = await untilAborted(
         signal,
+        () => this.cancel(worker, taskId, correlationId),
         worker.request(
           'task.run',
           {
@@ -130,7 +135,7 @@ export class BrowserActionChannel implements MessageChannel {
       );
       // The worker died or stopped answering: after the checkpoint the press may have happened.
       if (reached) return { outcome: 'unknown', errorClass: 'worker_lost_after_checkpoint' };
-      await this.d.browser.closeSession(sessionId).catch(() => {});
+      await this.quietly(this.d.browser.closeSession(sessionId), 'browser.close_failed', correlationId);
       throw error;
     }
     const reached = this.d.checkpoints.reached(taskId);
@@ -138,26 +143,67 @@ export class BrowserActionChannel implements MessageChannel {
     this.finishTask(taskId, result.status, result);
     const refs = { taskId, stateId: result.stateId, pack: `${this.spec.packId}@${result.packVersion}` };
 
+    const close = () =>
+      this.quietly(this.d.browser.closeSession(sessionId), 'browser.close_failed', correlationId);
+
     if (result.status === 'succeeded' && result.committed) {
-      await this.d.browser.closeSession(sessionId).catch(() => {});
+      await close();
       return { outcome: 'completed', externalRefs: refs };
     }
-    if (result.committed || reached) {
+    if (result.committed) {
       if (result.errorKey === 'task.rejected') {
-        await this.d.browser.closeSession(sessionId).catch(() => {});
+        await close();
         return { outcome: 'not_sent', errorClass: 'site_rejected', permanent: true };
       }
-      // Left open and paused: the person can see what the page shows before deciding.
-      await this.d.browser.setControlMode(sessionId, 'paused').catch(() => {});
+      // Left open and paused so the person can see what the page shows before deciding; a window
+      // the person already holds stays theirs (docs/11).
+      if (this.d.browser.sessionById(sessionId)?.controlMode === 'automation') {
+        await this.quietly(
+          this.d.browser.setControlMode(sessionId, 'paused'),
+          'browser.pause_failed',
+          correlationId,
+        );
+      }
       return { outcome: 'unknown', errorClass: 'browser_unverified' };
     }
-    await this.d.browser.closeSession(sessionId).catch(() => {});
+    // Not pressed — the worker says so, even after the checkpoint — so nothing was sent.
+    if (reached) {
+      this.d.logger.info(
+        { event: 'browser.not_pressed_after_checkpoint', taskId, errorKey: result.errorKey, correlationId },
+        'checkpoint recorded, control not pressed',
+      );
+    }
+    if (result.status === 'needs_human' || result.errorKey === 'task.controlTaken') {
+      // A challenge, or the person took the window: it stays open for them, never closed here.
+      return {
+        outcome: 'not_sent',
+        errorClass: result.status === 'needs_human' ? 'needs_human' : 'user_control',
+      };
+    }
+    await close();
     return {
       outcome: 'not_sent',
       errorClass: result.status === 'failed' ? (result.errorKey ?? 'task.failed') : result.status,
       // A page outside the pack's allowlist does not change by retrying (docs/07).
       permanent: result.status === 'unsupported_state',
     };
+  }
+
+  private async cancel(
+    worker: Pick<RpcPeer, 'request'>,
+    taskId: string,
+    correlationId: string,
+  ): Promise<void> {
+    await this.quietly(
+      worker.request('task.cancel', { taskId }, { correlationId }),
+      'browser.cancel_failed',
+      correlationId,
+    );
+  }
+
+  /** Housekeeping whose failure changes no outcome; logged, never thrown. */
+  private async quietly(work: Promise<unknown>, event: string, correlationId: string): Promise<void> {
+    await work.catch((error: unknown) => this.d.logger.warn({ event, correlationId, err: error }, event));
   }
 
   /** A generic browser action leaves nothing to look up afterwards: a person confirms. */
@@ -172,11 +218,14 @@ export class BrowserActionChannel implements MessageChannel {
   }
 }
 
-/** Stops waiting when the job is cancelled; the worker's own task is bounded by its timeout. */
-function untilAborted<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
+/** Stops waiting when the job is cancelled, and tells the worker to stop the task too. */
+export function untilAborted<T>(signal: AbortSignal, onAbort: () => void, work: Promise<T>): Promise<T> {
   signal.throwIfAborted();
   return new Promise<T>((resolve, reject) => {
-    const abort = () => reject(signal.reason);
+    const abort = () => {
+      onAbort();
+      reject(signal.reason);
+    };
     signal.addEventListener('abort', abort, { once: true });
     work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });

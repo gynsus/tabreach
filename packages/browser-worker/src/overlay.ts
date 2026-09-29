@@ -47,6 +47,12 @@ export const OVERLAY_SCRIPT = `(() => {
     sub.setAttribute('style', 'opacity:.8');
     sub.textContent = state.mode === 'automation' ? ((state.context && state.context.title) || '') : l.hint;
     text.appendChild(sub);
+    if (state.mode === 'automation' && state.context && state.context.detail) {
+      const detail = document.createElement('div');
+      detail.setAttribute('style', 'opacity:.7');
+      detail.textContent = state.context.detail;
+      text.appendChild(detail);
+    }
     box.appendChild(text);
     if (state.mode === 'automation') {
       const button = document.createElement('button');
@@ -61,8 +67,14 @@ export const OVERLAY_SCRIPT = `(() => {
     value: (next) => { state = next; render(); },
     enumerable: false,
   });
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', render);
-  else render();
+  const start = () => {
+    render();
+    // A page that removes the overlay gets it back (docs/12 "Limitations accepted").
+    new MutationObserver(() => { if (host && !host.isConnected) render(); })
+      .observe(document.documentElement, { childList: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
 })();`;
 
 /** Applies the current state to a page that already has the overlay script. */

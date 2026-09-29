@@ -170,6 +170,33 @@ describe('sign-in check workflow (Phase 5b)', () => {
     expect(runOf(p.id)).toMatchObject({ status: 'cancelled' });
   });
 
+  it('settles a request once; a profile the person opened meanwhile cancels the check (audit 5.5)', async () => {
+    const p = profile();
+    worker.results.push(
+      result({ status: 'needs_human', stateId: 'linkedin.checkpoint', stateKind: 'challenge' }),
+    );
+    s().signInChecks.start(p.id, 'linkedin', ctx());
+    await dispatcher.runDue();
+    const [i] = s().signInChecks.interventions();
+    const both = await Promise.allSettled([
+      s().signInChecks.resolve(i!.id, 'done', ctx()),
+      s().signInChecks.resolve(i!.id, 'cancel', ctx()),
+    ]);
+    expect(both.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+
+    const q = profile();
+    s().signInChecks.start(q.id, 'linkedin', ctx());
+    await s().browser.open(q.id, null, ctx()); // before the job runs
+    await dispatcher.runDue();
+    expect(runOf(q.id)).toMatchObject({ status: 'cancelled' });
+    expect(modeOf(q.id)).toBe('human');
+
+    const research = s().browser.create({ name: 'Research', purpose: 'research' }, ctx());
+    expect(() => s().signInChecks.start(research.id, 'linkedin', ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'profile.research' }) }),
+    );
+  });
+
   describe('control (Phase 5c)', () => {
     /** A check whose first task is still running when the person steps in. */
     const started = async () => {

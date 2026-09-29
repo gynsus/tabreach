@@ -52,13 +52,17 @@ function JobRow({ job }: { job: Job }) {
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
   const reason = job.lastErrorClass
-    ? translateKey(t, `attention.errors.${job.lastErrorClass}`, job.lastErrorClass)
+    ? translateKey(
+        t,
+        `attention.errors.${job.lastErrorClass}`,
+        t('attention.errors.other', { code: job.lastErrorClass }),
+      )
     : t('attention.errors.unexpected');
   return (
     <li className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-2.5 text-[13px]">
       <span className="grid gap-0.5">
         <span className="flex items-center gap-2 font-medium">
-          {translateKey(t, `attention.types.${job.type}`, job.type)}
+          {translateKey(t, `attention.types.${job.type}`, t('attention.types.other'))}
           <Badge tone={job.status === 'dead' ? 'bad' : 'warn'}>
             {t('attention.attempts', { count: job.attempts })}
           </Badge>

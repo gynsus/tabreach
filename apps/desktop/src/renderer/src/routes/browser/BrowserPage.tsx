@@ -18,7 +18,7 @@ import {
   Select,
 } from '../../components/ui';
 import { translateKey } from '../../i18n';
-import { call, errorMessage, fieldErrors } from '../../lib/api';
+import { call, errorMessage, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 import { useInterventions } from '../status/Interventions';
 
@@ -96,6 +96,8 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
   const interventions = useInterventions();
   const waiting = (interventions.data?.items ?? []).some((i) => i.profileId === p.id);
   const open = p.session !== null;
+  // The research profile renders pages without a window (ADR 027): nothing to show or take over.
+  const headless = p.purpose === 'research' && p.session !== null && p.session.controlMode !== 'human';
   const opening = p.session?.status === 'opening' || (act.isPending && act.variables === 'profiles.open');
   return (
     <li className="grid gap-2 rounded-md border border-rule bg-raised p-4 text-[13px]" data-testid="profile">
@@ -123,11 +125,15 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
                 : 'text-warn'
           }
         >
-          {translateKey(t, `browser.health.${p.health.detail.replace('.', '_')}`, p.health.detail)}
+          {translateKey(
+            t,
+            `browser.health.${p.health.detail.replaceAll('.', '_')}`,
+            t('browser.health.other'),
+          )}
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
-        {p.session && p.session.controlMode !== 'human' ? (
+        {p.session && p.session.controlMode !== 'human' && !headless ? (
           <Button
             size="sm"
             onClick={() => control.mutate('profiles.takeControl')}
@@ -148,14 +154,16 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
         ) : null}
         {open ? (
           <>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => act.mutate('profiles.focus')}
-              disabled={act.isPending}
-            >
-              {t('browser.showWindow')}
-            </Button>
+            {headless ? null : (
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={() => act.mutate('profiles.focus')}
+                disabled={act.isPending}
+              >
+                {t('browser.showWindow')}
+              </Button>
+            )}
             <Button size="sm" onClick={() => act.mutate('profiles.close')} disabled={act.isPending}>
               {t('browser.close')}
             </Button>
@@ -175,7 +183,7 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
           onClick={() => checkSignIn.mutate()}
           disabled={checkSignIn.isPending || p.session !== null}
         >
-          {p.session?.controlMode === 'automation' || p.session?.controlMode === 'paused'
+          {!headless && (p.session?.controlMode === 'automation' || p.session?.controlMode === 'paused')
             ? t('browser.checking')
             : t('browser.checkLinkedIn')}
         </Button>
@@ -236,7 +244,7 @@ function CreateProfile({ onClose }: { onClose: () => void }) {
       }
     >
       <form id="create-profile" onSubmit={submit} className="grid gap-3">
-        {create.isError ? <Alert>{errorMessage(t, create.error)}</Alert> : null}
+        {formAlert(t, create.error, ['name']) ? <Alert>{formAlert(t, create.error, ['name'])}</Alert> : null}
         <Field label={t('browser.name')} errorKey={fieldErrors(create.error).name}>
           {(id) => <Input id={id} value={name} onChange={(e) => setName(e.target.value)} autoFocus />}
         </Field>
@@ -347,7 +355,9 @@ function DeleteProfile({ profile, onClose }: { profile: BrowserProfile; onClose:
         className="grid gap-3 text-[13px]"
       >
         <p>{t('browser.deleteWarning')}</p>
-        {remove.isError ? <Alert>{errorMessage(t, remove.error)}</Alert> : null}
+        {formAlert(t, remove.error, ['confirmName']) ? (
+          <Alert>{formAlert(t, remove.error, ['confirmName'])}</Alert>
+        ) : null}
         <Field
           label={t('browser.typeName', { name: profile.name })}
           errorKey={fieldErrors(remove.error).confirmName}

@@ -111,4 +111,21 @@ describe('control: overlay, taking over, emergency stop (Phase 5c)', () => {
       ].sort(),
     );
   }, 60_000);
+
+  it('one task per session; core can cancel it (audit 5.5)', async () => {
+    const { sessionId } = await open('automation');
+    const taskId = uuidv7();
+    const task = { sessionId, taskType: 'check_state' as const, packId: 'fixture', url: fixtures.url };
+    const running = core.request('task.run', { ...task, taskId }, { timeoutMs: 60_000 });
+    await new Promise((r) => setTimeout(r, 1_000));
+    await expect(core.request('task.run', { ...task, taskId: uuidv7() })).rejects.toMatchObject({
+      problem: { detail: 'session.busy' },
+    });
+    const started = Date.now();
+    await core.request('task.cancel', { taskId });
+    expect(await running).toMatchObject({ status: 'failed', errorKey: 'task.cancelled' });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    // The session is free again and still under automation.
+    await expect(core.request('task.cancel', { taskId })).resolves.toEqual({ ok: true });
+  }, 60_000);
 });

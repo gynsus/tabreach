@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Button } from '../../components/ui';
+import { Alert, Button } from '../../components/ui';
 import { call, errorMessage } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -50,13 +50,15 @@ export function AppControlSection() {
   const qc = useQueryClient();
   const control = useAppControl();
   const act = useControlAction();
+  const toast = useToast();
   const [confirmStop, setConfirmStop] = useState(false);
   const keepAwake = useMutation({
     mutationFn: (value: boolean) => call('app.setKeepAwake', { keepAwake: value }),
     onSuccess: () => invalidateEntities(qc, ['settings']),
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
+  // Pause and Emergency stop stay available even if the state could not be read.
   const c = control.data;
-  if (!c) return null;
   return (
     <section
       aria-labelledby="control-heading"
@@ -67,7 +69,7 @@ export function AppControlSection() {
       </h2>
       <p className="text-soft">{t('control.hint')}</p>
       <div className="flex flex-wrap items-center gap-2">
-        {c.paused ? (
+        {c?.paused ? (
           <Button variant="primary" onClick={() => act.mutate('app.resumeAll')} disabled={act.isPending}>
             {t('control.resume')}
           </Button>
@@ -99,15 +101,18 @@ export function AppControlSection() {
         )}
       </div>
       <p className="text-xs text-soft">{t('control.emergencyHint')}</p>
-      <label className="flex items-center gap-2">
-        <input
-          type="checkbox"
-          checked={c.keepAwake}
-          disabled={keepAwake.isPending}
-          onChange={(e) => keepAwake.mutate(e.target.checked)}
-        />
-        {t('control.keepAwake')}
-      </label>
+      {control.isError ? <Alert>{errorMessage(t, control.error)}</Alert> : null}
+      {c ? (
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={c.keepAwake}
+            disabled={keepAwake.isPending}
+            onChange={(e) => keepAwake.mutate(e.target.checked)}
+          />
+          {t('control.keepAwake')}
+        </label>
+      ) : null}
     </section>
   );
 }

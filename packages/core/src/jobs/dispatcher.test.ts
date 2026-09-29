@@ -193,4 +193,29 @@ describe('Dispatcher', () => {
     await dispatcher.runDue();
     expect(ran).toEqual([`${id}:2`]);
   });
+
+  it('after a sleep, a job still running is not recovered and run a second time (audit 5.5)', async () => {
+    let calls = 0;
+    let release: () => void = () => {};
+    dispatcher.register(
+      type({
+        type: 'long',
+        concurrency: 2,
+        handler: () => {
+          calls++;
+          return new Promise<void>((r) => (release = r));
+        },
+      }),
+    );
+    queue.enqueue('long', {});
+    dispatcher.start();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toBe(1);
+    dispatcher.pause(); // the Mac sleeps; its lease runs out meanwhile
+    clock.advance(10 * 60_000);
+    dispatcher.resume();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toBe(1);
+    release();
+  });
 });

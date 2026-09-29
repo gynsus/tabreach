@@ -20,8 +20,21 @@ export interface FixtureServer {
 
 /** Serves `fixtures/sites/public` on an ephemeral loopback port for browser tests. */
 export async function startFixtureServer(): Promise<FixtureServer> {
+  const hits: string[] = [];
   const server = createServer((req, res) => {
-    const pathname = new URL(req.url ?? '/', 'http://fixture').pathname;
+    const requested = new URL(req.url ?? '/', 'http://fixture');
+    const pathname = requested.pathname;
+    // /redirect?to=<url>: a 302 to anywhere, for tests of redirect checks.
+    if (pathname === '/redirect') {
+      res.writeHead(302, { location: requested.searchParams.get('to') ?? '/' }).end();
+      return;
+    }
+    // /hits: what was requested so far (tests prove a request never arrived).
+    if (pathname === '/hits') {
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(hits));
+      return;
+    }
+    hits.push(pathname);
     const file = normalize(join(root, pathname.endsWith('/') ? `${pathname}index.html` : pathname));
     if (!file.startsWith(root)) {
       res.writeHead(403).end();

@@ -272,10 +272,25 @@ export class BrowserService {
     this.d.changed(['browser', 'activity']);
   }
 
-  /** The worker's live sessions; any other session core thinks is live is over. */
+  /** A worker (re)connected: its first heartbeat tells which windows it kept (audit 5.5). */
+  onWorkerAttached(): void {
+    this.firstHeartbeat = true;
+  }
+
+  private firstHeartbeat = false;
+
+  /**
+   * The worker's live sessions; any other session core thinks is live is over. Windows the worker
+   * has that core does not know as live are closed (a timed-out open, a failed close). On the first
+   * heartbeat after (re)connecting, windows under automation are closed too: the tasks that drove
+   * them belonged to the previous core and are gone; their work reopens what it needs.
+   */
   onHeartbeat(sessions: { sessionId: string; currentUrl: string | null }[]): void {
     const now = this.d.now();
     const alive = new Map(sessions.map((s) => [s.sessionId, s.currentUrl]));
+    const adopting = this.firstHeartbeat;
+    this.firstHeartbeat = false;
+    const toClose: string[] = [];
     let changed = false;
     transaction(this.d.db, () => {
       const live = this.d.db
@@ -293,8 +308,24 @@ export class BrowserService {
           changed = true;
         }
       }
+      const liveIds = new Map(live.map((s) => [s.id, s]));
+      for (const sessionId of alive.keys()) {
+        const known = liveIds.get(sessionId);
+        if (!known || (adopting && known.control_mode === 'automation')) toClose.push(sessionId);
+      }
     });
     if (changed) this.d.changed(['browser', 'activity']);
+    const worker = this.d.worker();
+    for (const sessionId of toClose) {
+      if (!worker) break;
+      this.d.logger.info({ event: 'session.orphan_closed', sessionId }, 'closing a window nobody drives');
+      // The worker reports the close (`session.changed`), which ends the record.
+      void worker
+        .request('profile.close', { sessionId })
+        .catch((error: unknown) =>
+          this.d.logger.warn({ event: 'session.orphan_close_failed', sessionId, err: error }, 'not closed'),
+        );
+    }
   }
 
   /** The worker is gone (crash or restart): its Chrome windows are gone with it. */
