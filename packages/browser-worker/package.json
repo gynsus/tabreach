@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "@tabreach/adapter-packs": "workspace:*",
     "@tabreach/protocol": "workspace:*",
     "playwright-core": "1.63.0"
   },

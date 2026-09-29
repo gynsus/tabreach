@@ -23,7 +23,12 @@ parentPortEndpoint(process.parentPort, (handoff, port) => {
   }
   // A new core connection replaces the old one (core restarted).
   worker?.close();
-  worker = new BrowserWorker({ core: portEndpoint(port), logger, profiles });
+  worker = new BrowserWorker({
+    core: portEndpoint(port),
+    logger,
+    profiles,
+    tasks: { diagnosticsDir: join(env.TABREACH_DATA_DIR, 'diagnostics') },
+  });
   logger.info({ event: 'ipc.port_attached', name: handoff.name }, 'connected to core');
 });
 

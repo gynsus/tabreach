@@ -3,7 +3,13 @@ import { access, lstat, mkdir, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { chromium, type BrowserContext } from 'playwright-core';
-import { RpcError, type Logger, type SessionChanged, type WorkerProfileHealth } from '@tabreach/protocol';
+import {
+  RpcError,
+  type ControlMode,
+  type Logger,
+  type SessionChanged,
+  type WorkerProfileHealth,
+} from '@tabreach/protocol';
 
 /**
  * Playwright's defaults are made for tests. In a profile the user signs in to real accounts with,
@@ -27,6 +33,8 @@ interface Session {
   profileId: string;
   context: BrowserContext;
   closing: boolean;
+  /** docs/11: automation may act only in `automation`; the worker enforces it. */
+  controlMode: ControlMode;
 }
 
 export interface ProfileManagerOptions {
@@ -66,6 +74,7 @@ export class ProfileManager {
     sessionId: string;
     channel: 'chrome' | 'chromium';
     startUrl: string | null;
+    controlMode?: ControlMode;
   }): Promise<{ chromeVersion: string | null; currentUrl: string | null }> {
     if (this.sessionOf(req.profileId))
       throw new RpcError('CONFLICT', 'Profile already open', 'profile.alreadyOpen');
@@ -97,7 +106,12 @@ export class ProfileManager {
       );
       throw new RpcError('BROWSER_LAUNCH_FAILED', 'Chrome could not open the profile', 'profile.openFailed');
     }
-    const session: Session = { profileId: req.profileId, context, closing: false };
+    const session: Session = {
+      profileId: req.profileId,
+      context,
+      closing: false,
+      controlMode: req.controlMode ?? 'human',
+    };
     this.sessions.set(req.sessionId, session);
     context.on('close', () => {
       if (!this.sessions.delete(req.sessionId)) return;
@@ -161,6 +175,24 @@ export class ProfileManager {
     if (this.sessionOf(profileId)) throw new RpcError('CONFLICT', 'Profile is open', 'profile.open');
     // Chrome may still be flushing files for a moment after its window closed.
     await rm(this.dir(profileId), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
+
+  setMode(sessionId: string, mode: ControlMode): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    session.controlMode = mode;
+  }
+
+  /**
+   * The browser a task may drive: only a session under automation. A person holding control (or a
+   * pause) rejects every task action (docs/11 "Control rules").
+   */
+  automationContext(sessionId: string): BrowserContext {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    if (session.controlMode !== 'automation')
+      throw new RpcError('CONFLICT', 'Not under automation', 'session.notAutomation');
+    return session.context;
   }
 
   /** The running browser of a session, for browser tasks (Phase 5b) and tests. */

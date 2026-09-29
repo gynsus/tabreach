@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Fixture Security check</title>
+  </head>
+  <body>
+    <!-- A fake CAPTCHA: the widget frame is served from a /recaptcha/ path like the real one.
+         TabReach must recognize it and hand over to a person, never try to solve it. -->
+    <h1>One more step</h1>
+    <iframe title="challenge" src="recaptcha/anchor.html" width="304" height="78"></iframe>
+  </body>
+</html>

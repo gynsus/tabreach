@@ -103,6 +103,7 @@ export class CoreService {
       ...core.services.inbox.jobTypes(),
       ...core.services.classifier.jobTypes(),
       ...core.services.research.jobTypes(),
+      ...core.services.signInChecks.jobTypes(),
     ]) {
       core.dispatcher.register(type);
     }

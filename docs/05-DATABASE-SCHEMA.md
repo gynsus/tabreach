@@ -244,7 +244,7 @@ error_code, error_message_redacted
 
 Unique `(workflow_run_id, state, attempt)`.
 
-### `browser_tasks`
+### `browser_tasks` (migration 16; statuses also `unsupported_state`, `needs_human`)
 
 ```text
 id pk
@@ -369,7 +369,7 @@ started_at, ended_at
 heartbeat_at
 ```
 
-### `human_interventions`
+### `human_interventions` (migration 16: `browser_profile_id`, `browser_task_id`; reason `security_challenge | login_required | unsupported_state`; status `open | resolved | cancelled`)
 
 ```text
 id pk

@@ -27,3 +27,11 @@ Post-MVP: packs may be delivered independently as Ed25519-signed files verified 
 - UI changes can be fixed by editing data and fixtures, and later shipped without an app release.
 - The `unsupported_state` rate per pack version is a direct signal of site changes.
 - Pack schema design is an upfront cost; keep it minimal and extend when adapters need it.
+
+## Implementation (Phase 5b, 2026-09-29)
+
+- States have a `kind`: `page`, `logged_in`, `login` or `challenge`; challenges are matched first, on any site.
+- Conditions: role (with name or locale variants, level), visible text, and `frameUrlAny` (iframe URL globs — how CAPTCHA widgets appear). All conditions of `requires` must hold, none of `forbids`.
+- URLs are https only; `http://127.0.0.1` is allowed for fixture packs in tests.
+- Bundled packs: `generic` 1.0.0 (challenges) and `linkedin` 0.1.0 (sign-in states only; the adapter's action states come with Phase 7). The matcher (`matchState`) is pure and tested without a browser; the worker implements its page probe with Playwright.
+

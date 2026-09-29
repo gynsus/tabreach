@@ -82,6 +82,11 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
     onSuccess: () => invalidateEntities(qc, ['browser', 'activity']),
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
+  const checkSignIn = useMutation({
+    mutationFn: () => call('profiles.checkSignIn', { id: p.id, packId: 'linkedin' }),
+    onSuccess: () => invalidateEntities(qc, ['browser', 'activity']),
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
   const open = p.session !== null;
   const opening = p.session?.status === 'opening' || (act.isPending && act.variables === 'profiles.open');
   return (
@@ -100,8 +105,16 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
       {p.session?.currentUrl ? (
         <p className="truncate font-mono text-[11px] text-soft">{p.session.currentUrl}</p>
       ) : null}
-      {p.health && p.health.status !== 'healthy' && p.health.detail ? (
-        <p className={p.health.status === 'unhealthy' ? 'text-bad' : 'text-warn'}>
+      {p.health?.detail ? (
+        <p
+          className={
+            p.health.status === 'healthy'
+              ? 'text-ok'
+              : p.health.status === 'unhealthy'
+                ? 'text-bad'
+                : 'text-warn'
+          }
+        >
           {translateKey(t, `browser.health.${p.health.detail.replace('.', '_')}`, p.health.detail)}
         </p>
       ) : null}
@@ -130,6 +143,15 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
             {opening ? t('browser.opening') : t('browser.open')}
           </Button>
         )}
+        <Button
+          size="sm"
+          onClick={() => checkSignIn.mutate()}
+          disabled={checkSignIn.isPending || p.session !== null}
+        >
+          {p.session?.controlMode === 'automation' || p.session?.controlMode === 'paused'
+            ? t('browser.checking')
+            : t('browser.checkLinkedIn')}
+        </Button>
         <Button
           size="sm"
           variant="ghost"

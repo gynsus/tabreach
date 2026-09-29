@@ -75,5 +75,9 @@ export const auditActionTypes = [
   'profile.opened',
   'profile.closed',
   'session.interrupted',
+  'profile.checked',
+  'intervention.requested',
+  'intervention.resolved',
+  'intervention.cancelled',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

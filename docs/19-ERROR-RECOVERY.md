@@ -24,6 +24,8 @@ Examples: CAPTCHA, 2FA, unusual-login confirmation.
 
 Policy: human intervention, no automated bypass.
 
+Implemented (Phase 5b): the generic pack recognizes reCAPTCHA, hCaptcha, Cloudflare Turnstile and Arkose frames, one-time-code fields and "verify you are human" texts (EN/RU); channel packs add their own (LinkedIn checkpoint). A challenge is matched before any other state.
+
 ### `TARGET_MISMATCH`
 
 Expected prospect/page identity does not match the current page.

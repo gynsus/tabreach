@@ -77,6 +77,8 @@ export const en = {
     companyTimezoneHint: 'Sending hours follow it for contacts without their own.',
   },
   browser: {
+    checkLinkedIn: 'Check LinkedIn sign-in',
+    checking: 'Checking…',
     title: 'Browser profiles',
     subtitle:
       'Separate Chrome identities. Sign in to sites yourself in the window; each profile remembers it.',
@@ -116,11 +118,34 @@ export const en = {
     privacy:
       'Profiles live on this Mac only. TabReach never asks for or stores your site passwords, and never copies profiles into logs or backups.',
     health: {
+      linkedin_feed: 'Signed in to LinkedIn.',
+      linkedin_login: 'Not signed in to LinkedIn: open the profile and sign in.',
+      task_navigationFailed: 'The site did not open.',
+      task_unknownPack: 'Unknown site.',
       profile_inUse: 'Another Chrome is using this profile. Close it and check again.',
       profile_notWritable: 'The profile folder cannot be written.',
       profile_open: 'Open now.',
       profile_new: 'Not opened yet.',
     },
+  },
+  interventions: {
+    title: 'Needs you',
+    reasons: {
+      security_challenge: 'Security check in “{{profile}}”',
+      login_required: 'Sign-in needed in “{{profile}}”',
+      unsupported_state: 'TabReach does not recognize the page in “{{profile}}”',
+    },
+    instructions: {
+      security_challenge:
+        'The site asks to prove a person is there. TabReach never solves this: do it yourself in the Chrome window, then press Done.',
+      login_required: 'Sign in yourself in the Chrome window, then press Done.',
+      unsupported_state:
+        'The page looks different from what TabReach knows. Look at the window; if it is fine, press Done to check again.',
+    },
+    done: 'Done — check again',
+    cancel: 'Cancel',
+    diagnostics: 'What TabReach saw',
+    expected: 'Expected pages',
   },
   companies: {
     suppress: 'Do not contact',

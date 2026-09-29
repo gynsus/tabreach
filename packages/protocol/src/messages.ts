@@ -9,6 +9,12 @@ import {
   workerProfileOpenSchema,
   workerProfileRefSchema,
   workerSessionRefSchema,
+  workerSetModeSchema,
+  workerTaskRunSchema,
+  taskResultSchema,
+  profileCheckSignInSchema,
+  interventionSchema,
+  interventionResolveSchema,
 } from './browser.js';
 import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
@@ -478,6 +484,25 @@ export const requests = {
   'profiles.close': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
   'profiles.focus': { channel: 'app', kind: 'command', request: byId, response: ok },
   'profiles.check': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
+  /** Opens the profile under automation and recognizes the site's page: signed in, sign-in, challenge. */
+  'profiles.checkSignIn': {
+    channel: 'app',
+    kind: 'command',
+    request: profileCheckSignInSchema,
+    response: browserProfileSchema,
+  },
+  'interventions.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(interventionSchema) }),
+  },
+  'interventions.resolve': {
+    channel: 'app',
+    kind: 'command',
+    request: interventionResolveSchema,
+    response: ok,
+  },
   'profile.open': {
     channel: 'browser',
     kind: 'command',
@@ -494,6 +519,14 @@ export const requests = {
   /** Removes the profile's directory (credential-equivalent data, docs/08); the profile must be closed. */
   'profile.delete': { channel: 'browser', kind: 'command', request: workerProfileRefSchema, response: ok },
   'session.focus': { channel: 'browser', kind: 'command', request: workerSessionRefSchema, response: ok },
+  'session.setMode': { channel: 'browser', kind: 'command', request: workerSetModeSchema, response: ok },
+  /** Runs one browser task in a session under automation; refused in any other control mode. */
+  'task.run': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerTaskRunSchema,
+    response: taskResultSchema,
+  },
   /** Core → main: one OAuth authorization through the system browser and a loopback redirect. */
   'oauth.loopback': {
     channel: 'host',

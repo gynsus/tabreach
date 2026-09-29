@@ -26,7 +26,14 @@ export const textConditionSchema = z
   })
   .strict();
 
-export const conditionSchema = z.union([roleConditionSchema, textConditionSchema]);
+/** A frame (iframe) whose URL matches: how CAPTCHA widgets show themselves. Globs as for URLs. */
+export const frameConditionSchema = z
+  .object({
+    frameUrlAny: z.array(nonEmpty).min(1),
+  })
+  .strict();
+
+export const conditionSchema = z.union([roleConditionSchema, textConditionSchema, frameConditionSchema]);
 export type Condition = z.infer<typeof conditionSchema>;
 
 export const pageStateSchema = z
@@ -37,8 +44,19 @@ export const pageStateSchema = z
         /^[a-z0-9_]+(\.[a-z0-9_]+)+$/,
         'State ids are dotted lowercase, e.g. linkedin.profile.connectable',
       ),
-    /** URL glob patterns; `*` matches any run of characters. */
-    url: z.array(z.string().regex(/^https:\/\//, 'Only https URLs')).min(1),
+    /**
+     * What a match means: an ordinary page of the flow, signed in, the site's sign-in page, or a
+     * security challenge (CAPTCHA, code, unusual-login check) — which always goes to a person.
+     */
+    kind: z.enum(['page', 'logged_in', 'login', 'challenge']).default('page'),
+    /** URL glob patterns; `*` matches any run of characters. https only; loopback http for fixtures. */
+    url: z
+      .array(
+        z
+          .string()
+          .regex(/^(https:\/\/|http:\/\/127\.0\.0\.1[:/*])/, 'Only https URLs (or loopback fixtures)'),
+      )
+      .min(1),
     requires: z.array(conditionSchema).min(1, 'A state needs at least one positive condition'),
     forbids: z.array(conditionSchema).default([]),
   })
@@ -49,7 +67,8 @@ export const adapterPackSchema = z
   .object({
     id: z.string().regex(/^[a-z0-9-]+$/),
     version: z.string().regex(/^\d+\.\d+\.\d+$/, 'Semantic version, e.g. 1.0.0'),
-    channel: z.enum(['linkedin', 'web_form']),
+    /** generic: states for any site (challenges); the others belong to one channel adapter. */
+    channel: z.enum(['generic', 'linkedin', 'web_form']),
     states: z.array(pageStateSchema).min(1),
   })
   .strict()

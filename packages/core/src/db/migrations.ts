@@ -628,4 +628,42 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX browser_sessions_live ON browser_sessions (status);
     `,
   },
+  {
+    version: 16,
+    name: 'browser_tasks',
+    sql: `
+      -- One unit of browser work and its result (docs/07, docs/13 ownership map), Phase 5b.
+      CREATE TABLE browser_tasks (
+        id                   TEXT PRIMARY KEY,
+        workflow_run_id      TEXT NOT NULL REFERENCES workflow_runs (id),
+        task_type            TEXT NOT NULL,
+        browser_profile_id   TEXT NOT NULL REFERENCES browser_profiles (id) ON DELETE CASCADE,
+        browser_session_id   TEXT REFERENCES browser_sessions (id) ON DELETE SET NULL,
+        adapter_pack_id      TEXT,
+        adapter_pack_version TEXT,
+        status               TEXT NOT NULL CHECK (status IN ('dispatched', 'running', 'succeeded', 'failed',
+                               'unsupported_state', 'needs_human', 'unknown', 'interrupted')),
+        checkpoint           TEXT CHECK (checkpoint IS NULL OR json_valid(checkpoint)),
+        result               TEXT CHECK (result IS NULL OR json_valid(result)),
+        dispatched_at        TEXT NOT NULL,
+        finished_at          TEXT
+      ) STRICT;
+      CREATE INDEX browser_tasks_run ON browser_tasks (workflow_run_id, dispatched_at);
+
+      -- A request to the user (docs/11 "Intervention record") and how it ended.
+      CREATE TABLE human_interventions (
+        id                 TEXT PRIMARY KEY,
+        workflow_run_id    TEXT NOT NULL REFERENCES workflow_runs (id),
+        browser_session_id TEXT REFERENCES browser_sessions (id) ON DELETE SET NULL,
+        browser_profile_id TEXT REFERENCES browser_profiles (id) ON DELETE CASCADE,
+        browser_task_id    TEXT REFERENCES browser_tasks (id) ON DELETE SET NULL,
+        reason             TEXT NOT NULL CHECK (reason IN ('security_challenge', 'login_required', 'unsupported_state')),
+        status             TEXT NOT NULL CHECK (status IN ('open', 'resolved', 'cancelled')),
+        resolution         TEXT CHECK (resolution IS NULL OR json_valid(resolution)),
+        requested_at       TEXT NOT NULL,
+        resolved_at        TEXT
+      ) STRICT;
+      CREATE INDEX human_interventions_open ON human_interventions (status, requested_at);
+    `,
+  },
 ];
