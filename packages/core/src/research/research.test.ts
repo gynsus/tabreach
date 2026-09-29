@@ -1,4 +1,5 @@
 import { startFixtureServer, type FixtureServer } from '@tabreach/fixture-sites';
+import type { RequestOf, RequestType, ResponseOf } from '@tabreach/protocol';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { ctx, Harness } from '../email/harness.js';
 import { extractPage } from './extract.js';
@@ -253,5 +254,104 @@ describe('research runs on the fixture site', () => {
     h.dispatcher.stop();
     h.boot();
     expect(h.services.research.get(run.id)).toMatchObject({ status: 'failed', error: 'research.failed' });
+  });
+});
+
+describe('research of a JavaScript-only site (Phase 5d)', () => {
+  let fixtures: FixtureServer;
+  let h: Harness;
+  const calls: { type: string; payload: unknown }[] = [];
+  /** What the rendered page says: the fixture's text as a browser would show it. */
+  const RENDERED =
+    '<html><head><title>Northwind Robotics</title></head><body><main><h1>Northwind Robotics</h1>' +
+    '<p>Northwind Robotics builds autonomous forklifts for cold-storage warehouses.</p>' +
+    '<p>In 2026 we opened a second factory in Tampere, Finland.</p></main></body></html>';
+  const worker = {
+    request<T extends RequestType>(type: T, payload: RequestOf<T>): Promise<ResponseOf<T>> {
+      calls.push({ type, payload });
+      if (type === 'profile.open')
+        return Promise.resolve({ chromeVersion: '140', currentUrl: null } as ResponseOf<T>);
+      if (type === 'task.render') {
+        const { url } = payload as RequestOf<'task.render'>;
+        return Promise.resolve({
+          status: 'ok',
+          url,
+          title: 'Northwind Robotics',
+          html: RENDERED,
+          reason: null,
+        } as ResponseOf<T>);
+      }
+      return Promise.resolve({ ok: true } as ResponseOf<T>);
+    },
+  };
+  beforeAll(async () => {
+    fixtures = await startFixtureServer();
+  });
+  afterAll(() => fixtures.close());
+  beforeEach(async () => {
+    h = await new Harness().open();
+    calls.length = 0;
+    companyId = null;
+    h.webHttp = (url, init) => {
+      const u = new URL(url);
+      if (u.hostname !== 'northwind.test') return Promise.reject(new Error(`unexpected host ${u.hostname}`));
+      if (u.pathname === '/robots.txt') return Promise.resolve(new Response('', { status: 404 }));
+      return fetch(new URL('spa/index.html', fixtures.url), init);
+    };
+    await h.services.ai.setKey('anthropic', 'sk-ant-test-0123456789abcdef', ctx());
+  });
+  afterEach(async () => {
+    await h.services.researchRenderer.close();
+    h.close();
+  });
+  let companyId: string | null = null;
+  const start = () => {
+    companyId ??= h.services.prospects.createCompany(
+      { name: 'Northwind', website: 'https://northwind.test/' },
+      ctx(),
+    ).id;
+    return h.services.research.start({ companyId }, ctx());
+  };
+
+  it('renders the page in the research profile, created on first use, without a window', async () => {
+    h.worker = worker;
+    const run = start();
+    await h.run();
+    const detail = h.services.research.get(run.id);
+    expect(detail).toMatchObject({ pagesFetched: 1 });
+    expect(h.db.prepare('SELECT extractor, text FROM evidence').get()).toMatchObject({
+      extractor: 'rendered-readability',
+      text: expect.stringContaining('autonomous forklifts for cold-storage warehouses'),
+    });
+    const profiles = h.services.browser.list(false);
+    expect(profiles.map((p) => [p.name, p.purpose])).toEqual([['Research', 'research']]);
+    expect(calls.find((c) => c.type === 'profile.open')?.payload).toMatchObject({
+      controlMode: 'automation',
+      headless: true,
+    });
+    expect(calls.find((c) => c.type === 'task.render')?.payload).toMatchObject({
+      url: 'https://northwind.test/',
+      site: 'northwind.test',
+    });
+    // One window for the whole run, closed when research is done with it.
+    expect(calls.filter((c) => c.type === 'profile.open')).toHaveLength(1);
+    await h.services.researchRenderer.close();
+    expect(h.services.browser.list(false)[0]?.session).toBeNull();
+  });
+
+  it('without the worker, or with the research window in the person’s hands, keeps the static page', async () => {
+    const first = start();
+    await h.run();
+    expect(h.services.research.get(first.id)).toMatchObject({ status: 'failed', error: 'research.noPages' });
+    expect(h.services.browser.list(false)).toEqual([]); // nothing created without a worker
+
+    h.worker = worker;
+    const research = h.services.browser.create({ name: 'Mine', purpose: 'research' }, ctx());
+    await h.services.browser.open(research.id, null, ctx());
+    const second = start();
+    await h.run();
+    expect(h.services.research.get(second.id)).toMatchObject({ status: 'failed', error: 'research.noPages' });
+    expect(calls.some((c) => c.type === 'task.render')).toBe(false);
+    expect(h.services.browser.list(false)).toHaveLength(1); // the person's profile is the research one
   });
 });

@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { uuidv7, type CampaignConfigInput, type ImapAccountInput, type Logger } from '@tabreach/protocol';
+import {
+  uuidv7,
+  type CampaignConfigInput,
+  type ImapAccountInput,
+  type Logger,
+  type RpcPeer,
+} from '@tabreach/protocol';
 import { AppServices } from '../app-handlers.js';
 import { openDatabase } from '../db/database.js';
 import { migrate } from '../db/migrate.js';
@@ -53,6 +59,8 @@ export class Harness {
   readonly chat = new FakeChatCompletions();
   /** HTTP for research fetching; tests point it at the fixture site. */
   webHttp: Http = () => Promise.reject(new Error('no web in this test'));
+  /** The browser worker as core sees it; none unless a test sets one. */
+  worker: Pick<RpcPeer, 'request'> | null = null;
   readonly logs: string[] = [];
   db!: DatabaseSync;
   services!: AppServices;
@@ -76,6 +84,7 @@ export class Harness {
           ? this.anthropic.http(url, init)
           : this.chat.http(url, init),
       webHttp: (url, init) => this.webHttp(url, init),
+      worker: () => this.worker,
       sleep: async () => {},
       // Fixture hosts (acme.test) stand for public sites.
       resolveHost: async () => ['93.184.216.34'],

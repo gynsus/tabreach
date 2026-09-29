@@ -17,6 +17,7 @@ import { BrowserCheckpoints } from './browser/checkpoints.js';
 import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
+import { ResearchRenderer } from './research/renderer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
@@ -110,6 +111,8 @@ export class AppServices {
   readonly signInChecks: SignInCheckService;
   /** The `about_to_commit` checkpoints of browser channels (docs/07). */
   readonly checkpoints: BrowserCheckpoints;
+  /** Renders JavaScript-only pages for research in the research profile (Phase 5d). */
+  readonly researchRenderer: ResearchRenderer;
   readonly appControl: AppControlService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
@@ -226,6 +229,12 @@ export class AppServices {
       logger: logger.child({ component: 'ai' }),
       changed: (entities) => this.changed(entities),
     });
+    this.researchRenderer = new ResearchRenderer({
+      db,
+      browser: this.browser,
+      worker: options.worker ?? (() => null),
+      logger: logger.child({ component: 'research' }),
+    });
     this.research = new ResearchService({
       db,
       now,
@@ -238,6 +247,7 @@ export class AppServices {
       language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
       ...(options.sleep ? { sleep: options.sleep } : {}),
       ...(options.resolveHost ? { resolveHost: options.resolveHost } : {}),
+      render: (url, site, signal) => this.researchRenderer.render(url, site, signal),
     });
     this.drafts = new DraftWriter({
       ai: this.ai,

@@ -10,10 +10,12 @@ import { version as playwrightVersion } from 'playwright-core/package.json';
 import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
 import type { ProfileManager } from './profiles.js';
+import { renderForResearch, type RenderEnvironment } from './render.js';
 import { ASSISTED_WAIT_MS, bundledPacks, runCheckState, runCommit, type TaskEnvironment } from './tasks.js';
 
 const HEARTBEAT_MS = 10_000;
 const TASK_TIMEOUT_MS = 120_000;
+const RENDER_TIMEOUT_MS = 60_000;
 
 const controlTaken = (): TaskResult => ({
   status: 'failed',
@@ -36,6 +38,8 @@ export interface WorkerOptions {
   heartbeatMs?: number;
   /** Diagnostics folder and packs for browser tasks. */
   tasks?: Partial<TaskEnvironment>;
+  /** Address rules for research rendering; tests allow the loopback fixture server. */
+  render?: Omit<RenderEnvironment, 'generic'>;
   /** Overrides for tests: fixture Chrome locations, headless mode, Chromium. */
   chromeLocations?: string[];
   launch?: Omit<LaunchCheckOptions, 'logger'>;
@@ -86,6 +90,19 @@ export class BrowserWorker {
         .handle('worker.emergencyStop', () => {
           profiles.emergencyStop();
           return { ok: true as const };
+        })
+        .handle('task.render', async (req) => {
+          const context = profiles.automationContext(req.sessionId);
+          const signal = AbortSignal.any([
+            profiles.taskSignal(req.sessionId),
+            AbortSignal.timeout(RENDER_TIMEOUT_MS),
+          ]);
+          return renderForResearch(
+            context,
+            req,
+            { generic: this.taskEnv.pack('generic'), ...this.options.render },
+            signal,
+          );
         })
         .handle('task.run', async (req) => {
           const context = profiles.automationContext(req.sessionId);

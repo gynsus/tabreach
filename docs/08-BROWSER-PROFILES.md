@@ -14,6 +14,10 @@ It preserves legitimate session state such as cookies and local storage while av
 - Health check: folder writable, not locked by another Chrome (`SingletonLock`), busy while open. Login state (`needs_login`) needs adapter-pack states (Phase 5b).
 - Deleting requires the profile closed and its exact name typed; the worker removes the directory; only the audit record (ids) remains.
 
+## Implementation status (Phase 5d, 2026-09-29)
+
+- The research profile is created on first use (named "Research", recorded as TabReach's action) unless one exists; the oldest non-archived `research` profile is used. It opens headless under automation (ADR 027), renders one page at a time and closes after a minute without work. A research profile the person opened is left alone.
+
 ## Browser
 
 Profiles run in the user's installed Google Chrome (`channel: 'chrome'`). The app does not download or bundle a browser in the MVP. The setup wizard and health checks detect Chrome and report its version; if Chrome is missing, browser features are disabled with instructions to install it.

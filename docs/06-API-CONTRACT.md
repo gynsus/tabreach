@@ -237,6 +237,8 @@ data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settin
 
 Background work announces its changes the same way: a failed or dead job sends `job`, a new approval sends `approval`, a sent message sends `enrollment`.
 
+Browser worker requests beyond Phase 5b: `task.run { taskType: commit }`, `task.checkpoint` (worker → core, Phase 5c) and `task.render { taskId, sessionId, url, site }` → `{ status: ok | challenge | blocked | failed, url, title, html, reason }` (Phase 5d).
+
 Replies need no event of their own: an arriving reply sends `data.changed { conversation }`. Planned: `browser.intervention_required` and `browser.session_changed` (Phase 5).
 
 Core availability is not an event: main reports it through `onCoreState` (ADR 020).

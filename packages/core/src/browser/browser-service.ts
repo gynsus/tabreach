@@ -77,7 +77,11 @@ export class BrowserService {
     return this.dto(this.row(id));
   }
 
-  create(input: { name: string; purpose: 'general' | 'research' }, ctx: CommandContext): BrowserProfile {
+  create(
+    input: { name: string; purpose: 'general' | 'research' },
+    ctx: CommandContext,
+    actor: 'user' | 'system' = 'user',
+  ): BrowserProfile {
     const id = uuidv7();
     const ts = this.d.now().toISOString();
     this.d.db
@@ -86,7 +90,7 @@ export class BrowserService {
          VALUES (?, ?, ?, 'ready', ?, ?, ?)`,
       )
       .run(id, input.name.trim(), input.purpose, this.d.browserChannel ?? 'chrome', ts, ts);
-    this.record('profile.created', id, ctx, { purpose: input.purpose });
+    this.record('profile.created', id, ctx, { purpose: input.purpose }, actor);
     return this.get(id);
   }
 
@@ -134,6 +138,8 @@ export class BrowserService {
     controlMode: ControlMode,
     startUrl: string | null,
     correlationId: string,
+    /** The research profile opens without a window (docs/16). */
+    options: { headless?: boolean } = {},
   ): Promise<string> {
     const row = this.row(id);
     if (row.status === 'archived') throw conflict('profile.archived');
@@ -151,7 +157,14 @@ export class BrowserService {
     try {
       const opened = await worker.request(
         'profile.open',
-        { profileId: id, sessionId, channel: row.browser_channel, startUrl, controlMode },
+        {
+          profileId: id,
+          sessionId,
+          channel: row.browser_channel,
+          startUrl,
+          controlMode,
+          headless: options.headless ?? false,
+        },
         { timeoutMs: OPEN_TIMEOUT_MS, correlationId },
       );
       transaction(this.d.db, () => {
@@ -388,9 +401,10 @@ export class BrowserService {
     id: string,
     ctx: CommandContext,
     payload: Record<string, unknown> = {},
+    actor: 'user' | 'system' = 'user',
   ): void {
     this.d.audit.record({
-      actorType: 'user',
+      actorType: actor,
       actionType,
       objectType: 'browser_profile',
       objectId: id,
