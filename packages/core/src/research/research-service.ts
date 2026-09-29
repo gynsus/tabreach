@@ -7,6 +7,7 @@ import {
   type ChangedEntity,
   type Logger,
   type ResearchDetail,
+  type RenderResult,
   type ResearchRun,
 } from '@tabreach/protocol';
 import { z } from 'zod';
@@ -28,6 +29,9 @@ const MAX_PAGES = 6;
 /** Text per page sent to the model; the whole page is kept as evidence. */
 const MAX_CHARS_PER_PAGE = 8_000;
 const EXTRACTOR = 'static-readability';
+const RENDERED_EXTRACTOR = 'rendered-readability';
+/** Less readable text than this after a static fetch: the page is probably drawn by JavaScript. */
+const RENDER_BELOW_CHARS = 200;
 
 /** Pages that usually say what a company does, who works there and what changes (docs/16). */
 const LIKELY =
@@ -76,6 +80,8 @@ export class ResearchService {
       sleep?: (ms: number) => Promise<void>;
       /** DNS for the research fetcher; tests resolve fixture hosts to a public address. */
       resolveHost?: ResolveHost;
+      /** Browser rendering for JavaScript-only pages (Phase 5d); null result: not available. */
+      render?: (url: string, site: string, signal: AbortSignal) => Promise<RenderResult | null>;
     },
   ) {
     this.fetcher = new PageFetcher(d.http, d.sleep, d.resolveHost, (url, error) =>
@@ -230,14 +236,33 @@ export class ResearchService {
         skipped++;
         continue;
       }
-      const page = extractPage(fetched.html, fetched.url);
+      let page = extractPage(fetched.html, fetched.url);
+      let pageUrl = fetched.url;
+      let extractor = EXTRACTOR;
+      if (page.text.length < RENDER_BELOW_CHARS && this.d.render) {
+        // robots.txt, the site and the address were checked by the static fetch just now.
+        const rendered = await this.d.render(fetched.url, site, signal);
+        if (rendered?.status === 'ok' && rendered.html && rendered.url) {
+          const better = extractPage(rendered.html, rendered.url);
+          if (better.text.length > page.text.length) {
+            page = better;
+            pageUrl = rendered.url;
+            extractor = RENDERED_EXTRACTOR;
+          }
+        } else if (rendered) {
+          this.d.logger.info(
+            { event: 'research.render_skipped', status: rendered.status, reason: rendered.reason },
+            'page not rendered',
+          );
+        }
+      }
       if (page.text.length < 40) {
         skipped++;
         continue;
       }
       pages.push({
-        evidenceId: this.storeEvidence(runId, fetched.url, page.title, page.text),
-        url: fetched.url,
+        evidenceId: this.storeEvidence(runId, pageUrl, page.title, page.text, extractor),
+        url: pageUrl,
         title: page.title,
         text: page.text,
       });
@@ -356,7 +381,13 @@ export class ResearchService {
     });
   }
 
-  private storeEvidence(runId: string, url: string, title: string | null, text: string): string {
+  private storeEvidence(
+    runId: string,
+    url: string,
+    title: string | null,
+    text: string,
+    extractor: string,
+  ): string {
     const hash = createHash('sha256').update(text).digest('hex');
     const existing = this.d.db.prepare('SELECT id FROM evidence WHERE content_hash = ?').get(hash) as
       { id: string } | undefined;
@@ -366,7 +397,7 @@ export class ResearchService {
         .prepare(
           'INSERT INTO evidence (id, url, title, content_hash, text, extractor, captured_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
         )
-        .run(id, url, title, hash, text, EXTRACTOR, this.d.now().toISOString());
+        .run(id, url, title, hash, text, extractor, this.d.now().toISOString());
     }
     this.d.db
       .prepare('INSERT OR IGNORE INTO research_run_evidence (research_run_id, evidence_id) VALUES (?, ?)')

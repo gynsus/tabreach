@@ -84,6 +84,8 @@ export const workerProfileOpenSchema = z.object({
   startUrl: z.url().nullable(),
   /** `human` when the user opens it; `automation` when a browser task does (docs/11). */
   controlMode: controlModeSchema.default('human'),
+  /** No window (the research profile, docs/16): nobody watches it, so it gets no overlay either. */
+  headless: z.boolean().default(false),
 });
 export const workerSetModeSchema = z.object({ sessionId: id, controlMode: controlModeSchema });
 export const workerProfileOpenResultSchema = z.object({
@@ -181,6 +183,34 @@ export const taskResultSchema = z.object({
   committed: z.boolean().default(false),
 });
 export type TaskResult = z.infer<typeof taskResultSchema>;
+
+// Research rendering (docs/16, Phase 5d) -------------------------------------------------------
+
+/**
+ * RenderPageForResearch: open a page of the company's site in the research profile and return its
+ * rendered HTML. The page stays on `site`; no request reaches a non-public address.
+ */
+export const workerRenderSchema = z.object({
+  taskId: id,
+  sessionId: id,
+  url: z.url(),
+  /** The company's site host: the page may not navigate away from it. */
+  site: z.string().min(1),
+});
+export const renderResultSchema = z.object({
+  /** challenge: a CAPTCHA or check stood in the way (never solved — the page is skipped). */
+  status: z.enum(['ok', 'challenge', 'blocked', 'failed']),
+  url: z.string().nullable(),
+  title: z.string().nullable(),
+  /** The rendered document, at most 2 MB; null unless ok. */
+  html: z
+    .string()
+    .max(2 * 1024 * 1024)
+    .nullable(),
+  /** Why not ok: `offsite`, `blocked_address`, `navigation`, a challenge state id, … */
+  reason: z.string().nullable(),
+});
+export type RenderResult = z.infer<typeof renderResultSchema>;
 
 // Sign-in checks and interventions (Phase 5b) -------------------------------------------------
 

@@ -15,6 +15,11 @@ Produce useful outreach context from public/authorized sources while preserving 
 - Live check with `deepseek/deepseek-v4.1-flash` via OpenRouter (2026-09-29, njsoft.dev, 6 pages): about 6.7k input and 4–5k output tokens (1–3k of them reasoning), 35–70 s, about $0.003 per run; 20 of 20 quotes verified on every run after v2.
 - Not yet: sitemap, research freshness per campaign, contact-level research.
 
+## Implementation status (Phase 5d, 2026-09-29)
+
+- A page whose static fetch yields less than 200 characters of readable text is rendered by the worker (`task.render`, RenderPageForResearch) in the research profile, headless, and read with the same extraction; evidence records `extractor: rendered-readability`, and links for the likely pages come from the rendered page. Only pages the static fetch already allowed (robots.txt, same site, public address) are rendered. See ADR 027 for the request guard.
+- No worker, the research profile in the person's hands, a challenge, or a page trying to leave the site: the page keeps its static text (or is skipped).
+
 ## MVP input
 
 Research begins from existing prospect data:

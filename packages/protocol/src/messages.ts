@@ -11,6 +11,8 @@ import {
   workerSessionRefSchema,
   workerSetModeSchema,
   workerTaskRunSchema,
+  workerRenderSchema,
+  renderResultSchema,
   taskCheckpointSchema,
   taskCheckpointAckSchema,
   taskResultSchema,
@@ -558,6 +560,12 @@ export const requests = {
     kind: 'command',
     request: taskCheckpointSchema,
     response: taskCheckpointAckSchema,
+  },
+  'task.render': {
+    channel: 'browser',
+    kind: 'command',
+    request: workerRenderSchema,
+    response: renderResultSchema,
   },
   'task.run': {
     channel: 'browser',

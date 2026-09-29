@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Northwind Robotics</title>
+  </head>
+  <body>
+    <!-- A JavaScript-only site (Phase 5d): the static HTML has no text; the script writes it.
+         ?leave=1 sends the page to another site; ?probe=<url> makes the page call that URL. -->
+    <div id="root"></div>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <script>
+      const q = new URLSearchParams(location.search);
+      if (q.get('leave')) location.href = q.get('leave');
+      setTimeout(() => {
+        document.getElementById('root').innerHTML =
+          '<main><h1>Northwind Robotics</h1>' +
+          '<p>Northwind Robotics builds autonomous forklifts for cold-storage warehouses.</p>' +
+          '<p>In 2026 we opened a second factory in Tampere, Finland.</p>' +
+          '<a href="/spa/about">About us</a></main>';
+        const probe = q.get('probe');
+        if (probe)
+          fetch(probe, { mode: 'no-cors' }).then(
+            () => (document.title = 'probe reached'),
+            () => {},
+          );
+      }, 300);
+    </script>
+  </body>
+</html>

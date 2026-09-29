@@ -48,7 +48,10 @@ interface Session {
 export interface ProfileManagerOptions {
   /** `<app data>/profiles`; each profile is `<root>/<profile id>` (docs/08). */
   root: string;
-  /** Visible by default: the product never hides the browser (ADR 009). Tests only run headless. */
+  /**
+   * Visible by default: the person sees every window that acts (docs/11). Only research renders
+   * headless (ADR 027), per `open`; this switch makes every window headless, for tests.
+   */
   headless?: boolean;
   /**
    * Profiles encrypt cookies and saved data with the macOS Keychain, like the user's own Chrome
@@ -85,6 +88,7 @@ export class ProfileManager {
     channel: 'chrome' | 'chromium';
     startUrl: string | null;
     controlMode?: ControlMode;
+    headless?: boolean;
   }): Promise<{ chromeVersion: string | null; currentUrl: string | null }> {
     if (this.sessionOf(req.profileId))
       throw new RpcError('CONFLICT', 'Profile already open', 'profile.alreadyOpen');
@@ -94,7 +98,9 @@ export class ProfileManager {
     try {
       context = await chromium.launchPersistentContext(dir, {
         ...(req.channel === 'chrome' ? { channel: 'chrome' } : {}),
-        headless: this.options.headless ?? false,
+        headless: (req.headless ?? false) || (this.options.headless ?? false),
+        // A research page cannot install a worker that outlives it or escapes the page's routes.
+        ...(req.headless ? { serviceWorkers: 'block' as const } : {}),
         // Chrome's sandbox stays on (Playwright turns it off by default).
         chromiumSandbox: true,
         ignoreDefaultArgs: [
@@ -102,7 +108,7 @@ export class ProfileManager {
           ...(this.options.keychain === false ? [] : KEYCHAIN_DEFAULTS),
         ],
         // The window keeps its own size, like a normal browser window.
-        viewport: null,
+        viewport: req.headless ? { width: 1280, height: 900 } : null,
         timeout: 60_000,
       });
     } catch (error) {
@@ -122,7 +128,7 @@ export class ProfileManager {
       closing: false,
       controlMode: req.controlMode ?? 'human',
       abort: new AbortController(),
-      overlay: req.controlMode === 'automation',
+      overlay: req.controlMode === 'automation' && !req.headless,
       overlayContext: null,
     };
     this.sessions.set(req.sessionId, session);
