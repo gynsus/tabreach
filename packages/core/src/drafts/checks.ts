@@ -84,7 +84,10 @@ const NOT_NAMES = new Set([
 function grounding(text: string, sources: readonly string[]): DraftCheck {
   const sourceText = sources.join('\n');
   const sourceNumbers = new Set(numbers(sourceText));
-  const sourceWords = new Set(words(sourceText).map((w) => w.toLowerCase()));
+  // Compounds count whole and by their parts ("B2B-рассылок" also gives "b2b").
+  const sourceWords = new Set(
+    words(sourceText).flatMap((w) => [w, ...w.split(/[-\u2010\u2013]/)].map((p) => p.toLowerCase())),
+  );
   const unsupported = new Set<string>();
   for (const n of numbersWithText(text)) {
     if (!sourceNumbers.has(n.digits)) unsupported.add(n.text);

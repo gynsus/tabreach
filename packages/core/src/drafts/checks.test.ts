@@ -81,6 +81,17 @@ describe('draft checks', () => {
   it('grounding checks a hyphenated compound by its capitalised parts', () => {
     const body = 'Здравствуйте, Анна! Про ваше ИИ-направление и Berlin-офис.\n\nBest,\nBob';
     expect(check({ subject: null, body, sources: ['ИИ', 'Berlin', 'Анна'] }, 'grounding')?.passed).toBe(true);
+    // The sources' compounds count by their parts too (live check: "B2B-рассылок" in the instructions).
+    expect(
+      check(
+        {
+          subject: null,
+          body: 'Здравствуйте, Анна! Про B2B-продажи.\n\nBest,\nBob',
+          sources: ['Анна', 'B2B-рассылки'],
+        },
+        'grounding',
+      )?.passed,
+    ).toBe(true);
     expect(check({ subject: null, body, sources: ['ИИ', 'Анна'] }, 'grounding')).toMatchObject({
       passed: false,
       detail: 'Berlin-офис',
