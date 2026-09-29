@@ -18,7 +18,7 @@ import type { AuditLog } from '../audit/audit-log.js';
 import type { ChannelResolver, MessageChannel } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
 import { allPassed, runDraftChecks } from '../drafts/checks.js';
-import type { DraftRequest, DraftResult } from '../drafts/draft-writer.js';
+import { cleanDraftBody, cleanSubject, type DraftRequest, type DraftResult } from '../drafts/draft-writer.js';
 import {
   PermanentError,
   RetryableError,
@@ -948,12 +948,22 @@ export class CampaignEngine {
         return 'done';
       }
       const sig = signature.text.trim();
-      const body = sig ? `${result.draft.body.trim()}\n\n${sig}` : result.draft.body.trim();
-      const draft = this.insertDraft(run, e, step.channel, target, result.draft.subject.trim(), body, 1, {
-        origin: 'ai',
-        factIds: result.facts.map((f) => f.id),
-        generation: { template: 'draft.write@1', model: result.model, researchRunId: result.researchRunId },
-      });
+      const text = cleanDraftBody(result.draft.body, sig);
+      const body = sig ? `${text}\n\n${sig}` : text;
+      const draft = this.insertDraft(
+        run,
+        e,
+        step.channel,
+        target,
+        cleanSubject(result.draft.subject),
+        body,
+        1,
+        {
+          origin: 'ai',
+          factIds: result.facts.map((f) => f.id),
+          generation: { template: result.template, model: result.model, researchRunId: result.researchRunId },
+        },
+      );
       this.d.audit.record({
         actorType: 'ai',
         actionType: 'draft.generated',

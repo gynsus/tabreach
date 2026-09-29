@@ -90,7 +90,9 @@ function grounding(text: string, sources: readonly string[]): DraftCheck {
     if (!sourceNumbers.has(n.digits)) unsupported.add(n.text);
   }
   for (const name of names(text)) {
-    if (!knownWord(name.toLowerCase(), sourceWords)) unsupported.add(name);
+    // A compound ("ИИ-направление") is checked by its capitalised parts.
+    const parts = name.split(/[-\u2010\u2013]/).filter((p) => /^\p{Lu}/u.test(p) && p.length > 1);
+    if (!parts.every((p) => knownWord(p.toLowerCase(), sourceWords))) unsupported.add(name);
   }
   const list = [...unsupported];
   return {
