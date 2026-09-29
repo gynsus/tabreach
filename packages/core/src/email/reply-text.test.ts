@@ -45,6 +45,23 @@ describe('replyText', () => {
     expect(replyText('Хорошо.\n\n28.09.2026, 21:10, Иван Петров пишет:\n> Привет')).toBe('Хорошо.');
   });
 
+  it('an introduction that starts with the date, with the signature below the quote', () => {
+    const text = [
+      'Sounds good, let us talk next week',
+      '',
+      'September 28, 2026 9:10 PM, "Ann Lee" <ann@example.test> wrote:',
+      '',
+      '> Hello!',
+      '>',
+      '> Earlier text.',
+      '',
+      'Bob Smith',
+      'Telegram @bob',
+    ].join('\n');
+    expect(replyText(text)).toBe('Sounds good, let us talk next week');
+    expect(replyText('I wrote: the 2026 plan is attached')).toBe('I wrote: the 2026 plan is attached');
+  });
+
   it('drops a standard signature and a trailing quote without introduction', () => {
     expect(replyText('Ok\n-- \nAnn Lee\nCEO')).toBe('Ok');
     expect(replyText('Ok\n\n> earlier\n> text\n')).toBe('Ok');
