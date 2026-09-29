@@ -88,9 +88,9 @@ query   ai.usage                       # { month } -> calls, tokens, estimated c
 ## Research
 
 ```text
-command research.start                 # { targetType, targetId, mode }
-query   research.get
-query   evidence.listForTarget
+command research.start                 # { companyId, criteria? } — needs a website and an AI key
+query   research.list                  # { companyId } -> runs, newest first
+query   research.get                   # run + facts (verified or not) + evidence (url, title, capturedAt)
 ```
 
 ## Campaigns

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
+import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
 import {
   conversationListRequestSchema,
   conversationSchema,
@@ -306,6 +307,19 @@ export const requests = {
   'conversations.get': { channel: 'app', kind: 'query', request: byId, response: conversationSchema },
   'conversations.markRead': { channel: 'app', kind: 'command', request: byId, response: ok },
   'conversations.review': { channel: 'app', kind: 'command', request: reviewRequestSchema, response: ok },
+  'research.start': {
+    channel: 'app',
+    kind: 'command',
+    request: researchStartSchema,
+    response: researchRunSchema,
+  },
+  'research.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ companyId: z.uuid() }),
+    response: z.object({ items: z.array(researchRunSchema) }),
+  },
+  'research.get': { channel: 'app', kind: 'query', request: byId, response: researchDetailSchema },
   'ai.settings.get': { channel: 'app', kind: 'query', request: z.object({}), response: aiSettingsSchema },
   'ai.settings.update': {
     channel: 'app',

@@ -11,6 +11,7 @@ import { fakeClock } from '../db/test-db.js';
 import { Dispatcher } from '../jobs/dispatcher.js';
 import type { SecretCipher } from '../secrets/secrets.js';
 import { FakeAnthropic } from '../ai/fake-anthropic.js';
+import type { Http } from './gmail.js';
 import { FakeGoogle } from './fake-google.js';
 import { FakeMail } from './fake-mail.js';
 
@@ -49,6 +50,8 @@ export class Harness {
   readonly mail = new FakeMail();
   readonly google = new FakeGoogle();
   readonly anthropic = new FakeAnthropic();
+  /** HTTP for research fetching; tests point it at the fixture site. */
+  webHttp: Http = () => Promise.reject(new Error('no web in this test'));
   readonly logs: string[] = [];
   db!: DatabaseSync;
   services!: AppServices;
@@ -68,6 +71,8 @@ export class Harness {
       mailClients: this.mail,
       gmail: this.google.deps,
       aiHttp: this.anthropic.http,
+      webHttp: (url, init) => this.webHttp(url, init),
+      sleep: async () => {},
       logger: capturingLogger(this.logs),
     });
     this.dispatcher = new Dispatcher({
@@ -79,6 +84,7 @@ export class Harness {
       ...this.services.engine.jobTypes(),
       ...this.services.inbox.jobTypes(),
       ...this.services.classifier.jobTypes(),
+      ...this.services.research.jobTypes(),
     ]) {
       this.dispatcher.register(type);
     }

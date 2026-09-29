@@ -212,6 +212,7 @@ export const en = {
       channel_adapter: 'Channel',
     },
     actions: {
+      research: { started: 'Research started', completed: 'Research done', failed: 'Research failed' },
       ai: { settings_updated: 'AI settings changed', key_set: 'AI key saved', key_removed: 'AI key removed' },
       account: {
         connected: 'Email account connected',
@@ -525,6 +526,29 @@ export const en = {
       budget: 'The monthly AI budget is reached.',
     },
   },
+  research: {
+    title: 'Research',
+    criteria: 'What you look for (optional)',
+    criteriaHint: 'Location, company type, signals, exclusions. Used for the qualification.',
+    start: 'Research company',
+    running: 'Researching…',
+    statuses: { pending: 'Waiting', running: 'Running', completed: 'Done', failed: 'Failed' },
+    qualifications: {
+      match: 'Match',
+      possible_match: 'Possible match',
+      not_match: 'Not a match',
+      insufficient_data: 'Not enough data',
+    },
+    reasonToContact: 'Reason to contact',
+    facts_one: '{{count}} verified fact',
+    facts_other: '{{count}} verified facts',
+    inferences: 'Interpretation (not facts)',
+    unsupported: 'Not supported by the sources',
+    unsupportedHint: 'The model quoted text that is not on the page. These are not used anywhere.',
+    missing: 'Not found on the site',
+    sources_one: '{{count}} page read, {{skipped}} skipped',
+    sources_other: '{{count}} pages read, {{skipped}} skipped',
+  },
   attention: {
     title: 'Needs attention',
     subtitle: 'Background tasks that failed repeatedly. Retry once the cause is fixed.',
@@ -618,6 +642,20 @@ export const en = {
     },
   },
   errors: {
+    research: {
+      noWebsite: 'Add the company’s website to research it.',
+      noPages: 'No page of the website could be read.',
+      notFound: 'This research no longer exists.',
+    },
+    ai: {
+      no_key: 'Add an Anthropic API key in Settings → AI.',
+      auth: 'Anthropic refused the API key.',
+      budget: 'The monthly AI budget is reached.',
+      rejected: 'Anthropic refused the request. Check the model names in Settings → AI.',
+      invalid_output: 'The model returned an unexpected answer. Try again.',
+      rate_limited: 'Anthropic is busy. Try again later.',
+      unavailable: 'Anthropic could not be reached.',
+    },
     oauth: {
       notCompleted: 'Signing in was not completed. Try again.',
       denied: 'Access was not granted in Google.',

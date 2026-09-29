@@ -15,6 +15,7 @@ export const auditObjectTypeSchema = z.enum([
   'settings',
   'account',
   'conversation',
+  'research',
 ]);
 export type AuditObjectType = z.infer<typeof auditObjectTypeSchema>;
 
@@ -60,5 +61,8 @@ export const auditActionTypes = [
   'ai.key_set',
   'ai.key_removed',
   'message.classified',
+  'research.started',
+  'research.completed',
+  'research.failed',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

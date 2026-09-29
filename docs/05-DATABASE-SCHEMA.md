@@ -450,6 +450,10 @@ created_at
 
 Unique `(conversation_id, provider_message_id)`; index `rfc_message_id`. Only prospect mail is stored (ADR 024).
 
+### Research (implemented, migration 13)
+
+`research_runs (id, company_id, status, error, criteria, summary, qualification, qualification_reason, reason_to_contact, missing_information json, template, model, pages_fetched, pages_skipped, correlation_id, started_at, finished_at)`; `evidence (id, url, title, content_hash unique, text, extractor, captured_at)`; `research_run_evidence (research_run_id, evidence_id)`; `research_facts (id, research_run_id, position, kind fact|inference, claim, evidence_id, quote, verified 0/1, based_on json, created_at)`. The earlier `research_runs` / `evidence` / `research_facts` sections above describe the target shape; these are what exists.
+
 ### `ai_calls`
 
 `(id pk, use_case, provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label`, `ai_confidence`, `ai_template` (migration 12).
