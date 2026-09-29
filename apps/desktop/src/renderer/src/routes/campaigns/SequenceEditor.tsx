@@ -22,6 +22,7 @@ export const newMessage = (): CampaignStep => ({
   executionMode: 'auto',
   delaySeconds: 0,
   mode: 'template',
+  linkedinAction: 'message',
   subject: '',
   body: '',
   instructions: '',
@@ -169,26 +170,59 @@ function MessageFields(props: {
             value={step.channel}
             disabled={props.disabled}
             onChange={(e) => {
-              const channel =
-                e.target.value === 'test' ? 'test' : e.target.value === 'web_form' ? 'web_form' : 'email';
-              // Only a form can be sent by the person pressing its button.
+              const v = e.target.value;
+              const channel = v === 'test' || v === 'web_form' || v === 'linkedin' ? v : 'email';
+              // Only browser channels can be sent by the person pressing the button; LinkedIn starts
+              // assisted (ADR 015).
               props.onChange({
                 ...step,
                 channel,
-                executionMode: channel === 'web_form' ? step.executionMode : 'auto',
+                executionMode:
+                  channel === 'linkedin'
+                    ? step.channel === 'linkedin'
+                      ? step.executionMode
+                      : 'assisted'
+                    : channel === 'web_form'
+                      ? step.executionMode
+                      : 'auto',
               });
             }}
           >
             <option value="email">{t('campaigns.channels.email')}</option>
             <option value="web_form">{t('campaigns.channels.web_form')}</option>
+            <option value="linkedin">{t('campaigns.channels.linkedin')}</option>
             <option value="test">{t('campaigns.channels.test')}</option>
           </Select>
         )}
       </Field>
-      {step.channel === 'web_form' ? (
+      {step.channel === 'linkedin' ? (
+        <Field label={t('campaigns.linkedinAction')} className="max-w-md">
+          {(id) => (
+            <Select
+              id={id}
+              value={step.linkedinAction}
+              disabled={props.disabled}
+              onChange={(e) =>
+                props.onChange({
+                  ...step,
+                  linkedinAction: e.target.value === 'connect' ? 'connect' : 'message',
+                })
+              }
+            >
+              <option value="connect">{t('campaigns.linkedinActions.connect')}</option>
+              <option value="message">{t('campaigns.linkedinActions.message')}</option>
+            </Select>
+          )}
+        </Field>
+      ) : null}
+      {step.channel === 'web_form' || step.channel === 'linkedin' ? (
         <Field
           label={t('campaigns.executionMode')}
-          hint={t(`campaigns.executionModeHints.${step.executionMode}`)}
+          hint={t(
+            step.channel === 'linkedin'
+              ? `campaigns.linkedinModeHints.${step.executionMode}`
+              : `campaigns.executionModeHints.${step.executionMode}`,
+          )}
           errorKey={props.errors[`steps.${index}.executionMode`]}
           className="max-w-md"
         >
@@ -285,19 +319,33 @@ function MessageFields(props: {
         </>
       ) : (
         <>
-          <Field label={t('campaigns.subject')} errorKey={props.errors[`steps.${index}.subject`]}>
-            {(id, describedBy) => (
-              <Input
-                id={id}
-                value={step.subject}
-                disabled={props.disabled}
-                aria-describedby={describedBy}
-                aria-invalid={props.errors[`steps.${index}.subject`] ? true : undefined}
-                onChange={(e) => props.onChange({ ...step, subject: e.target.value })}
-              />
-            )}
-          </Field>
-          <Field label={t('campaigns.body')} errorKey={props.errors[`steps.${index}.body`]} hint={hint}>
+          {step.channel === 'linkedin' ? null : (
+            <Field label={t('campaigns.subject')} errorKey={props.errors[`steps.${index}.subject`]}>
+              {(id, describedBy) => (
+                <Input
+                  id={id}
+                  value={step.subject}
+                  disabled={props.disabled}
+                  aria-describedby={describedBy}
+                  aria-invalid={props.errors[`steps.${index}.subject`] ? true : undefined}
+                  onChange={(e) => props.onChange({ ...step, subject: e.target.value })}
+                />
+              )}
+            </Field>
+          )}
+          <Field
+            label={
+              step.channel === 'linkedin' && step.linkedinAction === 'connect'
+                ? t('campaigns.inviteNote')
+                : t('campaigns.body')
+            }
+            errorKey={props.errors[`steps.${index}.body`]}
+            hint={
+              step.channel === 'linkedin' && step.linkedinAction === 'connect'
+                ? `${t('campaigns.inviteNoteHint')} ${hint}`
+                : hint
+            }
+          >
             {(id, describedBy) => (
               <textarea
                 id={id}

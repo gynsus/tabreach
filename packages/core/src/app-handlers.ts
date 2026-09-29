@@ -18,6 +18,7 @@ import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { FormService } from './forms/form-service.js';
+import { LinkedinService } from './linkedin/linkedin-service.js';
 import { TargetResolver } from './forms/target-resolver.js';
 import { pinnedHttp } from './research/pinned-http.js';
 import { ResearchRenderer } from './research/renderer.js';
@@ -122,6 +123,8 @@ export class AppServices {
   readonly checkpoints: BrowserCheckpoints;
   /** Website forms: the sender, preparing and the web_form channel (Phase 6). */
   readonly forms: FormService;
+  /** The LinkedIn adapter: switch, account, limits and channel (Phase 7). */
+  readonly linkedin: LinkedinService;
   /** Bounded semantic resolution for the worker (ADR 013, Phase 6c). */
   readonly targets: TargetResolver;
   /** Renders JavaScript-only pages for research in the research profile (Phase 5d). */
@@ -214,13 +217,25 @@ export class AppServices {
       worker: options.worker ?? (() => null),
       logger: logger.child({ component: 'forms' }),
     });
+    this.linkedin = new LinkedinService({
+      db,
+      now,
+      audit: this.audit,
+      settings: this.settings,
+      browser: this.browser,
+      checkpoints: this.checkpoints,
+      worker: options.worker ?? (() => null),
+      logger: logger.child({ component: 'linkedin' }),
+    });
     const channels: ChannelResolver = (channel, config) =>
       named.get(channel) ??
       (channel === 'email'
         ? this.accounts.channel(config.emailAccountId)
         : channel === 'web_form'
           ? this.forms.channel()
-          : undefined);
+          : channel === 'linkedin'
+            ? this.linkedin.channel()
+            : undefined);
     this.policy = new ContactPolicy(db, this.settings, now);
     this.engine = new CampaignEngine({
       db,
@@ -315,6 +330,13 @@ export class AppServices {
       now,
       (contactId, companyId) => this.policy.replyHold(contactId, companyId),
       () => this.ai.settings().keySet,
+      (step) => {
+        const off = this.linkedin.unavailable();
+        if (off) return { field: 'steps.{i}.channel', key: off };
+        if (step.executionMode === 'auto' && this.linkedin.modeFor(step.linkedinAction, 'auto') !== 'auto')
+          return { field: 'steps.{i}.executionMode', key: 'linkedin.autoNotAllowed' };
+        return null;
+      },
     );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now, this.forms);
   }
@@ -442,6 +464,10 @@ export class AppServices {
       .handle('drafts.history', (p) => ({ items: this.approvals.history(p.draftId) }))
       .handle('drafts.revise', (p, c) =>
         mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
+      )
+      .handle('linkedin.settings.get', () => this.linkedin.settings())
+      .handle('linkedin.settings.update', (p, c) =>
+        mutate(['settings', 'activity'], () => this.linkedin.update(p, ctx(c))),
       )
       .handle('forms.sender.get', () => this.forms.sender())
       .handle('forms.sender.update', (p, c) =>
@@ -612,6 +638,9 @@ export class AppServices {
   private requireNotFormSender(profileId: string): void {
     if (this.forms.sender().profileId === profileId) {
       throw new RpcError('CONFLICT', 'Used for website forms', 'profile.formSender');
+    }
+    if (this.linkedin.settings().profileId === profileId) {
+      throw new RpcError('CONFLICT', 'Used for LinkedIn', 'profile.linkedinAccount');
     }
   }
 

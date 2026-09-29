@@ -113,17 +113,27 @@ async function recognize(
   states: PageState[],
   timeoutMs: number,
   signal: AbortSignal,
+  /** Other known states: once the page settles in one of them, it is reported at once. */
+  others: PageState[] = [],
 ): Promise<PageState | null> {
-  const deadline = Date.now() + timeoutMs;
+  const started = Date.now();
+  const deadline = started + timeoutMs;
   for (;;) {
     signal.throwIfAborted();
     // A page navigating under the probe throws; it is probed again on the next poll.
     const state = await matchState(states, probeOf(page)).catch(() => null);
     if (state) return state;
+    if (others.length > 0 && Date.now() - started > SETTLE_OTHERS_MS) {
+      const other = await matchState(others, probeOf(page)).catch(() => null);
+      if (other) return other;
+    }
     if (Date.now() > deadline) return null;
     await page.waitForTimeout(POLL_MS);
   }
 }
+
+/** How long a page may take to become an expected state before a known other one counts. */
+const SETTLE_OTHERS_MS = 3_000;
 
 /** Exactly one visible control with one of the names; otherwise nothing (no guessing — docs/07). */
 async function findControl(page: Page, control: Control) {
@@ -191,6 +201,7 @@ export async function runCommit(
     [...challenges, ...logins, ...byId(action.from)],
     RECOGNIZE_TIMEOUT_MS,
     signal,
+    pack.states,
   );
   if (start?.kind === 'login') {
     return notCommitted({ stateId: start.id, stateKind: 'login', errorKey: 'task.loginRequired' });
@@ -203,6 +214,11 @@ export async function runCommit(
       stateKind: start?.kind ?? null,
       diagnostics: start ? null : await diagnose(page, req.taskId, action.from, env),
     });
+  }
+  // A known page, but not one this action starts from (an invitation already pending, say):
+  // reported as what it is, and nothing is clicked.
+  if (!action.from.includes(start.id)) {
+    return notCommitted({ status: 'unsupported_state', stateId: start.id, stateKind: start.kind });
   }
   // The page must be about the intended person before anything is clicked (FR-LIN-003).
   if (action.identity) {
@@ -474,6 +490,7 @@ export async function readThread(
     [...challenges, ...logins, ...byId(reader.from)],
     RECOGNIZE_TIMEOUT_MS,
     signal,
+    pack.states,
   );
   if (at?.kind === 'login')
     return { ...base, status: 'failed', stateId: at.id, errorKey: 'task.loginRequired' };
@@ -485,6 +502,7 @@ export async function readThread(
       diagnostics: at ? null : await diagnose(page, req.taskId, reader.from, env),
     };
   }
+  if (!reader.from.includes(at.id)) return { ...base, status: 'unsupported_state', stateId: at.id };
   if (reader.identity && (!pack.identity || !(await identityMatches(page, pack.identity, req.identity)))) {
     return { ...base, status: 'unsupported_state', stateId: at.id, errorKey: 'task.identityMismatch' };
   }

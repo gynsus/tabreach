@@ -139,6 +139,8 @@ interface ContactFacts {
   company_domain: string | null;
   company_website: string | null;
   company_timezone: string | null;
+  /** Normalized LinkedIn profile (`linkedin.com/in/<slug>`), if the contact has one. */
+  linkedin_url: string | null;
 }
 
 /** Version settings frozen at launch (steps live in sequence_steps). */
@@ -204,6 +206,11 @@ class PolicyBlocked extends Error {
   constructor(readonly verdict: Exclude<PolicyVerdict, { kind: 'ok' }>) {
     super(verdict.rule);
   }
+}
+
+/** The ledger's action class: LinkedIn invitations and messages have their own limits (FR-LIN-005). */
+export function actionTypeOf(step: SendStep): string {
+  return step.channel === 'linkedin' ? `linkedin.${step.linkedinAction}` : 'send_message';
 }
 
 export function contentHash(channel: string, target: string, subject: string | null, body: string): string {
@@ -412,6 +419,13 @@ export class CampaignEngine {
     const target = this.targetFor(step.channel, facts);
     switch (run.current_state) {
       case 'PREPARE_CONTENT': {
+        // LinkedIn checks the page names this person (FR-LIN-003): without a name nothing is sent.
+        if (step.channel === 'linkedin' && !templateValues(facts).fullName) {
+          this.stopEnrollment(e, 'invalid_target', correlationId, 'system', {
+            rule: 'linkedin.nameRequired',
+          });
+          return 'done';
+        }
         if (!target) {
           this.stopEnrollment(e, 'invalid_target', correlationId, 'system');
           return 'done';
@@ -429,7 +443,9 @@ export class CampaignEngine {
             this.stopEnrollment(e, 'missing_data', correlationId, 'system', { fields: missing });
             return 'done';
           }
-          this.insertDraft(run, e, step.channel, target, subject.text || null, body.text, 1, {
+          // LinkedIn has no subject line.
+          const shownSubject = step.channel === 'linkedin' ? null : subject.text || null;
+          this.insertDraft(run, e, step.channel, target, shownSubject, body.text, 1, {
             origin: 'template',
           });
         }
@@ -557,7 +573,7 @@ export class CampaignEngine {
       scopeId: e.id,
       stepPosition: run.step_position,
       channel: step.channel,
-      actionType: 'send_message',
+      actionType: actionTypeOf(step),
       target,
     };
     const hash = this.approvalHash(step.channel, run.id, draft, target);
@@ -622,6 +638,17 @@ export class CampaignEngine {
       if (verdict.kind !== 'ok') throw new PolicyBlocked(verdict);
       const pacing = this.d.policy.checkChannel(channel, intentKey(intent));
       if (pacing.kind !== 'ok') throw new PolicyBlocked(pacing);
+      // A switched-off adapter sends nothing, here or at the checkpoint (FR-LIN-001, fails closed).
+      const off = channel.unavailable?.();
+      if (off) {
+        throw new PolicyBlocked({
+          kind: 'defer',
+          until: new Date(this.d.now().getTime() + 60 * 60_000),
+          rule: off,
+        });
+      }
+      const limited = channel.checkLimits?.(intent.actionType, intentKey(intent));
+      if (limited) throw new PolicyBlocked({ kind: 'defer', until: limited.until, rule: limited.rule });
       const shared = this.companyForm(e, run, step);
       if (shared === 'sent')
         throw new PolicyBlocked({ kind: 'defer', until: this.d.now(), rule: 'company.form.sent' });
@@ -738,8 +765,11 @@ export class CampaignEngine {
       // Reconciliation cannot tell yet (the Sent search lags): look again later, not a failure.
       return { continueAt: outcome.retryAt };
     }
-    if (outcome.outcome === 'not_sent' && step.channel === 'web_form') {
-      const handled = this.formNotSent(run, outcome.errorClass);
+    if (outcome.outcome === 'not_sent' && (step.channel === 'web_form' || step.channel === 'linkedin')) {
+      const handled =
+        step.channel === 'linkedin'
+          ? this.linkedinNotSent(run, e, step, outcome.errorClass)
+          : this.formNotSent(run, outcome.errorClass);
       if (handled) {
         // Nothing was sent; the attempt is recorded all the same (CLAUDE.md §3.5).
         const notSent = outcome;
@@ -1074,6 +1104,7 @@ export class CampaignEngine {
    */
   targetFor(channel: string, facts: ContactFacts): string | null {
     if (channel === 'web_form') return websiteTarget(facts.company_website ?? facts.company_domain);
+    if (channel === 'linkedin') return facts.linkedin_url ? `https://www.${facts.linkedin_url}/` : null;
     return facts.email_normalized;
   }
 
@@ -1161,6 +1192,91 @@ export class CampaignEngine {
       this.d.changed(['enrollment', 'activity']);
       return 'next';
     });
+  }
+
+  /**
+   * A LinkedIn action that did not happen, and what it means (Phase 7). Nothing was pressed:
+   * - the person answered (FR-LIN-004): the enrollment stops as replied, and the reply is recorded;
+   * - an invitation to someone already invited or connected: the step is done without sending;
+   * - a message to someone not connected yet: it waits a day, up to two weeks (`not_connected`);
+   * - a page about someone else: the target is wrong, the enrollment stops;
+   * - signed out, a security check, the person's window, a thread that could not be read: it waits.
+   */
+  private linkedinNotSent(
+    run: RunRow,
+    e: EnrollmentRow,
+    step: SendStep,
+    errorClass: string,
+  ): 'next' | 'done' | { continueAt: Date } | null {
+    const later = (ms: number) => ({ continueAt: new Date(this.d.now().getTime() + ms) });
+    return transaction(this.d.db, () => {
+      const fresh = this.run(run.id);
+      const freshE = this.enrollment(e.id);
+      if (!fresh || TERMINAL.has(fresh.status) || !freshE) return null;
+      if (errorClass === 'linkedin.replied') {
+        this.d.audit.record({
+          actorType: 'browser_worker',
+          actionType: 'linkedin.reply_detected',
+          objectType: 'enrollment',
+          objectId: e.id,
+          payload: { runId: run.id, step: run.step_position },
+          correlationId: run.correlation_id,
+        });
+        this.stopEnrollment(freshE, 'replied', run.correlation_id, 'system', { channel: 'linkedin' });
+        return 'done';
+      }
+      const connected = ['state:linkedin.profile.pending', 'state:linkedin.profile.messageable'];
+      if (step.linkedinAction === 'connect' && connected.includes(errorClass)) {
+        this.d.audit.record({
+          actorType: 'browser_worker',
+          actionType: 'linkedin.already_connected',
+          objectType: 'enrollment',
+          objectId: e.id,
+          payload: { runId: run.id, state: errorClass.slice('state:'.length) },
+          correlationId: run.correlation_id,
+        });
+        this.updateRun(fresh, { status: 'completed', current_state: 'COMPLETE' });
+        this.finishStep(freshE, run.correlation_id);
+        return 'done';
+      }
+      if (
+        step.linkedinAction === 'message' &&
+        ['state:linkedin.profile.connectable', 'state:linkedin.profile.pending'].includes(errorClass)
+      ) {
+        const waited = this.d.now().getTime() - new Date(this.runCreatedAt(run.id)).getTime();
+        if (waited > 14 * 24 * 60 * 60_000) {
+          this.stopEnrollment(freshE, 'not_connected', run.correlation_id, 'system');
+          return 'done';
+        }
+        return later(24 * 60 * 60_000);
+      }
+      if (errorClass === 'task.identityMismatch') {
+        this.stopEnrollment(freshE, 'invalid_target', run.correlation_id, 'system', { rule: errorClass });
+        return 'done';
+      }
+      if (errorClass === 'task.checkpointRefused') return 'next';
+      if (
+        ['task.loginRequired', 'needs_human', 'linkedin.threadUnread', 'task.identityRequired'].includes(
+          errorClass,
+        )
+      ) {
+        return later(60 * 60_000);
+      }
+      if (
+        ['profile.inUseByYou', 'user_control', 'session.busy', 'profile.alreadyOpen'].includes(errorClass)
+      ) {
+        return later(120_000);
+      }
+      return null;
+    });
+  }
+
+  private runCreatedAt(runId: string): string {
+    return (
+      this.d.db.prepare('SELECT created_at FROM workflow_runs WHERE id = ?').get(runId) as {
+        created_at: string;
+      }
+    ).created_at;
   }
 
   /**
@@ -1299,7 +1415,13 @@ export class CampaignEngine {
             companyId: facts.company_id,
             instructions: step.instructions,
             stepNumber: run.step_position,
-            maxLength: Math.max(100, config.maxLength - signature.text.length - 2),
+            // A LinkedIn invitation note holds 300 characters at most.
+            maxLength: Math.max(
+              100,
+              (step.channel === 'linkedin' && step.linkedinAction === 'connect' ? 300 : config.maxLength) -
+                signature.text.length -
+                2,
+            ),
             recipient: {
               firstName: facts.first_name,
               lastName: facts.last_name,
@@ -1328,7 +1450,7 @@ export class CampaignEngine {
         e,
         step.channel,
         target,
-        cleanSubject(result.draft.subject),
+        step.channel === 'linkedin' ? null : cleanSubject(result.draft.subject),
         body,
         1,
         {
@@ -1452,7 +1574,9 @@ export class CampaignEngine {
         `SELECT c.id, c.first_name, c.last_name, c.full_name, c.job_title, c.email_normalized, c.timezone, c.company_id,
                 co.name AS company_name, co.city AS company_city, co.country AS company_country,
                 co.domain_normalized AS company_domain, co.website_url AS company_website,
-                co.timezone AS company_timezone
+                co.timezone AS company_timezone,
+                (SELECT url_normalized FROM contact_profile_urls
+                 WHERE contact_id = c.id AND channel = 'linkedin' LIMIT 1) AS linkedin_url
          FROM contacts c LEFT JOIN companies co ON co.id = c.company_id WHERE c.id = ?`,
       )
       .get(id) as ContactFacts | undefined;
@@ -1513,7 +1637,7 @@ export class CampaignEngine {
       scopeId: e.id,
       stepPosition: run.step_position,
       channel: step.channel,
-      actionType: 'send_message',
+      actionType: actionTypeOf(step),
       target,
     });
   }

@@ -205,7 +205,17 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
   it('a pending invitation or a sign-in wall is not a page to act on', async () => {
     expect(await act('linkedin.connect', 'cara-pending', 'Cara Pending')).toMatchObject({
       status: 'unsupported_state',
+      stateId: 'linkedin.profile.pending',
       committed: false,
+    });
+    // Not connected yet: a message is not possible, and the page says why.
+    expect(await act('linkedin.message', 'ann-lee', 'Ann Lee', { body: 'x' })).toMatchObject({
+      status: 'unsupported_state',
+      stateId: 'linkedin.profile.connectable',
+    });
+    expect(await read('ann-lee', 'Ann Lee')).toMatchObject({
+      status: 'unsupported_state',
+      stateId: 'linkedin.profile.connectable',
     });
     const wall = await core.request(
       'task.run',

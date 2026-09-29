@@ -401,6 +401,11 @@ export const en = {
       },
       form: { prepared: 'Contact form prepared', already_sent: 'Contact form already sent to this company' },
       forms: { sender_updated: 'Form sender changed' },
+      linkedin: {
+        settings_updated: 'LinkedIn settings changed',
+        reply_detected: 'Answered on LinkedIn — sequence stopped',
+        already_connected: 'Already invited or connected on LinkedIn',
+      },
       draft: { revised: 'Message edited', generated: 'Message written by AI' },
       message: {
         send: 'Message sent',
@@ -507,8 +512,18 @@ export const en = {
       auto: 'TabReach fills the form and sends it once you approve. A form with a CAPTCHA or a field it cannot fill is always sent by you.',
       assisted: 'TabReach fills the form and waits in the browser window; you check it and press Send.',
     },
+    linkedinAction: 'LinkedIn action',
+    linkedinActions: { connect: 'Invitation to connect', message: 'Message to a connection' },
+    linkedinModeHints: {
+      assisted:
+        'TabReach opens the profile, checks it is the right person, fills in the text and waits; you press Send.',
+      auto: 'TabReach presses Send after approval — only if allowed in Settings → LinkedIn.',
+    },
+    inviteNote: 'Invitation note',
+    inviteNoteHint: 'Optional, up to 300 characters.',
     channels: {
       web_form: 'Website contact form',
+      linkedin: 'LinkedIn',
       email: 'Email',
       test: 'Test channel — nothing leaves this Mac',
     },
@@ -564,6 +579,7 @@ export const en = {
       draft: 'AI is writing the message',
     },
     stopReasons: {
+      not_connected: 'Did not accept the LinkedIn invitation in time',
       no_contact_form: 'No contact form on the company’s website',
       manual: 'Stopped by you',
       campaign_archived: 'Campaign archived',
@@ -919,6 +935,7 @@ export const en = {
       general: 'General',
       email: 'Email accounts',
       forms: 'Website forms',
+      linkedin: 'LinkedIn',
       ai: 'AI',
       policy: 'Contact policy',
     },
@@ -942,6 +959,30 @@ export const en = {
       consentNote:
         'Consent and newsletter boxes are never ticked. If a form requires one, you tick it yourself and press Send.',
       saved: 'Form sender saved',
+    },
+    linkedin: {
+      title: 'LinkedIn',
+      risk: 'LinkedIn prohibits third-party software that automates activity on its site, and it can restrict accounts it suspects. TabReach does not hide what it does. Assisted mode — you press every Send — lowers the degree of automation and the risk, but does not make this integration permitted by LinkedIn. You use it at your own risk.',
+      acknowledge: 'I have read this and accept the risk for my account',
+      enabled: 'Turn on the LinkedIn adapter',
+      enabledHint:
+        'Off: no LinkedIn step does anything, and nothing waiting is sent. Off is also what TabReach assumes when unsure.',
+      profile: 'Browser profile signed in to LinkedIn',
+      profileHint: 'Sign in to LinkedIn in this profile yourself (Browser profiles → Open).',
+      autoTitle: 'TabReach presses Send itself (auto) — only if you allow it',
+      autoConnect: 'Allow auto for invitations',
+      autoMessage: 'Allow auto for messages',
+      autoHint: 'Without this, LinkedIn steps are always assisted: TabReach prepares, you press.',
+      limitsTitle: 'Limits for this account',
+      limits: {
+        connectPerDay: 'Invitations per day',
+        connectPerWeek: 'Invitations per week',
+        messagePerDay: 'Messages per day',
+      },
+      raise: 'I want limits above TabReach’s defaults and accept the higher risk',
+      limitsHint:
+        'Defaults: 15 invitations a day, 80 a week, 30 messages a day, 90 seconds apart. These are TabReach’s conservative defaults, not LinkedIn’s published limits and no guarantee against restrictions.',
+      saved: 'LinkedIn settings saved',
     },
     policy: {
       title: 'Contact policy',
@@ -971,6 +1012,8 @@ export const en = {
       notAutomation: 'The window is not under TabReach’s control.',
     },
     profile: {
+      linkedinAccount:
+        'This profile is your LinkedIn account in TabReach. Choose another in Settings → LinkedIn first.',
       formSender: 'This profile sends website forms. Choose another in Settings → Website forms first.',
       inUseByYou: 'You have this profile open. Close its window first.',
       checking: 'TabReach is already checking this profile.',
@@ -1082,6 +1125,17 @@ export const en = {
       duplicate: 'Another company already uses this domain.',
     },
     linkedin: {
+      disabled: 'The LinkedIn adapter is off. Turn it on in Settings → LinkedIn.',
+      noProfile: 'Choose the browser profile signed in to LinkedIn in Settings → LinkedIn.',
+      riskRequired: 'Read the notice and accept the risk first.',
+      profileRequired: 'Choose the browser profile signed in to LinkedIn.',
+      profileUnsuitable: 'Use a general browser profile for LinkedIn.',
+      limitsRaiseRequired:
+        'These limits are above TabReach’s defaults: tick that you accept the higher risk.',
+      autoNotAllowed:
+        'Auto is not allowed for this LinkedIn action. Allow it in Settings → LinkedIn, or use assisted.',
+      noteTooLong: 'An invitation note holds 300 characters at most.',
+      settingsInvalid: 'Check the highlighted settings.',
       invalid: 'Enter a LinkedIn profile URL like linkedin.com/in/name.',
       duplicate: 'This LinkedIn profile belongs to another contact.',
     },

@@ -521,6 +521,39 @@ test('a campaign writes through a website contact form: prepared, approved as sh
   });
 });
 
+test('LinkedIn stays off until the risk is accepted; a LinkedIn step starts assisted', async () => {
+  await page.evaluate(async () => {
+    const bridge = (window as unknown as { tabreach: { invoke(t: string, p: unknown): Promise<unknown> } })
+      .tabreach;
+    await bridge.invoke('profiles.create', { name: 'LinkedIn E2E', purpose: 'general' });
+  });
+  await go('#/settings/linkedin');
+  await expect(page.getByText(/LinkedIn prohibits third-party software/)).toBeVisible();
+  await page.getByLabel('Turn on the LinkedIn adapter').check();
+  await page.getByLabel('Browser profile signed in to LinkedIn').selectOption({ label: 'LinkedIn E2E' });
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Read the notice and accept the risk first.')).toBeVisible();
+  await page.getByLabel('I have read this and accept the risk for my account').check();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByTestId('toast').filter({ hasText: 'LinkedIn settings saved' })).toBeVisible();
+
+  await go('#/campaigns');
+  await page.getByRole('button', { name: 'New campaign' }).first().click();
+  const dialog = page.getByRole('dialog', { name: 'New campaign' });
+  await dialog.getByLabel('Name').fill('LinkedIn campaign');
+  await dialog.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Add message' }).click();
+  const step = page.getByRole('region', { name: 'Message 1' });
+  await step.getByLabel('Channel').selectOption('linkedin');
+  await expect(step.getByLabel('Who presses Send')).toHaveValue('assisted');
+  await step.getByLabel('LinkedIn action').selectOption('connect');
+  await expect(step.getByLabel('Invitation note')).toBeVisible();
+  await expect(step.getByLabel('Subject', { exact: true })).toHaveCount(0);
+  await step.getByLabel('Who presses Send').selectOption('auto');
+  await page.getByRole('button', { name: 'Launch', exact: true }).click();
+  await expect(step.getByText(/Auto is not allowed for this LinkedIn action/)).toBeVisible();
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

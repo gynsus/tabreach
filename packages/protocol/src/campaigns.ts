@@ -60,7 +60,11 @@ export type TemplateField = (typeof templateFields)[number];
  * Channels a message step can use: email (through the campaign's email account), a company's
  * website contact form (through the form sender's browser profile, Phase 6) or the local test channel.
  */
-export const messageChannelSchema = z.enum(['email', 'test', 'web_form']);
+export const messageChannelSchema = z.enum(['email', 'test', 'web_form', 'linkedin']);
+
+/** A LinkedIn step invites (with the message as its note, if any) or writes to a connection. */
+export const linkedinActionSchema = z.enum(['connect', 'message']);
+export type LinkedinAction = z.infer<typeof linkedinActionSchema>;
 
 /** Fields a condition step can test (ADR 021 §7). */
 export const conditionFieldSchema = z.enum([
@@ -103,6 +107,8 @@ export const sendMessageStepSchema = z.object({
   instructions: z.string().max(4_000).default(''),
   /** Appended as written, never by the model. */
   signature: z.string().max(1_000).default(''),
+  /** LinkedIn steps (Phase 7): send an invitation or a message. */
+  linkedinAction: linkedinActionSchema.default('message'),
 });
 
 export const conditionStepSchema = z.object({
@@ -213,6 +219,8 @@ export const stopReasonSchema = z.enum([
   'draft_failed',
   /** No contact form on the company's website (Phase 6). */
   'no_contact_form',
+  /** LinkedIn: the invitation was not accepted in time, so the message could not be sent (Phase 7). */
+  'not_connected',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
@@ -374,3 +382,31 @@ export const formSenderSchema = z.object({
   website: text(300),
 });
 export type FormSender = z.infer<typeof formSenderSchema>;
+
+// LinkedIn (Phase 7) --------------------------------------------------------------------------
+
+/**
+ * The LinkedIn adapter's switch and limits (docs/14, FR-LIN-001…005). Off unless turned on, and
+ * only after the risk notice was acknowledged; `auto` is opt-in per action class; the limits may be
+ * lowered freely and raised above the product's defaults only with `limitsRaised`.
+ */
+export const linkedinSettingsSchema = z.object({
+  enabled: z.boolean(),
+  /** The browser profile signed in to the LinkedIn account. */
+  profileId: id.nullable(),
+  riskAcknowledgedAt: z.iso.datetime().nullable(),
+  autoConnect: z.boolean(),
+  autoMessage: z.boolean(),
+  limits: z.object({
+    connectPerDay: z.number().int().min(0).max(200),
+    connectPerWeek: z.number().int().min(0).max(1_000),
+    messagePerDay: z.number().int().min(0).max(500),
+  }),
+  /** The limits are above the product's defaults; the person accepted the risk. */
+  limitsRaised: z.boolean(),
+});
+export type LinkedinSettings = z.infer<typeof linkedinSettingsSchema>;
+export const linkedinSettingsUpdateSchema = linkedinSettingsSchema.omit({ riskAcknowledgedAt: true }).extend({
+  /** Ticked in the settings: the person read the risk notice. */
+  acknowledgeRisk: z.boolean(),
+});
