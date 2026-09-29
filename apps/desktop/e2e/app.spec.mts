@@ -29,6 +29,38 @@ test.afterAll(async () => {
 });
 
 const go = (path: string) => page.evaluate((p) => (window.location.hash = p), path);
+
+/**
+ * The window itself never scrolls, only a page's own area does: a scrolled window leaves a blank
+ * strip under the app. Checked with every inner area scrolled to its end, after every test and
+ * on long pages.
+ */
+async function expectWindowNotScrollable() {
+  const overflow = await page.evaluate(() => {
+    for (const el of document.querySelectorAll('*'))
+      if (el.scrollHeight > el.clientHeight) el.scrollTop = el.scrollHeight;
+    const doc = document.scrollingElement as HTMLElement;
+    return { vertical: doc.scrollHeight - doc.clientHeight, horizontal: doc.scrollWidth - doc.clientWidth };
+  });
+  expect(overflow).toEqual({ vertical: 0, horizontal: 0 });
+}
+
+/** The smallest window the app allows, where long pages overflow first. */
+async function atMinimumWindowSize(check: () => Promise<void>) {
+  const size = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.getSize());
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(900, 600));
+  try {
+    await expect.poll(() => page.evaluate(() => window.innerHeight)).toBeLessThan(600);
+    await check();
+  } finally {
+    await app.evaluate(
+      ({ BrowserWindow }, [w, h]) => BrowserWindow.getAllWindows()[0]!.setSize(w, h),
+      size as [number, number],
+    );
+  }
+}
+test.afterEach(() => atMinimumWindowSize(expectWindowNotScrollable));
+
 /** Data rows of a table (the header row has no cells). */
 const dataRows = (table: string) =>
   page
@@ -236,6 +268,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
     timeout: 15_000,
   });
   await expect(page.getByTestId('draft-checks')).toContainText('All checks passed');
+  await atMinimumWindowSize(expectWindowNotScrollable);
   // Focus something in the queue first: on CI the window may not have OS focus, and a bare
   // keyboard.press then reaches no element. The shortcut handler itself is what is tested.
   await page.getByRole('button', { name: 'Approve' }).press('a');
