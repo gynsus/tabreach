@@ -29,6 +29,8 @@ export const conversationMessageSchema = z.object({
   subject: z.string().nullable(),
   body: z.string().nullable(),
   classification: messageClassificationSchema.nullable(),
+  /** What AI read in a reply (interested, opt-out, …); null until classified or without AI. */
+  label: z.enum(['interested', 'not_interested', 'opt_out', 'out_of_office', 'other']).nullable(),
   matchStrength: matchStrengthSchema.nullable(),
   reviewStatus: reviewStatusSchema,
   occurredAt: z.iso.datetime(),

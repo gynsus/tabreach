@@ -450,6 +450,10 @@ created_at
 
 Unique `(conversation_id, provider_message_id)`; index `rfc_message_id`. Only prospect mail is stored (ADR 024).
 
+### `ai_calls`
+
+`(id pk, use_case, provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label`, `ai_confidence`, `ai_template` (migration 12).
+
 ### `mailbox_cursors`
 
 `(channel_account_id pk, folder, uid_validity, last_uid, last_polled_at, last_error)` — where polling left off.

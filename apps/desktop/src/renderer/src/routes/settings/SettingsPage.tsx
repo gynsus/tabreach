@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Field, PageHeader, Select } from '../../components/ui';
 import { languages, setLanguage } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
+import { AiSettings } from './AiSettings';
 import { EmailAccounts } from './EmailAccounts';
 import { PolicySettings } from './PolicySettings';
 
@@ -38,6 +39,7 @@ export function SettingsPage() {
           {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
         </div>
         <EmailAccounts />
+        <AiSettings />
         <PolicySettings />
       </div>
     </>

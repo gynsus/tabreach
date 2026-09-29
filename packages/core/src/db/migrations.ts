@@ -484,4 +484,34 @@ export const migrations: readonly Migration[] = [
       ALTER TABLE contacts ADD COLUMN reply_hold_released_at TEXT;
     `,
   },
+  {
+    version: 12,
+    name: 'ai_calls',
+    sql: `
+      -- One row per AI provider call (docs/15 "Logging"): no prompts, no content, only what it cost.
+      CREATE TABLE ai_calls (
+        id               TEXT PRIMARY KEY,
+        use_case         TEXT NOT NULL CHECK (use_case IN ('classification', 'research', 'drafting')),
+        provider         TEXT NOT NULL,
+        model            TEXT NOT NULL,
+        template_key     TEXT NOT NULL,
+        template_version INTEGER NOT NULL,
+        status           TEXT NOT NULL CHECK (status IN ('ok', 'invalid_output', 'error', 'refused')),
+        input_tokens     INTEGER NOT NULL DEFAULT 0,
+        output_tokens    INTEGER NOT NULL DEFAULT 0,
+        cost_usd         REAL,
+        latency_ms       INTEGER NOT NULL DEFAULT 0,
+        error_class      TEXT,
+        correlation_id   TEXT NOT NULL,
+        created_at       TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX ai_calls_month ON ai_calls (created_at);
+
+      -- What AI read in a reply, with the template that produced it (docs/15 "Prompt versioning").
+      ALTER TABLE messages ADD COLUMN ai_label TEXT
+        CHECK (ai_label IN ('interested', 'not_interested', 'opt_out', 'out_of_office', 'other'));
+      ALTER TABLE messages ADD COLUMN ai_confidence REAL;
+      ALTER TABLE messages ADD COLUMN ai_template TEXT;
+    `,
+  },
 ];

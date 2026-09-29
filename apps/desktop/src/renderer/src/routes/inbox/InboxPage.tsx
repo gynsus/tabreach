@@ -208,6 +208,19 @@ function Message({ message: m }: { message: ConversationMessage }) {
         {m.classification ? (
           <Badge tone={tone[m.classification]}>{t(`inbox.classifications.${m.classification}`)}</Badge>
         ) : null}
+        {m.label ? (
+          <Badge
+            tone={
+              m.label === 'interested'
+                ? 'ok'
+                : m.label === 'opt_out' || m.label === 'not_interested'
+                  ? 'bad'
+                  : 'neutral'
+            }
+          >
+            AI · {t(`inbox.labels.${m.label}`)}
+          </Badge>
+        ) : null}
         <span className="ml-auto font-mono text-[10px] text-faint">
           {formatDateTime(m.occurredAt, i18n.language)}
         </span>

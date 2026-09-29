@@ -12,6 +12,13 @@ There is exactly one component that calls AI providers: the **AI gateway** in co
 - The renderer and main never call providers.
 - The gateway enforces budgets, records usage and cost, applies redaction, and validates outputs.
 
+## Implementation status (Phase 4a, 2026-09-29)
+
+- `packages/core/src/ai/`: `AiGateway` (the only caller), `AnthropicProvider` (Messages API over `fetch`; structured output as a forced tool call whose `input_schema` is the template's Zod schema converted with `z.toJSONSchema`), versioned `PromptTemplate`s, `untrusted()` fencing with a per-call nonce (closing tags inside the material are defused).
+- Settings (`ai`): provider, model per use case (defaults: `claude-haiku-4-5-20251001` for classification, `claude-sonnet-5` for research and drafting), prices per model entered by the user, monthly budget. The key is a `SecretStore` secret (`ai_api_key`).
+- `ai_calls` records template key/version, model, status, tokens, estimated cost and latency — never prompts or content. Cost and the budget work only for models with a price set; token counts are always shown.
+- First use case: reply labels (`reply.classify` v1) — interested / not interested / opt-out / out-of-office / other. An opt-out adds the sender to the do-not-contact list. Without a key, replies are not sent anywhere.
+
 ## Provider abstraction
 
 Provider-neutral interface for:

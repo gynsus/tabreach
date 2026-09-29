@@ -96,7 +96,11 @@ export class CoreService {
     if (pruned > 0)
       options.logger.info({ event: 'commands.pruned', count: pruned }, 'old command results pruned');
     await core.checkSecretStorage();
-    for (const type of [...core.services.engine.jobTypes(), ...core.services.inbox.jobTypes()]) {
+    for (const type of [
+      ...core.services.engine.jobTypes(),
+      ...core.services.inbox.jobTypes(),
+      ...core.services.classifier.jobTypes(),
+    ]) {
       core.dispatcher.register(type);
     }
     core.dispatcher.start();

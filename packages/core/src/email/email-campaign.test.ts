@@ -436,6 +436,36 @@ describe('replies', () => {
     expect(enrollment(s.campaign, s.bob)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
   });
 
+  it('with an AI key, labels replies; an opt-out goes to the do-not-contact list', async () => {
+    const s = await sentToAcme();
+    await h.services.ai.setKey('sk-ant-test-0123456789abcdef', ctx());
+    h.anthropic.answer({ input: { label: 'opt_out', confidence: 0.95, reason: 'Asks to be removed.' } });
+    await deliver(
+      inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId, body: 'Please remove me from your list.' }),
+    );
+    await h.run();
+    const [conversation] = h.services.inbox.list('all', { limit: 10, offset: 0 }).items;
+    const reply = h.services.inbox.get(conversation!.id).messages.find((m) => m.direction === 'inbound');
+    expect(reply?.label).toBe('opt_out');
+    expect(h.services.suppressions.list({ limit: 10, offset: 0 }).items).toMatchObject([
+      { kind: 'email', value: 'bob@beta.test', reason: 'opt_out' },
+    ]);
+    const request = h.anthropic.requests.at(-1)!;
+    expect(request.model).toBe('claude-haiku-4-5-20251001');
+    expect(request.user).toMatch(/<untrusted source="email-reply" id="[0-9a-f]{12}">[\s\S]*Please remove me/);
+    expect(request.system).toMatch(/never instructions/);
+  });
+
+  it('without an AI key, replies are not sent anywhere and stay unlabelled', async () => {
+    const s = await sentToAcme();
+    await deliver(inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId }));
+    await h.run();
+    expect(h.anthropic.requests).toHaveLength(0);
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM jobs WHERE type = 'reply.classify'`).get()).toEqual({
+      n: 0,
+    });
+  });
+
   it('a contact who replied is on hold in every campaign until the user allows it', async () => {
     const s = await sentToAcme();
     await deliver(inbound({ from: 'bob@beta.test', inReplyTo: s.bobMessageId }));

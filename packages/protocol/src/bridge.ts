@@ -50,4 +50,5 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   'accounts.test': 90_000,
   // The user signs in to Google in the browser.
   'accounts.connectGmail': 11 * 60_000,
+  'ai.testKey': 90_000,
 };

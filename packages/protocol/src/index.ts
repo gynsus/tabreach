@@ -11,3 +11,4 @@ export * from './audit.js';
 export * from './campaigns.js';
 export * from './accounts.js';
 export * from './inbox.js';
+export * from './ai.js';

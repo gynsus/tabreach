@@ -9,6 +9,8 @@ import {
   type UiSettings,
   type UncertainSend,
 } from '@tabreach/protocol';
+import { AiGateway } from './ai/gateway.js';
+import { ReplyClassifier } from './ai/reply-classifier.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
 import { CampaignService } from './campaigns/campaign-service.js';
@@ -18,6 +20,7 @@ import type { ChannelResolver, MessageChannel } from './channels/channel.js';
 import { TestChannel } from './channels/test-channel.js';
 import { CommandLog } from './commands/command-log.js';
 import { AccountService, type GmailDeps } from './email/accounts.js';
+import type { Http } from './email/gmail.js';
 import { InboxService } from './email/inbox.js';
 import { imapSmtpClients } from './email/imap-smtp.js';
 import type { MailClients } from './email/transport.js';
@@ -48,6 +51,8 @@ export interface AppServicesOptions {
   mailClients?: MailClients;
   /** HTTPS for Google APIs and main's OAuth loopback; tests replace them. */
   gmail?: GmailDeps;
+  /** HTTPS for AI providers; tests replace it. */
+  aiHttp?: Http;
 }
 
 const noCipher: SecretCipher = {
@@ -75,6 +80,8 @@ export class AppServices {
   readonly secrets: SecretStore;
   readonly accounts: AccountService;
   readonly inbox: InboxService;
+  readonly ai: AiGateway;
+  readonly classifier: ReplyClassifier;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -131,6 +138,24 @@ export class AppServices {
         }
       },
     });
+    this.ai = new AiGateway(
+      db,
+      this.settings,
+      this.secrets,
+      this.audit,
+      options.aiHttp ?? ((url, init) => fetch(url, init)),
+      now,
+      logger.child({ component: 'ai' }),
+    );
+    this.classifier = new ReplyClassifier({
+      db,
+      gateway: this.ai,
+      jobs: this.jobs,
+      suppressions: this.suppressions,
+      audit: this.audit,
+      logger: logger.child({ component: 'ai' }),
+      changed: (entities) => this.changed(entities),
+    });
     this.inbox = new InboxService({
       db,
       now,
@@ -142,6 +167,7 @@ export class AppServices {
       jobs: this.jobs,
       logger: logger.child({ component: 'inbox' }),
       changed: (entities) => this.changed(entities),
+      onReply: (messageId) => this.classifier.enqueue(messageId),
     });
     this.campaigns = new CampaignService(
       db,
@@ -316,6 +342,21 @@ export class AppServices {
           return { ok: true as const };
         }),
       )
+      .handle('ai.settings.get', () => this.ai.settings())
+      .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
+      .handle('ai.setKey', async ({ apiKey }, c) => {
+        await this.ai.setKey(apiKey, ctx(c));
+        this.changed(['settings', 'activity']);
+        return { ok: true as const };
+      })
+      .handle('ai.removeKey', (_p, c) =>
+        mutate(['settings'], () => {
+          this.ai.removeKey(ctx(c));
+          return { ok: true as const };
+        }),
+      )
+      .handle('ai.testKey', (_p, c) => this.ai.testKey(c.correlationId))
+      .handle('ai.usage', ({ month }) => this.ai.usage(month))
       .handle('accounts.list', () => ({ items: this.accounts.list() }))
       .handle('accounts.connectImap', async (p, c) => {
         const account = await this.accounts.connectImap(p, ctx(c));

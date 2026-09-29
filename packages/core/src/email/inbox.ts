@@ -74,6 +74,8 @@ export interface InboxDeps {
   jobs: JobQueue;
   logger: Logger;
   changed: (entities: ChangedEntity[]) => void;
+  /** Told about each stored human reply (e.g. to label it with AI). */
+  onReply?: (messageId: string) => void;
 }
 
 /**
@@ -313,6 +315,7 @@ export class InboxService {
         payload: { messageId, classification, match: strength },
         correlationId,
       });
+      if (classification === 'reply') this.d.onReply?.(messageId);
       if (classification === 'reply' && strength !== 'domain_only' && contactId) {
         this.stopForReply(contactId, companyId, correlationId);
       }
@@ -695,6 +698,7 @@ interface MessageRow {
   subject: string | null;
   body: string | null;
   classification: Classification | null;
+  ai_label: ConversationMessage['label'];
   match_strength: Strength | null;
   review_status: ConversationMessage['reviewStatus'];
   occurred_at: string;
@@ -708,6 +712,7 @@ function toMessageDto(m: MessageRow): ConversationMessage {
     subject: m.subject,
     body: m.body,
     classification: m.classification,
+    label: m.ai_label,
     matchStrength: m.match_strength,
     reviewStatus: m.review_status,
     occurredAt: m.occurred_at,
