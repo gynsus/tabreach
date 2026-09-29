@@ -571,4 +571,25 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX research_facts_run ON research_facts (research_run_id, position);
     `,
   },
+  {
+    version: 14,
+    name: 'draft_checks',
+    sql: `
+      -- Who wrote each draft version (docs/17, ADR 025). Versions before this were the step template
+      -- or a person's edit; they read as 'template'.
+      ALTER TABLE message_drafts ADD COLUMN origin TEXT NOT NULL DEFAULT 'template'
+        CHECK (origin IN ('template', 'ai', 'user'));
+
+      -- Automated checks, for exactly one draft version (its content never changes).
+      CREATE TABLE draft_checks (
+        message_draft_id TEXT NOT NULL REFERENCES message_drafts (id) ON DELETE CASCADE,
+        check_key        TEXT NOT NULL CHECK (check_key IN ('grounding', 'length', 'forbidden_phrases', 'links',
+                           'signature', 'target')),
+        passed           INTEGER NOT NULL CHECK (passed IN (0, 1)),
+        detail           TEXT,
+        created_at       TEXT NOT NULL,
+        PRIMARY KEY (message_draft_id, check_key)
+      ) STRICT, WITHOUT ROWID;
+    `,
+  },
 ];

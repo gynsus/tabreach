@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import {
   campaignConfigSchema,
+  type CampaignConfigInput,
   EMPTY_CAMPAIGN_CONFIG,
   RpcError,
   uuidv7,
@@ -45,6 +46,8 @@ export class CampaignService {
     private readonly now: () => Date,
     /** Whether a reply puts the contact on hold (ContactPolicy.replyHold). */
     private readonly replyHold: (contactId: string, companyId: string | null) => string | null = () => null,
+    /** Whether an AI key is stored for the selected provider (AI steps need one). */
+    private readonly aiReady: () => boolean = () => false,
   ) {}
 
   list(includeArchived: boolean): Campaign[] {
@@ -60,7 +63,7 @@ export class CampaignService {
     return this.toDto(this.row(id));
   }
 
-  create(input: { name: string; config?: CampaignConfig | undefined }, ctx: CommandContext): Campaign {
+  create(input: { name: string; config?: CampaignConfigInput | undefined }, ctx: CommandContext): Campaign {
     return transaction(this.db, () => {
       const id = uuidv7();
       const ts = this.now().toISOString();
@@ -69,14 +72,20 @@ export class CampaignService {
           `INSERT INTO campaigns (id, name, status, draft_config, created_at, updated_at)
            VALUES (?, ?, 'draft', ?, ?, ?)`,
         )
-        .run(id, input.name, JSON.stringify(input.config ?? EMPTY_CAMPAIGN_CONFIG), ts, ts);
+        .run(
+          id,
+          input.name,
+          JSON.stringify(campaignConfigSchema.parse(input.config ?? EMPTY_CAMPAIGN_CONFIG)),
+          ts,
+          ts,
+        );
       this.record('campaign.created', id, ctx);
       return this.get(id);
     });
   }
 
   update(
-    input: { id: string; name?: string | undefined; config?: CampaignConfig | undefined },
+    input: { id: string; name?: string | undefined; config?: CampaignConfigInput | undefined },
     ctx: CommandContext,
   ): Campaign {
     return transaction(this.db, () => {
@@ -84,7 +93,9 @@ export class CampaignService {
       if (row.status === 'archived') throw conflict('campaign.archived');
       this.save(row, {
         name: input.name ?? row.name,
-        draft_config: input.config ? JSON.stringify(input.config) : row.draft_config,
+        draft_config: input.config
+          ? JSON.stringify(campaignConfigSchema.parse(input.config))
+          : row.draft_config,
       });
       this.record('campaign.updated', row.id, ctx, {
         fields: [input.name !== undefined && 'name', input.config !== undefined && 'config'].filter(Boolean),
@@ -282,6 +293,13 @@ export class CampaignService {
       else if (!this.channels(step.channel, config)) {
         if (step.channel === 'email') fields.emailAccountId = 'account.unavailable';
         else fields[`steps.${i}.channel`] = 'channel.unavailable';
+      }
+      if (step.mode === 'ai') {
+        if (!step.instructions.trim()) fields[`steps.${i}.instructions`] = 'instructions.required';
+        if (!this.aiReady()) fields[`steps.${i}.mode`] = 'ai.keyRequired';
+        if (unknownPlaceholders(step.signature).length > 0)
+          fields[`steps.${i}.signature`] = 'template.unknownField';
+        return;
       }
       if (!step.body.trim()) fields[`steps.${i}.body`] = 'body.required';
       if (unknownPlaceholders(step.subject).length > 0)

@@ -1,11 +1,18 @@
 import type { DatabaseSync } from 'node:sqlite';
-import { RpcError, type Approval } from '@tabreach/protocol';
+import {
+  draftCheckKeySchema,
+  RpcError,
+  type Approval,
+  type DraftCheck,
+  type DraftVersion,
+} from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
 import type { SideEffectLedger } from '../ledger/side-effects.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
 import type { ApprovalRow, CampaignEngine, DraftRow } from './engine.js';
 
+const CHECK_ORDER = draftCheckKeySchema.options;
 const stale = () => new RpcError('APPROVAL_STALE', 'The draft changed', 'approval.stale');
 const conflict = (detail: string) => new RpcError('CONFLICT', 'Not possible in the current state', detail);
 
@@ -79,6 +86,8 @@ export class ApprovalService {
         subject.trim() || null,
         body,
         draft.version + 1,
+        // A person's edit: the facts stay attached, but it always needs a person's approval.
+        { origin: 'user', factIds: JSON.parse(draft.fact_ids) as string[] },
       );
       this.engine.closeApprovals(run.id, 'superseded');
       const approvalId = this.engine.requestApproval(run, e, next, ctx.correlationId);
@@ -96,6 +105,34 @@ export class ApprovalService {
       });
       return this.dto(approvalId);
     });
+  }
+
+  /** Every version of the message a draft belongs to, newest first (FR-APR "revision history"). */
+  history(draftId: string): DraftVersion[] {
+    const draft = this.db.prepare('SELECT workflow_run_id FROM message_drafts WHERE id = ?').get(draftId) as
+      { workflow_run_id: string } | undefined;
+    if (!draft) throw new RpcError('NOT_FOUND', 'Draft not found', 'draft.notFound');
+    const rows = this.db
+      .prepare(
+        `SELECT id, version, origin, subject, body, created_at FROM message_drafts
+         WHERE workflow_run_id = ? ORDER BY version DESC`,
+      )
+      .all(draft.workflow_run_id) as {
+      id: string;
+      version: number;
+      origin: DraftVersion['origin'];
+      subject: string | null;
+      body: string;
+      created_at: string;
+    }[];
+    return rows.map((r) => ({
+      id: r.id,
+      version: r.version,
+      origin: r.origin,
+      subject: r.subject,
+      body: r.body,
+      createdAt: r.created_at,
+    }));
   }
 
   private decide(
@@ -135,7 +172,7 @@ export class ApprovalService {
     const r = this.db
       .prepare(
         `SELECT a.*, e.campaign_id, e.contact_id, cam.name AS campaign_name, r.step_position,
-                d.subject, d.body, d.channel, d.version AS draft_version_number,
+                d.subject, d.body, d.channel, d.version AS draft_version_number, d.origin, d.fact_ids,
                 c.first_name, c.last_name, c.full_name, c.email
          FROM approvals a
          JOIN campaign_enrollments e ON e.id = a.campaign_enrollment_id
@@ -154,6 +191,8 @@ export class ApprovalService {
       body: string;
       channel: string;
       draft_version_number: number;
+      origin: Approval['origin'];
+      fact_ids: string;
       first_name: string | null;
       last_name: string | null;
       full_name: string | null;
@@ -176,6 +215,19 @@ export class ApprovalService {
       subject: r.subject,
       body: r.body,
       contentHash: r.content_hash,
+      origin: r.origin,
+      checks: (
+        this.db
+          .prepare('SELECT check_key, passed, detail FROM draft_checks WHERE message_draft_id = ?')
+          .all(r.message_draft_id) as {
+          check_key: DraftCheck['key'];
+          passed: number;
+          detail: string | null;
+        }[]
+      )
+        .map((c) => ({ key: c.check_key, passed: c.passed === 1, detail: c.detail }))
+        .sort((a, b) => CHECK_ORDER.indexOf(a.key) - CHECK_ORDER.indexOf(b.key)),
+      facts: this.engine.factsById(JSON.parse(r.fact_ids) as string[]),
       createdAt: r.created_at,
     };
   }

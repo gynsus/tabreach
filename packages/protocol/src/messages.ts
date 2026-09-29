@@ -29,6 +29,7 @@ import {
   enrollReportSchema,
   enrollRequestSchema,
   jobSchema,
+  draftVersionSchema,
   policySettingsSchema,
   uncertainSendSchema,
 } from './campaigns.js';
@@ -275,6 +276,12 @@ export const requests = {
   'approvals.approve': { channel: 'app', kind: 'command', request: approveRequestSchema, response: ok },
   'approvals.reject': { channel: 'app', kind: 'command', request: approvalDecisionSchema, response: ok },
   'approvals.skip': { channel: 'app', kind: 'command', request: approvalDecisionSchema, response: ok },
+  'drafts.history': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ draftId: z.uuid() }),
+    response: z.object({ items: z.array(draftVersionSchema) }),
+  },
   'drafts.revise': { channel: 'app', kind: 'command', request: draftReviseSchema, response: approvalSchema },
   'policy.settings.get': {
     channel: 'app',

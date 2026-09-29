@@ -253,8 +253,9 @@ export const en = {
         approved: 'Message approved',
         rejected: 'Message rejected',
         skipped: 'Message skipped',
+        auto_approved: 'Approved by the campaign policy',
       },
-      draft: { revised: 'Message edited' },
+      draft: { revised: 'Message edited', generated: 'Message written by AI' },
       message: {
         send: 'Message sent',
         received: 'Reply received',
@@ -365,6 +366,7 @@ export const en = {
       approval: 'Waiting for your approval',
       schedule: 'Scheduled',
       retry: 'Retrying after an error',
+      draft: 'AI is writing the message',
     },
     stopReasons: {
       manual: 'Stopped by you',
@@ -378,6 +380,7 @@ export const en = {
       replied: 'Replied',
       company_replied: 'Someone at the company replied',
       bounced: 'The address bounced',
+      draft_failed: 'AI could not write the message',
     },
     stop: 'Stop',
     confirmStop: 'Stop?',

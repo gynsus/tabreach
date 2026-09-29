@@ -64,5 +64,7 @@ export const auditActionTypes = [
   'research.started',
   'research.completed',
   'research.failed',
+  'draft.generated',
+  'approval.auto_approved',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

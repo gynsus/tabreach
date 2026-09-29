@@ -270,8 +270,9 @@ export const ru: Catalog = {
         approved: 'Сообщение одобрено',
         rejected: 'Сообщение отклонено',
         skipped: 'Сообщение пропущено',
+        auto_approved: 'Одобрено политикой кампании',
       },
-      draft: { revised: 'Сообщение изменено' },
+      draft: { revised: 'Сообщение изменено', generated: 'Сообщение написано AI' },
       message: {
         send: 'Сообщение отправлено',
         received: 'Получен ответ',
@@ -385,6 +386,7 @@ export const ru: Catalog = {
       approval: 'Ждёт вашего одобрения',
       schedule: 'Запланировано',
       retry: 'Повтор после ошибки',
+      draft: 'AI пишет сообщение',
     },
     stopReasons: {
       manual: 'Остановлено вами',
@@ -398,6 +400,7 @@ export const ru: Catalog = {
       replied: 'Ответил',
       company_replied: 'Ответил кто-то из компании',
       bounced: 'Адрес не принимает почту',
+      draft_failed: 'AI не смог написать сообщение',
     },
     stop: 'Остановить',
     confirmStop: 'Остановить?',

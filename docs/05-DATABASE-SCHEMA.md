@@ -272,19 +272,19 @@ fact_ids json
 generation_meta json
 content_hash
 version integer
+origin                    -- 'template' | 'ai' | 'user' (migration 14)
 created_at
 ```
 
 ### `draft_checks`
 
 ```text
-id pk
-message_draft_id fk
-content_hash              -- checks are bound to the exact version
-check_key                 -- 'grounding','length','forbidden_phrases','links','signature', ...
+message_draft_id fk       -- a draft version never changes, so checks are bound to exactly it
+check_key                 -- 'grounding','length','forbidden_phrases','links','signature','target'
 passed integer
-details json
+detail text null          -- what failed, e.g. the unsupported specifics
 created_at
+primary key (message_draft_id, check_key)
 ```
 
 ### `approvals`

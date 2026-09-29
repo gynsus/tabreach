@@ -20,6 +20,8 @@ There is exactly one component that calls AI providers: the **AI gateway** in co
 - `ai_calls` records template key/version, model, status, tokens, estimated cost and latency — never prompts or content. Cost and the budget work for models with a price set or a provider-reported cost (OpenRouter); token counts are always shown.
 - First use case: reply labels (`reply.classify` v1) — interested / not interested / opt-out / out-of-office / other. An opt-out adds the sender to the do-not-contact list. Without a key, replies are not sent anywhere.
 
+- Drafting (Phase 4c): `draft.write` v1 (drafting model). Input: the user's instructions (trusted), recipient fields, the company's verified facts as `F1…` refs (each fenced as untrusted: they come from web pages), and the messages already sent to the recipient. Output: subject, body without signature, and the refs used; only those facts are attached to the draft. Grounding is checked deterministically (ADR 025).
+
 ## Provider abstraction
 
 Provider-neutral interface for:
