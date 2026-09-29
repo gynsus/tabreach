@@ -93,6 +93,13 @@ Constraints:
 - in `auto` mode, not allowed for the final target of a critical action;
 - page text in candidates is untrusted data (see below).
 
+Implemented (Phase 6c) for website forms, as two closed-list questions through the gateway (`classification` model):
+
+- `form.fields` v1 — for the fields the pack's phrases did not recognize (at most 30, one call per preparation): a meaning from `name, firstName, lastName, email, phone, company, website, subject, message`, or null. A consent is never in the list; choices for refs that were not sent are dropped. The field then gets the sender's value for that meaning and is marked "recognized by AI" in the approval.
+- `form.contactLink` v1 — when no link says "contact" and no contact path exists: one of the site's own links (at most 40, text and path) or null.
+
+Without a key, over budget, or on a provider failure the answer is "not available": the worker goes on without it, and a required field it cannot fill makes the form `assisted`. The submit button is never resolved by AI; sending never asks. Each resolution is audited as `ai.target_resolved` with counts only (ADR 022).
+
 ## Prompt versioning
 
 Every reusable prompt template lives in the repository with:

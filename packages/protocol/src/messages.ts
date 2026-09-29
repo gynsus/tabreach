@@ -15,6 +15,8 @@ import {
   workerFormPrepareSchema,
   formPrepareResultSchema,
   workerFormSubmitSchema,
+  resolveTargetSchema,
+  resolveTargetResultSchema,
   renderResultSchema,
   taskCheckpointSchema,
   taskCheckpointAckSchema,
@@ -590,6 +592,13 @@ export const requests = {
     kind: 'command',
     request: z.object({ taskId: z.uuid() }),
     response: ok,
+  },
+  /** Worker → core: bounded semantic resolution (ADR 013) through the AI gateway. */
+  'ai.resolveTarget': {
+    channel: 'browser',
+    kind: 'query',
+    request: resolveTargetSchema,
+    response: resolveTargetResultSchema,
   },
   /** PrepareFormSubmission (docs/14, Phase 6): nothing is sent. */
   'form.prepare': {

@@ -29,6 +29,10 @@ Rules: closed candidate set; no free-form selectors, URLs or typing from the mod
 - Stagehand v4: capable, but adds a second control/state layer and more autonomy than needed.
 - Vision-only (screenshot + coordinates): less deterministic, harder to verify; may be added as optional context later.
 
+## Implementation (Phase 6c, 2026-09-29)
+
+For website forms the closed list is a list of meanings per field (for fields the pack's phrases missed) or of the site's own links (to find the contact page), asked once per preparation through the gateway (`form.fields`, `form.contactLink`; docs/15). The answer is checked against what was sent; a consent is never a choice; the submit button is never resolved this way, and sending never asks. Resolutions are audited with counts, not page text.
+
 ## Consequences
 
 - One browser-control layer (Playwright), one AI gateway, one budget.

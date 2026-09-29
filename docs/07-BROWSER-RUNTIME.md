@@ -49,15 +49,17 @@ session.focus / session.setMode { controlMode } / session.setOverlay { context }
 task.run     { taskId, sessionId, taskType: check_state | commit, packId, url, actionId?, params, mode }
 task.render  { taskId, sessionId, url, site }          # RenderPageForResearch (ADR 027)
 task.cancel  { taskId }                                 # the waiting job was cancelled
+form.prepare / form.submit                              # website forms (Phase 6, docs/14)
 
 # worker -> core
-task.checkpoint { taskId, phase: 'about_to_commit' } -> { proceed }   # the one request core answers
+task.checkpoint { taskId, phase: 'about_to_commit' } -> { proceed }
+ai.resolveTarget { kind: form_fields | contact_link, … } -> { available, meanings, link }
 session.changed     { sessionId, profileId, status: open | closed | crashed, currentUrl }   (event)
 session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }   (event)
 worker.heartbeat    { sessions: [{ sessionId, currentUrl }] }                               (event)
 ```
 
-One task runs per session at a time (`session.busy`). Stored URLs (heartbeat, diagnostics) keep origin and path only: query strings and fragments can carry tokens. Planned with the channel phases: `task.progress`, semantic target resolution (`ai.resolveTarget`, ADR 013).
+One task runs per session at a time (`session.busy`). Stored URLs (heartbeat, diagnostics) keep origin and path only: query strings and fragments can carry tokens. Worker → core `ai.resolveTarget` (ADR 013) is implemented for forms (Phase 6c; docs/15). Planned with the channel phases: `task.progress`.
 
 Diagnostic primitives (`page.navigate`, `page.click`, `page.type`, `page.extract`, `page.screenshot`) exist for developer tooling only and are disabled in release builds unless a developer setting is on.
 

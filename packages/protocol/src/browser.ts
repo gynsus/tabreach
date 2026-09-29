@@ -252,6 +252,8 @@ export const formFieldSchema = z.object({
   label: z.string().max(300),
   required: z.boolean(),
   meaning: formFieldMeaningSchema.nullable(),
+  /** How the meaning was found: the pack's phrases, or AI choosing from the closed list (Phase 6c). */
+  source: z.enum(['pack', 'ai']).nullable().default(null),
   /** What TabReach writes there; null: left as the page has it (a consent is never ticked). */
   value: z.string().max(20_000).nullable(),
 });
@@ -288,6 +290,58 @@ export const formPrepareResultSchema = z.object({
   packVersion: z.string(),
 });
 export type FormPrepareResult = z.infer<typeof formPrepareResultSchema>;
+
+/**
+ * Bounded semantic resolution (ADR 013, Phase 6c), worker → core: AI chooses from a closed list —
+ * a meaning for each field the pack's phrases did not recognize, or one link that leads to the
+ * contact form. Page text is untrusted data; the answer is checked against the list. Never used for
+ * the button that sends.
+ */
+const candidateText = z.string().max(300);
+export const resolveTargetSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('form_fields'),
+    taskId: id,
+    fields: z
+      .array(
+        z.object({
+          ref: z.number().int().min(0),
+          label: candidateText,
+          placeholder: candidateText,
+          name: candidateText,
+          type: z.string().max(30),
+        }),
+      )
+      .min(1)
+      .max(30),
+  }),
+  z.object({
+    kind: z.literal('contact_link'),
+    taskId: id,
+    /** The site's own links: text and path. */
+    links: z
+      .array(z.object({ ref: z.number().int().min(0), text: candidateText, path: candidateText }))
+      .min(1)
+      .max(40),
+  }),
+]);
+export type ResolveTargetRequest = z.infer<typeof resolveTargetSchema>;
+export const resolveTargetResultSchema = z.object({
+  /** false: no AI key, over budget, or the provider failed — the worker goes on without it. */
+  available: z.boolean(),
+  /** form_fields: a meaning (never a consent) or null per field ref. */
+  meanings: z
+    .array(
+      z.object({
+        ref: z.number().int().min(0),
+        meaning: formFieldMeaningSchema.exclude(['consent']).nullable(),
+      }),
+    )
+    .default([]),
+  /** contact_link: the chosen link's ref, or null. */
+  link: z.number().int().min(0).nullable().default(null),
+});
+export type ResolveTargetResult = z.infer<typeof resolveTargetResultSchema>;
 
 /** ExecuteFormSubmission: the approved fields into the same form, checkpoint, send, verify. */
 export const workerFormSubmitSchema = z.object({

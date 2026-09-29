@@ -18,6 +18,7 @@ import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { FormService } from './forms/form-service.js';
+import { TargetResolver } from './forms/target-resolver.js';
 import { pinnedHttp } from './research/pinned-http.js';
 import { ResearchRenderer } from './research/renderer.js';
 import { ResearchService } from './research/research-service.js';
@@ -115,6 +116,8 @@ export class AppServices {
   readonly checkpoints: BrowserCheckpoints;
   /** Website forms: the sender, preparing and the web_form channel (Phase 6). */
   readonly forms: FormService;
+  /** Bounded semantic resolution for the worker (ADR 013, Phase 6c). */
+  readonly targets: TargetResolver;
   /** Renders JavaScript-only pages for research in the research profile (Phase 5d). */
   readonly researchRenderer: ResearchRenderer;
   readonly appControl: AppControlService;
@@ -270,6 +273,11 @@ export class AppServices {
       ...(options.resolveHost ? { resolveHost: options.resolveHost } : {}),
       render: (url, site, signal, correlationId) =>
         this.researchRenderer.render(url, site, signal, correlationId),
+    });
+    this.targets = new TargetResolver({
+      gateway: this.ai,
+      audit: this.audit,
+      logger: logger.child({ component: 'forms' }),
     });
     this.drafts = new DraftWriter({
       ai: this.ai,

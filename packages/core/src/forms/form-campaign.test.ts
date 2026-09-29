@@ -20,6 +20,7 @@ const fields = (message: string) => [
     label: 'Your name',
     required: true,
     meaning: 'name' as const,
+    source: 'pack' as const,
     value: 'Sam Sender',
   },
   {
@@ -28,6 +29,7 @@ const fields = (message: string) => [
     label: 'Email',
     required: true,
     meaning: 'email' as const,
+    source: 'pack' as const,
     value: 'sam@sender.test',
   },
   {
@@ -36,6 +38,7 @@ const fields = (message: string) => [
     label: 'Message',
     required: true,
     meaning: 'message' as const,
+    source: 'pack' as const,
     value: message,
   },
   {
@@ -44,6 +47,7 @@ const fields = (message: string) => [
     label: 'Send me news',
     required: false,
     meaning: 'consent' as const,
+    source: 'pack' as const,
     value: null,
   },
 ];

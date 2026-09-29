@@ -7,6 +7,8 @@ import {
   type FormFieldMeaning,
   type FormPrepareResult,
   type FormValues,
+  type ResolveTargetRequest,
+  type ResolveTargetResult,
   type TaskResult,
 } from '@tabreach/protocol';
 import type { ElementHandle, Page } from 'playwright-core';
@@ -185,8 +187,44 @@ export function mapForm(form: RawForm, values: FormValues, knowledge: FormKnowle
       label: (f.label || f.placeholder || f.name).slice(0, 300),
       required: f.required,
       meaning,
+      source: meaning ? ('pack' as const) : null,
       value: value === '' ? null : value,
     };
+  });
+}
+
+const WRITABLE: ReadonlySet<FormField['kind']> = new Set(['text', 'email', 'tel', 'url', 'textarea']);
+
+/** Fields the phrases did not recognize, as candidates for the resolver (never check boxes). */
+export function unknownFields(form: RawForm, fields: FormField[]) {
+  const raw = new Map(form.fields.map((f) => [f.ref, f]));
+  return fields
+    .filter((f) => f.meaning === null && WRITABLE.has(f.kind))
+    .slice(0, 30)
+    .map((f) => {
+      const r = raw.get(f.ref);
+      return {
+        ref: f.ref,
+        label: (r?.label ?? f.label).slice(0, 300),
+        placeholder: (r?.placeholder ?? '').slice(0, 300),
+        name: (r?.name ?? '').slice(0, 300),
+        type: (r?.type ?? f.kind).slice(0, 30),
+      };
+    });
+}
+
+/** Applies the resolver's choices: only to fields still unknown, only meanings with a value. */
+export function applyResolved(
+  fields: FormField[],
+  answer: ResolveTargetResult,
+  values: FormValues,
+): FormField[] {
+  const chosen = new Map(answer.meanings.filter((m) => m.meaning !== null).map((m) => [m.ref, m.meaning]));
+  return fields.map((f) => {
+    const meaning = chosen.get(f.ref);
+    if (!meaning || f.meaning !== null || !WRITABLE.has(f.kind)) return f;
+    const value = valueFor(meaning, values) ?? null;
+    return { ...f, meaning, source: 'ai', value: value === '' ? null : value };
   });
 }
 
@@ -272,13 +310,40 @@ async function contactLeads(page: Page, knowledge: FormKnowledge, site: string) 
   return { links, buttons };
 }
 
+/** Opens a page; a missing page (4xx, 5xx) counts as not opened. */
 async function goto(page: Page, url: string): Promise<boolean> {
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
-    return true;
+    const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS });
+    return !response || response.status() < 400;
   } catch {
     return false;
   }
+}
+
+/** The site's own visible links (for the resolver): text, path and address, at most 40. */
+async function siteLinks(page: Page, site: string): Promise<{ text: string; path: string; href: string }[]> {
+  const all = await page.$$eval('a[href]', (els) =>
+    els
+      .filter((el) => {
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0;
+      })
+      .map((el) => ({
+        href: (el as unknown as { href: string }).href,
+        text: (el.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 100),
+      })),
+  );
+  const seen = new Set<string>();
+  const out: { text: string; path: string; href: string }[] = [];
+  for (const l of all) {
+    if (!/^https?:/.test(l.href)) continue;
+    const u = new URL(l.href);
+    if (!sameSite(u.hostname, site) || seen.has(u.pathname)) continue;
+    seen.add(u.pathname);
+    out.push({ text: l.text, path: u.pathname.slice(0, 300), href: `${u.origin}${u.pathname}` });
+    if (out.length >= 40) break;
+  }
+  return out;
 }
 
 /** Opens a dialog form: the button with exactly this text. */
@@ -301,6 +366,8 @@ export async function prepareForm(
   req: { taskId: string; packId: string; url: string; values: FormValues },
   env: TaskEnvironment,
   signal: AbortSignal,
+  /** Bounded semantic resolution through core (ADR 013); absent in tests of the phrases alone. */
+  resolve?: (request: ResolveTargetRequest) => Promise<ResolveTargetResult>,
 ): Promise<FormPrepareResult> {
   const pack = env.pack(req.packId);
   const knowledge = pack?.forms;
@@ -328,6 +395,22 @@ export async function prepareForm(
       found = await findContactForm(page, signal);
       if (found) break;
     }
+    if (!found && resolve) {
+      // No link said "contact": AI may pick one of the site's own links (closed list, one call).
+      if (!(await goto(page, req.url))) return { ...base, status: 'failed', reason: 'task.navigationFailed' };
+      const links = await siteLinks(page, site);
+      if (links.length > 0) {
+        const answer = await resolve({
+          kind: 'contact_link',
+          taskId: req.taskId,
+          links: links.map((l, ref) => ({ ref, text: l.text, path: l.path })),
+        }).catch(() => null); // the gateway failing is the same as no answer
+        const chosen = answer?.available && answer.link !== null ? links[answer.link] : undefined;
+        if (chosen && (await goto(page, chosen.href)) && sameSite(new URL(page.url()).hostname, site)) {
+          found = await findContactForm(page, signal);
+        }
+      }
+    }
     if (!found && buttons.length > 0) {
       if (!(await goto(page, req.url))) return { ...base, status: 'failed', reason: 'task.navigationFailed' };
       for (const text of buttons) {
@@ -343,7 +426,15 @@ export async function prepareForm(
   }
   if (!found) return { ...base, status: 'no_form', reason: 'form.notFound' };
 
-  const fields = mapForm(found.raw, req.values, knowledge);
+  let fields = mapForm(found.raw, req.values, knowledge);
+  const unknown = unknownFields(found.raw, fields);
+  if (unknown.length > 0 && resolve) {
+    // One call for all fields the phrases did not recognize; the answer only picks from the list.
+    const answer = await resolve({ kind: 'form_fields', taskId: req.taskId, fields: unknown }).catch(
+      () => null,
+    );
+    if (answer?.available) fields = applyResolved(fields, answer, req.values);
+  }
   const formUrl = page.url().replace(/#.*$/, '');
   for (const field of fields) {
     if (field.value === null) continue;
