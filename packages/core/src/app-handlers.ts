@@ -17,6 +17,7 @@ import { BrowserCheckpoints } from './browser/checkpoints.js';
 import { SignInCheckService } from './browser/sign-in-check.js';
 import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
+import { FormService } from './forms/form-service.js';
 import { pinnedHttp } from './research/pinned-http.js';
 import { ResearchRenderer } from './research/renderer.js';
 import { ResearchService } from './research/research-service.js';
@@ -112,6 +113,8 @@ export class AppServices {
   readonly signInChecks: SignInCheckService;
   /** The `about_to_commit` checkpoints of browser channels (docs/07). */
   readonly checkpoints: BrowserCheckpoints;
+  /** Website forms: the sender, preparing and the web_form channel (Phase 6). */
+  readonly forms: FormService;
   /** Renders JavaScript-only pages for research in the research profile (Phase 5d). */
   readonly researchRenderer: ResearchRenderer;
   readonly appControl: AppControlService;
@@ -190,8 +193,23 @@ export class AppServices {
     const named = new Map(
       (options.channels ?? [new TestChannel(db, now, 60_000)]).map((c) => [c.channel, c] as const),
     );
+    this.forms = new FormService({
+      db,
+      now,
+      audit: this.audit,
+      settings: this.settings,
+      browser: this.browser,
+      checkpoints: this.checkpoints,
+      worker: options.worker ?? (() => null),
+      logger: logger.child({ component: 'forms' }),
+    });
     const channels: ChannelResolver = (channel, config) =>
-      named.get(channel) ?? (channel === 'email' ? this.accounts.channel(config.emailAccountId) : undefined);
+      named.get(channel) ??
+      (channel === 'email'
+        ? this.accounts.channel(config.emailAccountId)
+        : channel === 'web_form'
+          ? this.forms.channel()
+          : undefined);
     this.policy = new ContactPolicy(db, this.settings, now);
     this.engine = new CampaignEngine({
       db,
@@ -201,6 +219,7 @@ export class AppServices {
       ledger: this.ledger,
       policy: this.policy,
       channels,
+      forms: this.forms,
       logger: logger.child({ component: 'campaigns' }),
       changed: (entities) => this.changed(entities),
       onSent: (sent) => this.inbox.recordSent(sent),
@@ -281,7 +300,7 @@ export class AppServices {
       (contactId, companyId) => this.policy.replyHold(contactId, companyId),
       () => this.ai.settings().keySet,
     );
-    this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now);
+    this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now, this.forms);
   }
 
   /** Registers every app-channel handler except those owned by CoreService itself (health, browser). */
@@ -408,6 +427,11 @@ export class AppServices {
       .handle('drafts.revise', (p, c) =>
         mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
       )
+      .handle('forms.sender.get', () => this.forms.sender())
+      .handle('forms.sender.update', (p, c) =>
+        mutate(['settings', 'activity'], () => this.forms.updateSender(p, ctx(c))),
+      )
+      .handle('forms.screenshot', ({ approvalId }) => ({ png: this.forms.screenshotOf(approvalId) }))
       .handle('policy.settings.get', () => this.policy.current())
       .handle('policy.settings.update', (p, c) =>
         mutate(['settings'], () => {

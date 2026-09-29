@@ -259,6 +259,7 @@ function ApprovalDetail(props: {
           </p>
         </div>
       )}
+      {props.editing || !a.form ? null : <FormPreview approval={a} />}
       {props.editing ? null : <Checks approval={a} />}
       {props.editing || a.facts.length === 0 ? null : <FactsUsed approval={a} />}
       {props.editing || a.draftVersion < 2 ? null : <History draftId={a.draftId} />}
@@ -308,6 +309,74 @@ function ApprovalDetail(props: {
         </>
       )}
     </article>
+  );
+}
+
+/**
+ * A website form exactly as it will be sent (FR-FRM-003): its address, every field with the value
+ * TabReach writes, what stays empty, who presses Send, and the photo of the filled form.
+ */
+function FormPreview({ approval: a }: { approval: Approval }) {
+  const { t } = useTranslation();
+  const form = a.form;
+  const shot = useQuery({
+    queryKey: ['approvals', 'screenshot', a.id],
+    queryFn: () => call('forms.screenshot', { approvalId: a.id }),
+    enabled: form?.hasScreenshot === true,
+  });
+  if (!form) return null;
+  return (
+    <section aria-labelledby="form-preview-heading" className="grid gap-3" data-testid="form-preview">
+      <h3 id="form-preview-heading" className="text-xs font-semibold text-soft">
+        {t('approvals.form.title')}
+      </h3>
+      <p className="truncate font-mono text-[11px] text-soft">{form.formUrl}</p>
+      {form.mode === 'assisted' ? (
+        <Alert tone="warn">
+          {t('approvals.form.assisted')}{' '}
+          {form.reason ? translateKey(t, `approvals.form.reasons.${form.reason.replace('.', '_')}`, '') : ''}
+        </Alert>
+      ) : null}
+      <table className="w-full text-[13px]">
+        <caption className="sr-only">{t('approvals.form.title')}</caption>
+        <thead>
+          <tr className="text-left text-xs text-soft">
+            <th className="py-1 pr-4 font-medium">{t('approvals.form.field')}</th>
+            <th className="py-1 font-medium">{t('approvals.form.value')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {form.fields.map((f) => (
+            <tr key={f.ref} className="border-t border-rule align-top">
+              <td className="py-1.5 pr-4">
+                {f.label || t('approvals.form.unlabelled')}
+                {f.required ? <span className="text-bad"> *</span> : null}
+              </td>
+              <td className="py-1.5 whitespace-pre-wrap">
+                {f.value !== null ? (
+                  f.value
+                ) : (
+                  <span className={f.required ? 'text-warn' : 'text-faint'}>
+                    {f.meaning === 'consent'
+                      ? t('approvals.form.neverTicked')
+                      : f.required
+                        ? t('approvals.form.youFill')
+                        : t('approvals.form.leftEmpty')}
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {shot.data?.png ? (
+        <img
+          src={`data:image/png;base64,${shot.data.png}`}
+          alt={t('approvals.form.screenshot')}
+          className="max-w-full rounded-md border border-rule"
+        />
+      ) : null}
+    </section>
   );
 }
 

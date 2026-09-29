@@ -27,6 +27,7 @@ import {
   type JobType,
 } from '../jobs/dispatcher.js';
 import type { JobQueue } from '../jobs/queue.js';
+import { websiteTarget, type FormPreparationRow, type PrepareOutcome } from '../forms/form-service.js';
 import { executeSideEffect } from '../ledger/execute.js';
 import { intentKey, type IntentParts, type SideEffectLedger } from '../ledger/side-effects.js';
 import type { ContactPolicy, PolicyVerdict } from './policy.js';
@@ -46,6 +47,8 @@ export type RunState =
   | 'PREPARE_CONTENT'
   | 'GENERATE_DRAFT'
   | 'CHECK_POLICY'
+  /** Website forms: find, map, fill and photograph the form before approval (Phase 6). */
+  | 'PREPARE_FORM'
   | 'CHECK_APPROVAL'
   | 'FINAL_PRE_SEND_CHECK'
   | 'SEND'
@@ -133,6 +136,7 @@ interface ContactFacts {
   company_city: string | null;
   company_country: string | null;
   company_domain: string | null;
+  company_website: string | null;
   company_timezone: string | null;
 }
 
@@ -161,6 +165,21 @@ export interface CampaignEngineDeps {
   paused?: () => boolean;
   /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
   drafter?: { write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> };
+  /** Website forms (Phase 6): preparing before approval, and what an approval of a form covers. */
+  forms?: {
+    prepare(req: {
+      workflowRunId: string;
+      draftId: string;
+      website: string;
+      subject: string | null;
+      body: string;
+      signal: AbortSignal;
+      correlationId: string;
+    }): Promise<PrepareOutcome>;
+    latestFor(runId: string): FormPreparationRow | undefined;
+    approvalHash(draftHash: string, preparation: FormPreparationRow): string;
+    requireAssisted(preparationId: string): void;
+  };
   /** Told about every completed send (in its transaction), e.g. to thread replies to it. */
   onSent?: (sent: {
     channel: string;
@@ -364,7 +383,9 @@ export class CampaignEngine {
           ? await this.send(run, e, step, ctx)
           : run.current_state === 'GENERATE_DRAFT'
             ? await this.generate(run, e, step, ctx)
-            : transaction(this.d.db, () => this.syncState(run, e, step, run.correlation_id));
+            : run.current_state === 'PREPARE_FORM'
+              ? await this.prepareForm(run, e, step, ctx)
+              : transaction(this.d.db, () => this.syncState(run, e, step, run.correlation_id));
       if (outcome !== 'next') return outcome === 'done' ? undefined : outcome;
     }
     throw new RetryableError('state_loop', 'Workflow did not settle');
@@ -382,7 +403,7 @@ export class CampaignEngine {
       this.stopEnrollment(e, 'invalid_target', correlationId, 'system');
       return 'done';
     }
-    const target = facts.email_normalized;
+    const target = this.targetFor(step.channel, facts);
     switch (run.current_state) {
       case 'PREPARE_CONTENT': {
         if (!target) {
@@ -416,7 +437,9 @@ export class CampaignEngine {
           return 'done';
         }
         if (verdict.kind === 'defer') return { continueAt: verdict.until };
-        this.updateRun(run, { current_state: 'CHECK_APPROVAL' });
+        this.updateRun(run, {
+          current_state: step.channel === 'web_form' ? 'PREPARE_FORM' : 'CHECK_APPROVAL',
+        });
         return 'next';
       }
       case 'CHECK_APPROVAL': {
@@ -425,10 +448,21 @@ export class CampaignEngine {
           this.updateRun(run, { current_state: 'PREPARE_CONTENT' });
           return 'next';
         }
+        const preparation = step.channel === 'web_form' ? this.d.forms?.latestFor(run.id) : undefined;
+        if (step.channel === 'web_form' && preparation?.message_draft_id !== draft.id) {
+          // A form is prepared for exactly this draft before anyone approves it (FR-FRM-003).
+          this.updateRun(run, { current_state: 'PREPARE_FORM' });
+          return 'next';
+        }
         const approval = this.currentApproval(run.id);
-        if (!approval || approval.message_draft_id !== draft.id) {
+        if (
+          !approval ||
+          approval.message_draft_id !== draft.id ||
+          approval.content_hash !== this.approvalHash(step.channel, run.id, draft, target ?? '')
+        ) {
           if (approval) this.closeApprovals(run.id, 'superseded');
-          if (this.autoApprovable(e, draft)) {
+          // A form a person must finish (a field, a consent, a CAPTCHA) is never approved by policy.
+          if (this.autoApprovable(e, draft) && (!preparation || preparation.mode === 'auto')) {
             this.requestApproval(run, e, draft, correlationId, true);
             this.updateRun(run, { current_state: 'FINAL_PRE_SEND_CHECK' });
             return 'next';
@@ -458,11 +492,13 @@ export class CampaignEngine {
       case 'FINAL_PRE_SEND_CHECK': {
         const draft = this.latestDraft(run.id);
         const approval = this.currentApproval(run.id);
-        const hash = draft && target ? contentHash(step.channel, target, draft.subject, draft.body) : null;
+        const hash = draft && target ? this.approvalHash(step.channel, run.id, draft, target) : null;
+        const draftHash =
+          draft && target ? contentHash(step.channel, target, draft.subject, draft.body) : null;
         if (!draft || !approval || approval.status !== 'approved' || approval.content_hash !== hash) {
-          // The draft or the recipient changed after approval: ask again (APPROVAL_STALE, ADR 021 §4).
+          // The draft, the recipient or the form changed after approval: ask again (APPROVAL_STALE, ADR 021 §4).
           this.closeApprovals(run.id, 'superseded');
-          if (draft && target && hash !== draft.content_hash) {
+          if (draft && target && draftHash !== draft.content_hash) {
             this.insertDraft(run, e, step.channel, target, draft.subject, draft.body, draft.version + 1, {
               origin: draft.origin,
               factIds: JSON.parse(draft.fact_ids) as string[],
@@ -500,11 +536,11 @@ export class CampaignEngine {
     const draft = this.latestDraft(run.id);
     const facts = this.contact(e.contact_id);
     const approval = this.currentApproval(run.id);
-    if (!draft || !facts?.email_normalized || !approval) {
+    const target = facts ? this.targetFor(step.channel, facts) : null;
+    if (!draft || !facts || !target || !approval) {
       transaction(this.d.db, () => this.updateRun(run, { current_state: 'FINAL_PRE_SEND_CHECK' }));
       return 'next';
     }
-    const target = facts.email_normalized;
     const intent: IntentParts = {
       scopeId: e.id,
       stepPosition: run.step_position,
@@ -512,7 +548,7 @@ export class CampaignEngine {
       actionType: 'send_message',
       target,
     };
-    const hash = contentHash(step.channel, target, draft.subject, draft.body);
+    const hash = this.approvalHash(step.channel, run.id, draft, target);
     const audit = (
       status: 'planned' | 'completed' | 'failed' | 'unknown',
       extra: Record<string, unknown> = {},
@@ -586,7 +622,8 @@ export class CampaignEngine {
           const freshFacts = this.contact(e.contact_id);
           const freshApproval = this.currentApproval(run.id);
           if (
-            freshFacts?.email_normalized !== target ||
+            !freshFacts ||
+            this.targetFor(step.channel, freshFacts) !== target ||
             !freshApproval ||
             freshApproval.status !== 'approved' ||
             freshApproval.content_hash !== hash
@@ -625,6 +662,10 @@ export class CampaignEngine {
     if (outcome.outcome === 'pending') {
       // Reconciliation cannot tell yet (the Sent search lags): look again later, not a failure.
       return { continueAt: outcome.retryAt };
+    }
+    if (outcome.outcome === 'not_sent' && step.channel === 'web_form') {
+      const handled = this.formNotSent(run, outcome.errorClass);
+      if (handled) return handled;
     }
     if (outcome.outcome === 'not_sent' && outcome.permanent) {
       return transaction(this.d.db, () => {
@@ -759,7 +800,8 @@ export class CampaignEngine {
     auto = false,
   ): string {
     const id = uuidv7();
-    const target = this.contact(e.contact_id)?.email_normalized ?? '';
+    const facts = this.contact(e.contact_id);
+    const target = (facts && this.targetFor(draft.channel, facts)) ?? '';
     const ts = this.d.now().toISOString();
     this.d.db
       .prepare(
@@ -774,7 +816,7 @@ export class CampaignEngine {
         draft.id,
         draft.version,
         JSON.stringify({ channel: draft.channel, target, contactId: e.contact_id }),
-        draft.content_hash,
+        this.approvalHash(draft.channel, run.id, draft, target),
         auto ? 'campaign' : 'single_action',
         auto ? 'approved' : 'pending',
         auto ? 'campaign_policy' : null,
@@ -942,6 +984,121 @@ export class CampaignEngine {
    * GENERATE_DRAFT: research and the model are awaited outside any transaction; the result is
    * stored only if the run is still where it was (a stop or pause meanwhile wins).
    */
+  /**
+   * Who a step writes to: the contact's email, or for a website form the company's site (its
+   * origin). null: the step cannot reach this contact.
+   */
+  targetFor(channel: string, facts: ContactFacts): string | null {
+    if (channel === 'web_form') return websiteTarget(facts.company_website ?? facts.company_domain);
+    return facts.email_normalized;
+  }
+
+  /**
+   * What an approval covers: the message to the current recipient, and for a form exactly the
+   * prepared form (Phase 6). Anything different asks for approval again.
+   */
+  approvalHash(channel: string, runId: string, draft: DraftRow, target: string): string {
+    const base = contentHash(channel, target, draft.subject, draft.body);
+    if (channel !== 'web_form') return base;
+    const preparation = this.d.forms?.latestFor(runId);
+    if (!preparation || preparation.message_draft_id !== draft.id || !this.d.forms)
+      return `unprepared:${base}`;
+    return this.d.forms.approvalHash(base, preparation);
+  }
+
+  /** PREPARE_FORM: find, map, fill and photograph the company's form for the latest draft. */
+  private async prepareForm(
+    run: RunRow,
+    e: EnrollmentRow,
+    step: SendStep,
+    ctx: JobContext,
+  ): Promise<'next' | 'done' | { continueAt: Date }> {
+    const later = (ms: number) => ({ continueAt: new Date(this.d.now().getTime() + ms) });
+    // Opening a site is browser work: none starts while the app is paused (docs/19).
+    if (this.d.paused?.()) return later(60_000);
+    const draft = this.latestDraft(run.id);
+    const facts = this.contact(e.contact_id);
+    const website = facts ? this.targetFor(step.channel, facts) : null;
+    if (!draft || !website || !this.d.forms) {
+      transaction(this.d.db, () => this.updateRun(run, { current_state: 'PREPARE_CONTENT' }));
+      if (!this.d.forms) throw new PermanentError('channel_unavailable');
+      return 'next';
+    }
+    let prepared: PrepareOutcome;
+    try {
+      prepared = await this.d.forms.prepare({
+        workflowRunId: run.id,
+        draftId: draft.id,
+        website,
+        subject: draft.subject,
+        body: draft.body,
+        signal: ctx.signal,
+        correlationId: run.correlation_id,
+      });
+    } catch (error) {
+      this.d.logger.warn({ event: 'form.prepare_failed', runId: run.id, err: error }, 'form not prepared');
+      throw new RetryableError('form_prepare_failed');
+    }
+    if (prepared.kind === 'no_sender') throw new PermanentError('channel_unavailable');
+    // The person holds the sender's window: preparing waits for it, without using up attempts.
+    if (prepared.kind === 'busy') return later(120_000);
+    return transaction(this.d.db, () => {
+      const fresh = this.run(run.id);
+      if (!fresh || fresh.current_state !== 'PREPARE_FORM' || TERMINAL.has(fresh.status)) return 'done';
+      if (prepared.kind === 'no_form') {
+        this.stopEnrollment(e, 'no_contact_form', run.correlation_id, 'system', { website });
+        return 'done';
+      }
+      this.d.audit.record({
+        actorType: 'browser_worker',
+        actionType: 'form.prepared',
+        objectType: 'enrollment',
+        objectId: e.id,
+        payload: {
+          runId: run.id,
+          status: prepared.preparation.status,
+          mode: prepared.preparation.mode,
+          pack: `web-form@${prepared.preparation.pack_version}`,
+        },
+        correlationId: run.correlation_id,
+      });
+      this.updateRun(fresh, { current_state: 'CHECK_APPROVAL' });
+      this.d.changed(['enrollment', 'activity']);
+      return 'next';
+    });
+  }
+
+  /**
+   * A form send that did not happen, and what it means (Phase 6): a changed form is prepared and
+   * approved again; a CAPTCHA that appeared makes the person press Send (approved again, in
+   * assisted mode); a window the person holds makes the send wait. Nothing was sent in any case.
+   */
+  private formNotSent(run: RunRow, errorClass: string): 'next' | { continueAt: Date } | null {
+    return transaction(this.d.db, () => {
+      const fresh = this.run(run.id);
+      if (!fresh || TERMINAL.has(fresh.status)) return null;
+      if (errorClass === 'form.changed') {
+        this.closeApprovals(run.id, 'superseded');
+        this.updateRun(fresh, { current_state: 'PREPARE_FORM' });
+        return 'next';
+      }
+      if (errorClass === 'needs_human') {
+        const preparation = this.d.forms?.latestFor(run.id);
+        if (preparation && preparation.mode === 'auto') {
+          this.d.forms?.requireAssisted(preparation.id);
+          this.updateRun(fresh, { current_state: 'FINAL_PRE_SEND_CHECK' });
+          return 'next';
+        }
+      }
+      if (
+        ['profile.inUseByYou', 'user_control', 'session.busy', 'profile.alreadyOpen'].includes(errorClass)
+      ) {
+        return { continueAt: new Date(this.d.now().getTime() + 120_000) };
+      }
+      return null;
+    });
+  }
+
   private async generate(
     run: RunRow,
     e: EnrollmentRow,
@@ -949,7 +1106,7 @@ export class CampaignEngine {
     ctx: JobContext,
   ): Promise<'next' | 'done' | { continueAt: Date }> {
     const facts = this.contact(e.contact_id);
-    const target = facts?.email_normalized;
+    const target = facts ? this.targetFor(step.channel, facts) : null;
     if (!facts || !target) {
       transaction(this.d.db, () => this.stopEnrollment(e, 'invalid_target', run.correlation_id, 'system'));
       return 'done';
@@ -1121,7 +1278,8 @@ export class CampaignEngine {
       .prepare(
         `SELECT c.id, c.first_name, c.last_name, c.full_name, c.job_title, c.email_normalized, c.timezone, c.company_id,
                 co.name AS company_name, co.city AS company_city, co.country AS company_country,
-                co.domain_normalized AS company_domain, co.timezone AS company_timezone
+                co.domain_normalized AS company_domain, co.website_url AS company_website,
+                co.timezone AS company_timezone
          FROM contacts c LEFT JOIN companies co ON co.id = c.company_id WHERE c.id = ?`,
       )
       .get(id) as ContactFacts | undefined;
@@ -1141,6 +1299,7 @@ export class CampaignEngine {
     target: string | null,
   ): PolicyVerdict {
     return this.d.policy.check({
+      channel: step.channel,
       contactId: e.contact_id,
       companyId: facts.company_id,
       idempotencyKey: this.intentKeyFor(e, run, step, target ?? ''),

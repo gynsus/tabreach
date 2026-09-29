@@ -394,6 +394,8 @@ export const en = {
         skipped: 'Message skipped',
         auto_approved: 'Approved by the campaign policy',
       },
+      form: { prepared: 'Contact form prepared' },
+      forms: { sender_updated: 'Form sender changed' },
       draft: { revised: 'Message edited', generated: 'Message written by AI' },
       message: {
         send: 'Message sent',
@@ -494,7 +496,17 @@ export const en = {
     noAccount: 'Choose an account',
     connectAccountHint: 'Connect an email account in Settings first.',
     channel: 'Channel',
-    channels: { email: 'Email', test: 'Test channel — nothing leaves this Mac' },
+    executionMode: 'Who presses Send',
+    executionModes: { auto: 'TabReach, after approval', assisted: 'You, in the browser window' },
+    executionModeHints: {
+      auto: 'TabReach fills the form and sends it once you approve. A form with a CAPTCHA or a field it cannot fill is always sent by you.',
+      assisted: 'TabReach fills the form and waits in the browser window; you check it and press Send.',
+    },
+    channels: {
+      web_form: 'Website contact form',
+      email: 'Email',
+      test: 'Test channel — nothing leaves this Mac',
+    },
     subject: 'Subject',
     body: 'Message',
     placeholdersHint: 'Placeholders: {{fields}}. A default after |, e.g. {{example}}',
@@ -547,6 +559,7 @@ export const en = {
       draft: 'AI is writing the message',
     },
     stopReasons: {
+      no_contact_form: 'No contact form on the company’s website',
       manual: 'Stopped by you',
       campaign_archived: 'Campaign archived',
       suppressed: 'On the do-not-contact list',
@@ -564,6 +577,22 @@ export const en = {
     confirmStop: 'Stop?',
   },
   approvals: {
+    form: {
+      title: 'The form as it will be sent',
+      assisted: 'You press Send in the browser window after approving.',
+      reasons: {
+        form_unmappedRequired: 'The form has a required field TabReach cannot fill.',
+        form_consentRequired: 'The form requires a consent only you can give.',
+        form_challenge: 'The form has a CAPTCHA.',
+      },
+      field: 'Field',
+      value: 'What goes in',
+      unlabelled: 'Unnamed field',
+      neverTicked: 'Never ticked by TabReach',
+      youFill: 'You fill this in',
+      leftEmpty: 'Left empty',
+      screenshot: 'The filled form',
+    },
     confirmReject: 'Reject and stop the sequence?',
     origins: { template: 'Template', ai: 'AI', user: 'Edited' },
     checksPassed: 'All checks passed',
@@ -810,6 +839,7 @@ export const en = {
       other: 'Background task',
     },
     errors: {
+      form_prepare_failed: 'The contact form could not be prepared. Check that Chrome works, then retry.',
       browser_task_failed: 'The browser task did not finish. Check that Chrome works, then retry.',
       worker_not_running: 'The browser process was not running.',
       other: 'It failed ({{code}}).',
@@ -873,11 +903,34 @@ export const en = {
     },
   },
   settings: {
-    tabs: { general: 'General', email: 'Email accounts', ai: 'AI', policy: 'Contact policy' },
+    tabs: {
+      general: 'General',
+      email: 'Email accounts',
+      forms: 'Website forms',
+      ai: 'AI',
+      policy: 'Contact policy',
+    },
     title: 'Settings',
     language: 'Language',
     languageHint: 'Language of the TabReach interface.',
     languages: { en: 'English', ru: 'Русский' },
+    forms: {
+      title: 'Website forms',
+      subtitle:
+        'When a campaign writes through a company’s contact form, these details go into the form. TabReach fills and sends it in the browser profile you choose.',
+      profile: 'Browser profile',
+      profileHint:
+        'Forms are filled in this profile’s Chrome window. Use a general profile, not the research one.',
+      noProfile: 'Not chosen',
+      name: 'Your name',
+      email: 'Your email',
+      phone: 'Phone (optional)',
+      company: 'Your company',
+      website: 'Your website (optional)',
+      consentNote:
+        'Consent and newsletter boxes are never ticked. If a form requires one, you tick it yourself and press Send.',
+      saved: 'Form sender saved',
+    },
     policy: {
       title: 'Contact policy',
       subtitle: 'Applies to every campaign and is checked again right before each send.',
@@ -893,6 +946,12 @@ export const en = {
     },
   },
   errors: {
+    forms: {
+      senderRequired: 'Choose a browser profile for website forms in Settings → Website forms.',
+      profileUnsuitable: 'Use a general browser profile for forms.',
+      notPrepared: 'The form is not prepared yet.',
+    },
+    mode: { autoOnly: 'Only a website form can be sent by you pressing its button.' },
     session: {
       busy: 'TabReach is already doing something in this window. Try again in a moment.',
       notOpen: 'This browser window is closed.',

@@ -10,6 +10,7 @@ import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
 import type { SideEffectLedger } from '../ledger/side-effects.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
+import type { FormService } from '../forms/form-service.js';
 import type { ApprovalRow, CampaignEngine, DraftRow } from './engine.js';
 
 const CHECK_ORDER = draftCheckKeySchema.options;
@@ -27,6 +28,7 @@ export class ApprovalService {
     private readonly engine: CampaignEngine,
     private readonly ledger: SideEffectLedger,
     private readonly now: () => Date,
+    private readonly forms?: Pick<FormService, 'latestFor' | 'approvalForm'>,
   ) {}
 
   pending(campaignId?: string): Approval[] {
@@ -42,9 +44,12 @@ export class ApprovalService {
 
   approve(approvalId: string, contentHash: string, ctx: CommandContext): void {
     this.decide(approvalId, 'approved', ctx, (approval, draft) => {
-      // The user approved what they saw; it must still be what would be sent.
-      if (contentHash !== approval.content_hash || draft.content_hash !== approval.content_hash)
-        throw stale();
+      // The user approved what they saw; it must still be what would be sent (for a form: the
+      // prepared form too).
+      const facts = this.engine.contact(draft.contact_id);
+      const target = (facts && this.engine.targetFor(draft.channel, facts)) ?? '';
+      const current = this.engine.approvalHash(draft.channel, approval.workflow_run_id, draft, target);
+      if (contentHash !== approval.content_hash || current !== approval.content_hash) throw stale();
     });
   }
 
@@ -61,7 +66,7 @@ export class ApprovalService {
    * Edits the message: a new draft version; open approvals are superseded and a new pending one is
    * created. Refused once the send may have happened — an edit must never cause a second message.
    */
-  revise(draftId: string, subject: string, body: string, ctx: CommandContext): Approval {
+  revise(draftId: string, subject: string, body: string, ctx: CommandContext): Approval | null {
     return transaction(this.db, () => {
       const draft = this.db.prepare('SELECT * FROM message_drafts WHERE id = ?').get(draftId) as
         DraftRow | undefined;
@@ -76,7 +81,8 @@ export class ApprovalService {
         .forStep(e.id, run.step_position)
         .some((se) => se.status === 'executing' || se.status === 'completed' || se.status === 'unknown');
       if (started) throw conflict('draft.alreadySent');
-      const target = this.engine.contact(e.contact_id)?.email_normalized;
+      const facts = this.engine.contact(e.contact_id);
+      const target = facts ? this.engine.targetFor(draft.channel, facts) : null;
       if (!target) throw conflict('draft.noTarget');
       const next = this.engine.insertDraft(
         run,
@@ -90,11 +96,21 @@ export class ApprovalService {
         { origin: 'user', factIds: JSON.parse(draft.fact_ids) as string[] },
       );
       this.engine.closeApprovals(run.id, 'superseded');
-      const approvalId = this.engine.requestApproval(run, e, next, ctx.correlationId);
-      this.engine.updateRun(run, {
-        current_state: 'CHECK_APPROVAL',
-        ...(run.status === 'paused' ? {} : { status: 'waiting_approval' as const }),
-      });
+      let approvalId: string | null = null;
+      if (draft.channel === 'web_form') {
+        // The form holds the message: it is filled and photographed again before approval.
+        this.engine.updateRun(run, {
+          current_state: 'PREPARE_FORM',
+          ...(run.status === 'paused' ? {} : { status: 'running' as const }),
+        });
+        if (run.status !== 'paused') this.engine.wakeRun(run.id, ctx.correlationId);
+      } else {
+        approvalId = this.engine.requestApproval(run, e, next, ctx.correlationId);
+        this.engine.updateRun(run, {
+          current_state: 'CHECK_APPROVAL',
+          ...(run.status === 'paused' ? {} : { status: 'waiting_approval' as const }),
+        });
+      }
       this.audit.record({
         actorType: 'user',
         actionType: 'draft.revised',
@@ -103,7 +119,7 @@ export class ApprovalService {
         payload: { draftId: next.id, version: next.version },
         correlationId: ctx.correlationId,
       });
-      return this.dto(approvalId);
+      return approvalId ? this.dto(approvalId) : null;
     });
   }
 
@@ -228,7 +244,14 @@ export class ApprovalService {
         .map((c) => ({ key: c.check_key, passed: c.passed === 1, detail: c.detail }))
         .sort((a, b) => CHECK_ORDER.indexOf(a.key) - CHECK_ORDER.indexOf(b.key)),
       facts: this.engine.factsById(JSON.parse(r.fact_ids) as string[]),
+      form: this.formOf(r.channel, r.workflow_run_id, r.message_draft_id),
       createdAt: r.created_at,
     };
+  }
+
+  private formOf(channel: string, runId: string, draftId: string): Approval['form'] {
+    if (channel !== 'web_form' || !this.forms) return null;
+    const preparation = this.forms.latestFor(runId);
+    return preparation?.message_draft_id === draftId ? this.forms.approvalForm(preparation) : null;
   }
 }

@@ -158,21 +158,59 @@ function MessageFields(props: {
   });
   return (
     <>
-      <Field label={t('campaigns.channel')} className="max-w-md">
+      <Field
+        label={t('campaigns.channel')}
+        errorKey={props.errors[`steps.${index}.channel`]}
+        className="max-w-md"
+      >
         {(id) => (
           <Select
             id={id}
             value={step.channel}
             disabled={props.disabled}
-            onChange={(e) =>
-              props.onChange({ ...step, channel: e.target.value === 'test' ? 'test' : 'email' })
-            }
+            onChange={(e) => {
+              const channel =
+                e.target.value === 'test' ? 'test' : e.target.value === 'web_form' ? 'web_form' : 'email';
+              // Only a form can be sent by the person pressing its button.
+              props.onChange({
+                ...step,
+                channel,
+                executionMode: channel === 'web_form' ? step.executionMode : 'auto',
+              });
+            }}
           >
             <option value="email">{t('campaigns.channels.email')}</option>
+            <option value="web_form">{t('campaigns.channels.web_form')}</option>
             <option value="test">{t('campaigns.channels.test')}</option>
           </Select>
         )}
       </Field>
+      {step.channel === 'web_form' ? (
+        <Field
+          label={t('campaigns.executionMode')}
+          hint={t(`campaigns.executionModeHints.${step.executionMode}`)}
+          errorKey={props.errors[`steps.${index}.executionMode`]}
+          className="max-w-md"
+        >
+          {(id, describedBy) => (
+            <Select
+              id={id}
+              aria-describedby={describedBy}
+              value={step.executionMode}
+              disabled={props.disabled}
+              onChange={(e) =>
+                props.onChange({
+                  ...step,
+                  executionMode: e.target.value === 'assisted' ? 'assisted' : 'auto',
+                })
+              }
+            >
+              <option value="auto">{t('campaigns.executionModes.auto')}</option>
+              <option value="assisted">{t('campaigns.executionModes.assisted')}</option>
+            </Select>
+          )}
+        </Field>
+      ) : null}
       <fieldset className="grid gap-2">
         <legend className="mb-1 text-xs font-medium text-soft">{t('campaigns.mode')}</legend>
         <div role="radiogroup" aria-label={t('campaigns.mode')} className="flex flex-wrap gap-2">

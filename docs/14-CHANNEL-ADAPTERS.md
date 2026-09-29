@@ -152,6 +152,10 @@ Worker side (`packages/browser-worker/src/forms.ts`), with the generic knowledge
 - Fixtures (`fixtures/sites/public/forms`): link discovery with a login form beside the contact form, a form drawn by a script with placeholders only, a required unknown field, a Russian form with a required consent, a reCAPTCHA form, a dialog form, and site reactions thank-you page / inline message / refusal / silence.
 - Core integration, approval preview and semantic resolution: Phase 6b and 6c.
 
+### Implementation status (Phase 6b, 2026-09-29)
+
+`FormService` (core) keeps the form sender, runs `form.prepare` in the sender's profile before approval and stores the preparation; the `web_form` channel is a `BrowserActionChannel` whose dispatch is `form.submit` with the run's latest preparation, so the ledger turns `executing` only at the checkpoint. The approval (`approval.form`) lists every field with the value TabReach writes, what stays empty, required fields the person fills, consent boxes it never ticks, who presses Send, and the photo of the filled form. See docs/13 and docs/17 for the state machine and campaign rules. Per-contact channel eligibility is derived (a form step needs the company's website); a separate eligibility table was not needed.
+
 ## LinkedIn browser adapter
 
 Isolated module with a kill switch (setting, fails closed).

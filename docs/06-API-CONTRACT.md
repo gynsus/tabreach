@@ -117,6 +117,7 @@ command approvals.approve              # { approvalId, contentHash }  -- hash mu
 command approvals.reject               # stops the enrollment
 command approvals.skip                 # this message is not sent; the enrollment moves to its next step
 command drafts.revise                  # new draft version, supersedes open approvals, returns the new one
+                                       # (null for a website form: it is prepared again, a new approval follows)
 query   drafts.history                 # { draftId } -> every version of that message, newest first, with origin
 ```
 
@@ -125,6 +126,69 @@ Approval commands re-check the exact target and content hash and fail with `APPR
 ## Interventions and reconciliation
 
 Implemented under **Browser profiles** below (`interventions.list`, `interventions.resolve`, `profiles.takeControl`, `profiles.returnControl`) and **Unconfirmed sends** (`sideEffects.uncertain`, `sideEffects.resolve { id, outcome: completed | not_sent }`); "not sure" is leaving a send undecided.
+
+## Activity and UI settings
+
+```text
+query   activity.list                  # { contactId? | companyId? | campaignId?, category?, before?, limit } -> { items, hasMore }, newest first; each item names its contact, company and campaign and carries the message text for sends, AI drafts and replies
+query   settings.ui.get                # -> { language: 'en' | 'ru' }
+command settings.ui.update
+```
+
+## Validation errors
+
+`VALIDATION_FAILED` results carry `fields`: field name -> message key (e.g. `{ "email": "email.duplicate" }`).
+Keys, not sentences: the renderer translates them (`errors.*` in the i18n catalogs, ADR 019).
+
+## Channel accounts
+
+```text
+query   accounts.list                  # email accounts; never includes secrets
+command accounts.connectImap           # { address, smtp, imap, username, password, limits } — tested before saving
+command accounts.update                # name, sender name, limits, new password (tested before saving)
+command accounts.test                  # SMTP + IMAP check, reports the Sent folder
+command accounts.disconnect            # deletes the stored password
+command accounts.connectGmail          # { clientId, clientSecret? } -> consent in the system browser, loopback via main (host: oauth.loopback)
+query   sideEffects.uncertain          # sends whose outcome is unknown (or stuck executing), with `checking` while a job still looks
+command sideEffects.resolve            # { id, outcome: completed | not_sent } — refused while a send job for the run is active
+query   contacts.replyHold             # replied | company_replied | null
+command contacts.releaseReplyHold      # campaigns may write again; earlier replies stop counting
+```
+
+## Inbox
+
+```text
+query   conversations.list             # { filter: all | unread | review } -> items, total, unread count
+query   conversations.get              # summary + messages (outbound and inbound)
+command conversations.markRead
+command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
+command conversations.draftReply       # planned, Phase 8 (not implemented)
+```
+
+## Browser profiles (Phase 5a)
+
+```text
+query   profiles.list                  # { includeArchived } -> profiles with their live session and last health
+command profiles.create                # { name, purpose: general | research }
+command profiles.update / profiles.archive
+command profiles.delete                # { id, confirmName } — closed profiles only; the name must match exactly
+command profiles.open                  # { id, startUrl? } — visible Chrome, control mode `human`
+command profiles.close / profiles.focus / profiles.check
+command profiles.checkSignIn          # { id, packId: linkedin } — opens under automation, recognizes the site's page (Phase 5b)
+command profiles.takeControl           # { id } — the person takes over an automated window; the work waits (Phase 5c)
+command profiles.returnControl         # { id } — hand back; the work checks the page again first
+query   app.control.get                # { paused, pausedAt, emergencyStoppedAt, keepAwake }
+command app.pauseAll / app.resumeAll   # no new external action while paused; reading replies goes on
+command app.emergencyStop              # pause, and the worker stops every browser task at once
+command app.setKeepAwake               # { keepAwake } — keep the Mac awake while a campaign is active
+query   forms.sender.get               # { profileId, name, email, phone, company, website } (Phase 6b)
+command forms.sender.update            # the research profile is refused (forms.profileUnsuitable)
+query   forms.screenshot               # { approvalId } -> { png: base64 | null } — the prepared form
+query   interventions.list             # open requests to the person, with diagnostics of unrecognized pages
+command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
+```
+
+`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `profile.inUseByYou`, `profile.checking`, `profile.research`, `session.nothingToReturn`, `session.notOpen`, `session.busy`, `intervention.notFound`, `intervention.closed`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
 
 ## Jobs and diagnostics
 

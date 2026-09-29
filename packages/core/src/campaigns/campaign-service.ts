@@ -294,8 +294,12 @@ export class CampaignService {
       if (step.channel === 'email' && !config.emailAccountId) fields.emailAccountId = 'account.required';
       else if (!this.channels(step.channel, config)) {
         if (step.channel === 'email') fields.emailAccountId = 'account.unavailable';
+        else if (step.channel === 'web_form') fields[`steps.${i}.channel`] = 'forms.senderRequired';
         else fields[`steps.${i}.channel`] = 'channel.unavailable';
       }
+      // Only a browser channel has a person press the final button (docs/01 "Execution modes").
+      if (step.channel !== 'web_form' && step.executionMode !== 'auto')
+        fields[`steps.${i}.executionMode`] = 'mode.autoOnly';
       if (step.mode === 'ai') {
         if (!step.instructions.trim()) fields[`steps.${i}.instructions`] = 'instructions.required';
         if (!this.aiReady()) fields[`steps.${i}.mode`] = 'ai.keyRequired';

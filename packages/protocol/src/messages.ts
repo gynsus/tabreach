@@ -57,6 +57,7 @@ import {
   jobSchema,
   draftVersionSchema,
   policySettingsSchema,
+  formSenderSchema,
   uncertainSendSchema,
 } from './campaigns.js';
 import {
@@ -308,7 +309,27 @@ export const requests = {
     request: z.object({ draftId: z.uuid() }),
     response: z.object({ items: z.array(draftVersionSchema) }),
   },
-  'drafts.revise': { channel: 'app', kind: 'command', request: draftReviseSchema, response: approvalSchema },
+  /** The new approval; null for a website form, which is prepared again first (a new approval follows). */
+  'drafts.revise': {
+    channel: 'app',
+    kind: 'command',
+    request: draftReviseSchema,
+    response: approvalSchema.nullable(),
+  },
+  'forms.sender.get': { channel: 'app', kind: 'query', request: z.object({}), response: formSenderSchema },
+  'forms.sender.update': {
+    channel: 'app',
+    kind: 'command',
+    request: formSenderSchema,
+    response: formSenderSchema,
+  },
+  /** The screenshot of the prepared form an approval covers (base64 PNG), if there is one. */
+  'forms.screenshot': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ approvalId: z.uuid() }),
+    response: z.object({ png: z.string().nullable() }),
+  },
   'policy.settings.get': {
     channel: 'app',
     kind: 'query',

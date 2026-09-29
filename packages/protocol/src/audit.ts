@@ -60,6 +60,8 @@ export const auditActionTypes = [
   'contact.bounced',
   'contact.reply_hold_released',
   'ai.settings_updated',
+  'forms.sender_updated',
+  'form.prepared',
   'ai.key_set',
   'ai.key_removed',
   'message.classified',
