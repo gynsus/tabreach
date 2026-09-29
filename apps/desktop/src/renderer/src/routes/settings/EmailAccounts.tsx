@@ -101,24 +101,28 @@ export function EmailAccounts() {
   );
 }
 
+type Interpolate = (key: string, options: Record<string, string>) => string;
+
 function describeCheck(
   t: ReturnType<typeof useTranslation>['t'],
   check: ConnectionCheck,
 ): { ok: boolean; text: string } {
+  // Through this parameter type, i18next's key typing hits TypeScript's instantiation depth.
+  const tr = t as unknown as Interpolate;
   if (check.smtp.ok && check.imap.ok) {
     return check.imap.sentFolder
-      ? { ok: true, text: t('accounts.testOk', { folder: check.imap.sentFolder }) }
-      : { ok: true, text: t('accounts.testNoSent') };
+      ? { ok: true, text: tr('accounts.testOk', { folder: check.imap.sentFolder }) }
+      : { ok: true, text: tr('accounts.testNoSent', {}) };
   }
   const part = (r: { ok: boolean; error?: string | undefined }) =>
     r.ok
-      ? t('accounts.ok')
+      ? tr('accounts.ok', {})
       : translateKey(
           t,
           `errors.account.${r.error ?? 'connectionFailed'}`,
-          t('errors.account.connectionFailed'),
+          tr('errors.account.connectionFailed', {}),
         );
-  return { ok: false, text: t('accounts.testFailed', { smtp: part(check.smtp), imap: part(check.imap) }) };
+  return { ok: false, text: tr('accounts.testFailed', { smtp: part(check.smtp), imap: part(check.imap) }) };
 }
 
 function AccountRow({ account: a }: { account: EmailAccount }) {

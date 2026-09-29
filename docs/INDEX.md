@@ -80,6 +80,7 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 022 | The audit trail stores identifiers, not personal data | Accepted |
 | 023 | Email send outcomes: Message-ID from the intent, staged SMTP, Sent reconciliation | Accepted |
 | 024 | Reply ingestion: only prospect mail, from the moment of connecting | Accepted |
+| 025 | Draft checks and campaign approval | Accepted |
 
 ## Recommended first command to Claude Code
 

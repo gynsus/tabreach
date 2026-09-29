@@ -11,6 +11,7 @@ import {
 } from '@tabreach/protocol';
 import { AiGateway } from './ai/gateway.js';
 import { ReplyClassifier } from './ai/reply-classifier.js';
+import { DraftWriter } from './drafts/draft-writer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
@@ -88,6 +89,7 @@ export class AppServices {
   readonly ai: AiGateway;
   readonly classifier: ReplyClassifier;
   readonly research: ResearchService;
+  readonly drafts: DraftWriter;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -138,6 +140,7 @@ export class AppServices {
       logger: logger.child({ component: 'campaigns' }),
       changed: (entities) => this.changed(entities),
       onSent: (sent) => this.inbox.recordSent(sent),
+      drafter: { write: (req, signal, correlationId) => this.drafts.write(req, signal, correlationId) },
       beforeSend: async (channel, signal, correlationId) => {
         if (channel.channel === 'email' && channel.accountId) {
           await this.inbox.ensureFresh(channel.accountId, signal, correlationId);
@@ -174,6 +177,12 @@ export class AppServices {
       language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
       ...(options.sleep ? { sleep: options.sleep } : {}),
     });
+    this.drafts = new DraftWriter({
+      ai: this.ai,
+      research: this.research,
+      now,
+      logger: logger.child({ component: 'drafts' }),
+    });
     this.inbox = new InboxService({
       db,
       now,
@@ -195,6 +204,7 @@ export class AppServices {
       channels,
       now,
       (contactId, companyId) => this.policy.replyHold(contactId, companyId),
+      () => this.ai.settings().keySet,
     );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now);
   }
@@ -319,6 +329,7 @@ export class AppServices {
           return { ok: true as const };
         }),
       )
+      .handle('drafts.history', (p) => ({ items: this.approvals.history(p.draftId) }))
       .handle('drafts.revise', (p, c) =>
         mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
       )

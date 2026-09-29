@@ -88,8 +88,14 @@ export const sendMessageStepSchema = z.object({
   /** Only `auto` exists before browser channels (Phase 5+). */
   executionMode: z.literal('auto'),
   delaySeconds,
+  /** template: subject and body with placeholders. ai: written per recipient from research facts. */
+  mode: z.enum(['template', 'ai']).default('template'),
   subject: text(300),
   body: z.string().max(20_000),
+  /** AI steps: what the message should say and do (tone, offer, call to action, language). */
+  instructions: z.string().max(4_000).default(''),
+  /** Appended as written, never by the model. */
+  signature: z.string().max(1_000).default(''),
 });
 
 export const conditionStepSchema = z.object({
@@ -109,17 +115,33 @@ export const campaignConfigSchema = z.object({
   timezone: z.string().max(100).nullable(),
   /** Overrides the policy's default active window. */
   window: activeWindowSchema.nullable(),
-  approvalMode: z.literal('approve_each'),
+  /**
+   * approve_each: every message waits for a person. approve_campaign: after `sampleSize` approved by
+   * hand, AI drafts that pass every check are approved automatically (docs/17).
+   */
+  approvalMode: z.enum(['approve_each', 'approve_campaign']).default('approve_each'),
+  sampleSize: z.number().int().min(1).max(50).default(5),
+  /** Draft checks (docs/17 "approve_campaign"). */
+  maxLength: z.number().int().min(100).max(10_000).default(1_500),
+  forbiddenPhrases: z.array(z.string().trim().min(1).max(200)).max(100).default([]),
+  /** Domains links in a message may point to; empty: no links. */
+  allowedLinkDomains: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
   /** The email account email steps send from (required when the campaign has email steps). */
   emailAccountId: z.uuid().nullable().default(null),
 });
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
+/** A config as written by a caller: fields with defaults may be left out. */
+export type CampaignConfigInput = z.input<typeof campaignConfigSchema>;
 
 export const EMPTY_CAMPAIGN_CONFIG: CampaignConfig = {
   steps: [],
   timezone: null,
   window: null,
   approvalMode: 'approve_each',
+  sampleSize: 5,
+  maxLength: 1_500,
+  forbiddenPhrases: [],
+  allowedLinkDomains: [],
   emailAccountId: null,
 };
 
@@ -180,6 +202,8 @@ export const stopReasonSchema = z.enum([
   'replied',
   'company_replied',
   'bounced',
+  /** AI could not write the message (no key, budget, provider refusal, invalid answers). */
+  'draft_failed',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
@@ -196,7 +220,7 @@ export const enrollmentSchema = z.object({
   nextActionAt: z.iso.datetime().nullable(),
   stopReason: stopReasonSchema.nullable(),
   /** What the current step is waiting for, if anything. */
-  waiting: z.enum(['approval', 'schedule', 'retry']).nullable(),
+  waiting: z.enum(['approval', 'schedule', 'retry', 'draft']).nullable(),
   updatedAt: z.iso.datetime(),
 });
 export type Enrollment = z.infer<typeof enrollmentSchema>;
@@ -208,6 +232,36 @@ export const enrollmentListRequestSchema = z.object({
 });
 
 // Approvals ---------------------------------------------------------------------------------
+
+/** Who wrote a draft version: the step's template, AI, or a person editing it. */
+export const draftOriginSchema = z.enum(['template', 'ai', 'user']);
+export type DraftOrigin = z.infer<typeof draftOriginSchema>;
+
+/** Automated draft checks (docs/17 "approve_campaign", ADR 025). */
+export const draftCheckKeySchema = z.enum([
+  'grounding',
+  'length',
+  'forbidden_phrases',
+  'links',
+  'signature',
+  'target',
+]);
+export type DraftCheckKey = z.infer<typeof draftCheckKeySchema>;
+export const draftCheckSchema = z.object({
+  key: draftCheckKeySchema,
+  passed: z.boolean(),
+  /** What failed, as the user can act on it: unsupported specifics, the phrase, the link. */
+  detail: z.string().nullable(),
+});
+export type DraftCheck = z.infer<typeof draftCheckSchema>;
+
+export const draftFactSchema = z.object({
+  id: z.uuid(),
+  claim: z.string(),
+  quote: z.string(),
+  url: z.string().nullable(),
+});
+export type DraftFact = z.infer<typeof draftFactSchema>;
 
 export const approvalSchema = z.object({
   id,
@@ -224,6 +278,11 @@ export const approvalSchema = z.object({
   subject: z.string().nullable(),
   body: z.string(),
   contentHash: z.string(),
+  origin: draftOriginSchema,
+  /** Results of the draft checks for exactly this content. */
+  checks: z.array(draftCheckSchema),
+  /** The research facts the draft says it used, with their quotes and sources. */
+  facts: z.array(draftFactSchema),
   createdAt: z.iso.datetime(),
 });
 export type Approval = z.infer<typeof approvalSchema>;
@@ -265,3 +324,13 @@ export const uncertainSendSchema = z.object({
   checking: z.boolean(),
 });
 export type UncertainSend = z.infer<typeof uncertainSendSchema>;
+
+export const draftVersionSchema = z.object({
+  id: z.uuid(),
+  version: z.number().int(),
+  origin: draftOriginSchema,
+  subject: z.string().nullable(),
+  body: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type DraftVersion = z.infer<typeof draftVersionSchema>;

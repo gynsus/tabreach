@@ -150,6 +150,8 @@ CHECK_APPROVAL -> WAITING_APPROVAL
 VERIFY_SENT -> UNKNOWN_OUTCOME -> (reconciliation) -> COMPLETE | FAILED | WAITING_FOR_HUMAN
 ```
 
+Campaign message steps (`campaign_message`, Phase 4c): `PREPARE_CONTENT → [GENERATE_DRAFT] → CHECK_POLICY → CHECK_APPROVAL → FINAL_PRE_SEND_CHECK → SEND → COMPLETE`. `GENERATE_DRAFT` runs only for AI steps: it waits for the company's research (starting it if needed, polling every 20 s) and calls the model outside any transaction; the draft is stored only if the run is still in `GENERATE_DRAFT`. A non-retryable AI failure stops the enrollment (`draft_failed`); a retryable one retries the job.
+
 If approval arrives long after `PREPARE_IN_BROWSER` (e.g. next day), the workflow re-runs `OPEN_TARGET` through `PREPARE_IN_BROWSER` before sending; browser state is never assumed to persist across waits.
 
 ## Workflow versioning

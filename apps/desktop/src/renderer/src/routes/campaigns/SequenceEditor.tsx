@@ -19,8 +19,11 @@ export const newMessage = (): CampaignStep => ({
   channel: 'email',
   executionMode: 'auto',
   delaySeconds: 0,
+  mode: 'template',
   subject: '',
   body: '',
+  instructions: '',
+  signature: '',
 });
 
 export const newCondition = (): CampaignStep => ({

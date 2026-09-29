@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { uuidv7, type CampaignConfig, type ImapAccountInput, type Logger } from '@tabreach/protocol';
+import { uuidv7, type CampaignConfigInput, type ImapAccountInput, type Logger } from '@tabreach/protocol';
 import { AppServices } from '../app-handlers.js';
 import { openDatabase } from '../db/database.js';
 import { migrate } from '../db/migrate.js';
@@ -103,7 +103,7 @@ export class Harness {
 
   async campaignTo(email: string): Promise<{ campaign: string; accountId: string }> {
     const accountId = (await this.services.accounts.connectImap(imapInput(), ctx())).id;
-    const config: CampaignConfig = {
+    const config: CampaignConfigInput = {
       steps: [
         {
           type: 'send_message',

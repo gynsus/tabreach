@@ -2,7 +2,14 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
-import { RpcError, silentLogger, uuidv7, type CampaignConfig, type CampaignStep } from '@tabreach/protocol';
+import {
+  RpcError,
+  silentLogger,
+  uuidv7,
+  type CampaignConfig,
+  type CampaignConfigInput,
+  type CampaignStep,
+} from '@tabreach/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AppServices } from '../app-handlers.js';
 import type { OutgoingMessage } from '../channels/channel.js';
@@ -21,12 +28,15 @@ const message = (over: Partial<Extract<CampaignStep, { type: 'send_message' }>> 
   channel: 'test',
   executionMode: 'auto',
   delaySeconds: 0,
+  mode: 'template',
   subject: 'Hello {{firstName}}',
   body: 'Hi {{firstName}}, a note for {{companyName|your team}}.',
+  instructions: '',
+  signature: '',
   ...over,
 });
 
-const config = (steps: CampaignStep[], over: Partial<CampaignConfig> = {}): CampaignConfig => ({
+const config = (steps: CampaignStep[], over: Partial<CampaignConfig> = {}): CampaignConfigInput => ({
   steps,
   timezone: 'UTC',
   window: null,

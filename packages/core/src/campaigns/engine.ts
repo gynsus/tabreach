@@ -9,6 +9,7 @@ import {
   type CampaignStep,
   type ChangedEntity,
   type Condition,
+  type DraftOrigin,
   type Logger,
   type StopReason,
 } from '@tabreach/protocol';
@@ -16,6 +17,8 @@ import { z } from 'zod';
 import type { AuditLog } from '../audit/audit-log.js';
 import type { ChannelResolver, MessageChannel } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
+import { allPassed, runDraftChecks } from '../drafts/checks.js';
+import type { DraftRequest, DraftResult } from '../drafts/draft-writer.js';
 import {
   PermanentError,
   RetryableError,
@@ -35,9 +38,18 @@ export const JOB_RUN = 'workflow.run';
 export const WORKFLOW_TYPE = 'campaign_message';
 export const DEFINITION_VERSION = 1;
 
-/** States of one message step (docs/13, "Example"), minus the browser-only ones. */
+/**
+ * States of one message step (docs/13, "Example"), minus the browser-only ones. GENERATE_DRAFT:
+ * an AI step waits for research and the model (it awaits, like SEND).
+ */
 export type RunState =
-  'PREPARE_CONTENT' | 'CHECK_POLICY' | 'CHECK_APPROVAL' | 'FINAL_PRE_SEND_CHECK' | 'SEND' | 'COMPLETE';
+  | 'PREPARE_CONTENT'
+  | 'GENERATE_DRAFT'
+  | 'CHECK_POLICY'
+  | 'CHECK_APPROVAL'
+  | 'FINAL_PRE_SEND_CHECK'
+  | 'SEND'
+  | 'COMPLETE';
 export type RunStatus =
   | 'pending'
   | 'running'
@@ -85,6 +97,15 @@ export interface DraftRow {
   body: string;
   content_hash: string;
   version: number;
+  origin: DraftOrigin;
+  fact_ids: string;
+}
+
+/** Who wrote a draft version and from what (stored with it). */
+export interface DraftMeta {
+  origin: DraftOrigin;
+  factIds?: string[];
+  generation?: Record<string, unknown>;
 }
 
 export interface ApprovalRow {
@@ -136,6 +157,8 @@ export interface CampaignEngineDeps {
    * a reply that already arrived stops the sequence. May throw a RetryableError to wait.
    */
   beforeSend?: (channel: MessageChannel, signal: AbortSignal, correlationId: string) => Promise<void>;
+  /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
+  drafter?: { write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> };
   /** Told about every completed send (in its transaction), e.g. to thread replies to it. */
   onSent?: (sent: {
     channel: string;
@@ -337,7 +360,9 @@ export class CampaignEngine {
       const outcome =
         run.current_state === 'SEND'
           ? await this.send(run, e, step, ctx)
-          : transaction(this.d.db, () => this.syncState(run, e, step, run.correlation_id));
+          : run.current_state === 'GENERATE_DRAFT'
+            ? await this.generate(run, e, step, ctx)
+            : transaction(this.d.db, () => this.syncState(run, e, step, run.correlation_id));
       if (outcome !== 'next') return outcome === 'done' ? undefined : outcome;
     }
     throw new RetryableError('state_loop', 'Workflow did not settle');
@@ -362,6 +387,10 @@ export class CampaignEngine {
           this.stopEnrollment(e, 'invalid_target', correlationId, 'system');
           return 'done';
         }
+        if (!this.latestDraft(run.id) && step.mode === 'ai') {
+          this.updateRun(run, { current_state: 'GENERATE_DRAFT' });
+          return 'next';
+        }
         if (!this.latestDraft(run.id)) {
           const values = templateValues(facts);
           const subject = renderTemplate(step.subject, values);
@@ -371,7 +400,9 @@ export class CampaignEngine {
             this.stopEnrollment(e, 'missing_data', correlationId, 'system', { fields: missing });
             return 'done';
           }
-          this.insertDraft(run, e, step.channel, target, subject.text || null, body.text, 1);
+          this.insertDraft(run, e, step.channel, target, subject.text || null, body.text, 1, {
+            origin: 'template',
+          });
         }
         this.updateRun(run, { current_state: 'CHECK_POLICY' });
         return 'next';
@@ -395,6 +426,11 @@ export class CampaignEngine {
         const approval = this.currentApproval(run.id);
         if (!approval || approval.message_draft_id !== draft.id) {
           if (approval) this.closeApprovals(run.id, 'superseded');
+          if (this.autoApprovable(e, draft)) {
+            this.requestApproval(run, e, draft, correlationId, true);
+            this.updateRun(run, { current_state: 'FINAL_PRE_SEND_CHECK' });
+            return 'next';
+          }
           this.requestApproval(run, e, draft, correlationId);
           this.updateRun(run, { status: 'waiting_approval' });
           return 'done';
@@ -425,7 +461,10 @@ export class CampaignEngine {
           // The draft or the recipient changed after approval: ask again (APPROVAL_STALE, ADR 021 §4).
           this.closeApprovals(run.id, 'superseded');
           if (draft && target && hash !== draft.content_hash) {
-            this.insertDraft(run, e, step.channel, target, draft.subject, draft.body, draft.version + 1);
+            this.insertDraft(run, e, step.channel, target, draft.subject, draft.body, draft.version + 1, {
+              origin: draft.origin,
+              factIds: JSON.parse(draft.fact_ids) as string[],
+            });
           }
           this.updateRun(run, { current_state: 'CHECK_APPROVAL' });
           return 'next';
@@ -687,14 +726,25 @@ export class CampaignEngine {
 
   // Approvals and drafts -------------------------------------------------------------------
 
-  requestApproval(run: RunRow, e: EnrollmentRow, draft: DraftRow, correlationId: string): string {
+  /**
+   * `auto`: approved by the campaign's policy (approve_campaign, every check passed); otherwise it
+   * waits for a person.
+   */
+  requestApproval(
+    run: RunRow,
+    e: EnrollmentRow,
+    draft: DraftRow,
+    correlationId: string,
+    auto = false,
+  ): string {
     const id = uuidv7();
     const target = this.contact(e.contact_id)?.email_normalized ?? '';
+    const ts = this.d.now().toISOString();
     this.d.db
       .prepare(
         `INSERT INTO approvals (id, workflow_run_id, campaign_enrollment_id, message_draft_id, draft_version,
-                                target_snapshot, content_hash, scope, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'single_action', 'pending', ?)`,
+                                target_snapshot, content_hash, scope, status, decided_by, decided_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -704,11 +754,15 @@ export class CampaignEngine {
         draft.version,
         JSON.stringify({ channel: draft.channel, target, contactId: e.contact_id }),
         draft.content_hash,
-        this.d.now().toISOString(),
+        auto ? 'campaign' : 'single_action',
+        auto ? 'approved' : 'pending',
+        auto ? 'campaign_policy' : null,
+        auto ? ts : null,
+        ts,
       );
     this.d.audit.record({
       actorType: 'system',
-      actionType: 'approval.requested',
+      actionType: auto ? 'approval.auto_approved' : 'approval.requested',
       objectType: 'approval',
       objectId: id,
       payload: { enrollmentId: e.id, draftVersion: draft.version },
@@ -726,13 +780,14 @@ export class CampaignEngine {
     subject: string | null,
     body: string,
     version: number,
+    meta: DraftMeta,
   ): DraftRow {
     const id = uuidv7();
     this.d.db
       .prepare(
         `INSERT INTO message_drafts (id, contact_id, company_id, campaign_enrollment_id, workflow_run_id, channel,
-                                     subject, body, content_hash, version, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                     subject, body, fact_ids, generation_meta, content_hash, version, origin, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -743,11 +798,174 @@ export class CampaignEngine {
         channel,
         subject,
         body,
+        JSON.stringify(meta.factIds ?? []),
+        JSON.stringify(meta.generation ?? {}),
         contentHash(channel, target, subject, body),
         version,
+        meta.origin,
         this.d.now().toISOString(),
       );
-    return this.d.db.prepare('SELECT * FROM message_drafts WHERE id = ?').get(id) as unknown as DraftRow;
+    const draft = this.d.db
+      .prepare('SELECT * FROM message_drafts WHERE id = ?')
+      .get(id) as unknown as DraftRow;
+    this.storeChecks(draft, e, run, target);
+    return draft;
+  }
+
+  /** The draft checks for one version (docs/17, ADR 025); kept with it, shown in the approval. */
+  private storeChecks(draft: DraftRow, e: EnrollmentRow, run: RunRow, target: string): void {
+    const step = this.step(e.campaign_version_id, run.step_position);
+    const facts = this.contact(e.contact_id);
+    if (!step || step.type !== 'send_message' || !facts) return;
+    const config = this.versionConfig(e.campaign_version_id);
+    const values = templateValues(facts);
+    const signature = renderTemplate(step.signature, values).text.trim();
+    const used = this.factsById(JSON.parse(draft.fact_ids) as string[]);
+    const checks = runDraftChecks({
+      origin: draft.origin,
+      subject: draft.subject,
+      body: draft.body,
+      signature,
+      target,
+      currentTarget: facts.email_normalized,
+      maxLength: config.maxLength,
+      forbiddenPhrases: config.forbiddenPhrases,
+      allowedLinkDomains: config.allowedLinkDomains,
+      sources: [
+        ...Object.values(values).filter((v): v is string => Boolean(v)),
+        facts.email_normalized ?? '',
+        facts.company_domain ?? '',
+        step.instructions,
+        step.subject,
+        step.body,
+        signature,
+        ...used.flatMap((f) => [f.claim, f.quote]),
+        ...this.previousMessages(e, run.step_position).flatMap((m) => [m.subject ?? '', m.body]),
+      ],
+    });
+    const insert = this.d.db.prepare(
+      `INSERT INTO draft_checks (message_draft_id, check_key, passed, detail, created_at) VALUES (?, ?, ?, ?, ?)`,
+    );
+    const ts = this.d.now().toISOString();
+    for (const c of checks) insert.run(draft.id, c.key, c.passed ? 1 : 0, c.detail, ts);
+  }
+
+  /**
+   * approve_campaign (docs/17): once the user approved `sampleSize` messages of this campaign
+   * version by hand, a draft that passes every check is approved by the campaign's policy. Edited
+   * drafts always go to the user.
+   */
+  private autoApprovable(e: EnrollmentRow, draft: DraftRow): boolean {
+    const config = this.versionConfig(e.campaign_version_id);
+    if (config.approvalMode !== 'approve_campaign' || draft.origin === 'user') return false;
+    const checks = this.d.db
+      .prepare('SELECT check_key AS key, passed, detail FROM draft_checks WHERE message_draft_id = ?')
+      .all(draft.id) as { key: string; passed: number; detail: string | null }[];
+    if (!allPassed(checks.map((c) => ({ key: c.key as 'length', passed: c.passed === 1, detail: c.detail }))))
+      return false;
+    const { n } = this.d.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM approvals a JOIN campaign_enrollments ce ON ce.id = a.campaign_enrollment_id
+         WHERE ce.campaign_version_id = ? AND a.status = 'approved' AND a.decided_by = 'user'`,
+      )
+      .get(e.campaign_version_id) as { n: number };
+    return n >= config.sampleSize;
+  }
+
+  /** Verified research facts by id, for checks and approvals. */
+  factsById(ids: string[]): { id: string; claim: string; quote: string; url: string | null }[] {
+    if (ids.length === 0) return [];
+    return this.d.db
+      .prepare(
+        `SELECT f.id, f.claim, f.quote, ev.url FROM research_facts f LEFT JOIN evidence ev ON ev.id = f.evidence_id
+         WHERE f.id IN (${ids.map(() => '?').join(', ')}) AND f.verified = 1 AND f.quote IS NOT NULL`,
+      )
+      .all(...ids) as { id: string; claim: string; quote: string; url: string | null }[];
+  }
+
+  /** What was actually sent to this contact in earlier steps of the enrollment. */
+  private previousMessages(e: EnrollmentRow, beforeStep: number): { subject: string | null; body: string }[] {
+    return this.d.db
+      .prepare(
+        `SELECT d.subject, d.body FROM side_effects se
+         JOIN message_drafts d ON d.workflow_run_id = se.workflow_run_id AND d.content_hash = se.content_hash
+         WHERE se.scope_id = ? AND se.status = 'completed' AND se.step_position < ?
+         GROUP BY se.id ORDER BY se.step_position`,
+      )
+      .all(e.id, beforeStep) as { subject: string | null; body: string }[];
+  }
+
+  /**
+   * GENERATE_DRAFT: research and the model are awaited outside any transaction; the result is
+   * stored only if the run is still where it was (a stop or pause meanwhile wins).
+   */
+  private async generate(
+    run: RunRow,
+    e: EnrollmentRow,
+    step: SendStep,
+    ctx: JobContext,
+  ): Promise<'next' | 'done' | { continueAt: Date }> {
+    const facts = this.contact(e.contact_id);
+    const target = facts?.email_normalized;
+    if (!facts || !target) {
+      transaction(this.d.db, () => this.stopEnrollment(e, 'invalid_target', run.correlation_id, 'system'));
+      return 'done';
+    }
+    const values = templateValues(facts);
+    const signature = renderTemplate(step.signature, values);
+    if (signature.missing.length > 0) {
+      transaction(this.d.db, () =>
+        this.stopEnrollment(e, 'missing_data', run.correlation_id, 'system', { fields: signature.missing }),
+      );
+      return 'done';
+    }
+    const config = this.versionConfig(e.campaign_version_id);
+    const result: DraftResult = this.d.drafter
+      ? await this.d.drafter.write(
+          {
+            companyId: facts.company_id,
+            instructions: step.instructions,
+            stepNumber: run.step_position + 1,
+            maxLength: Math.max(100, config.maxLength - signature.text.length - 2),
+            recipient: {
+              firstName: facts.first_name,
+              lastName: facts.last_name,
+              jobTitle: facts.job_title,
+              companyName: facts.company_name,
+            },
+            previous: this.previousMessages(e, run.step_position),
+          },
+          ctx.signal,
+          run.correlation_id,
+        )
+      : { kind: 'failed', reason: 'no_key' };
+    if (result.kind === 'wait') return { continueAt: result.until };
+    return transaction(this.d.db, () => {
+      const fresh = this.run(run.id);
+      if (!fresh || fresh.current_state !== 'GENERATE_DRAFT' || TERMINAL.has(fresh.status)) return 'done';
+      if (result.kind === 'failed') {
+        this.stopEnrollment(e, 'draft_failed', run.correlation_id, 'system', { reason: result.reason });
+        return 'done';
+      }
+      const sig = signature.text.trim();
+      const body = sig ? `${result.draft.body.trim()}\n\n${sig}` : result.draft.body.trim();
+      const draft = this.insertDraft(run, e, step.channel, target, result.draft.subject.trim(), body, 1, {
+        origin: 'ai',
+        factIds: result.facts.map((f) => f.id),
+        generation: { template: 'draft.write@1', model: result.model, researchRunId: result.researchRunId },
+      });
+      this.d.audit.record({
+        actorType: 'ai',
+        actionType: 'draft.generated',
+        objectType: 'enrollment',
+        objectId: e.id,
+        payload: { draftId: draft.id, facts: result.facts.length },
+        correlationId: run.correlation_id,
+      });
+      this.updateRun(fresh, { current_state: 'CHECK_POLICY' });
+      this.d.changed(['enrollment']);
+      return 'next';
+    });
   }
 
   closeApprovals(runId: string, status: 'superseded' | 'expired'): void {

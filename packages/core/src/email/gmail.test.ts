@@ -1,4 +1,4 @@
-import type { CampaignConfig } from '@tabreach/protocol';
+import type { CampaignConfigInput } from '@tabreach/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SENT_INDEX_GRACE_MS } from './email-channel.js';
 import { authorizeUrl, GMAIL_SCOPES, pkce } from './gmail.js';
@@ -39,7 +39,7 @@ describe('Gmail accounts and campaigns', () => {
     );
 
   async function campaignTo(accountId: string, email: string): Promise<string> {
-    const config: CampaignConfig = {
+    const config: CampaignConfigInput = {
       steps: [
         {
           type: 'send_message',

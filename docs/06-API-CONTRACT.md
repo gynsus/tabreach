@@ -112,11 +112,12 @@ state errors are `CONFLICT` (`campaign.notLaunched`, `enrollment.notActive`, …
 ## Drafts and approvals
 
 ```text
-query   approvals.pending              # batch queue, oldest first
+query   approvals.pending              # batch queue, oldest first; each with origin, draft checks and the facts used
 command approvals.approve              # { approvalId, contentHash }  -- hash must match current draft
 command approvals.reject               # stops the enrollment
 command approvals.skip                 # this message is not sent; the enrollment moves to its next step
 command drafts.revise                  # new draft version, supersedes open approvals, returns the new one
+query   drafts.history                 # { draftId } -> every version of that message, newest first, with origin
 ```
 
 Approval commands re-check the exact target and content hash and fail with `APPROVAL_STALE` on mismatch; deciding an approval that is no longer pending is `CONFLICT` (`approval.notPending`). `drafts.revise` is refused (`draft.alreadySent`) once the send is `executing`, `completed` or `unknown` in the ledger: an edit must never lead to a second message.
