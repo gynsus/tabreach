@@ -369,7 +369,7 @@ started_at, ended_at
 heartbeat_at
 ```
 
-### `human_interventions` (migration 16: `browser_profile_id`, `browser_task_id`; reason `security_challenge | login_required | unsupported_state`; status `open | resolved | cancelled`)
+### `human_interventions` (migration 16: `browser_profile_id`, `browser_task_id`; reason `security_challenge | login_required | unsupported_state`, migration 17 adds `user_control`; status `open | resolved | cancelled`)
 
 ```text
 id pk

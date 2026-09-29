@@ -114,6 +114,8 @@ The desktop app shows dead jobs in a "Needs attention" view with retry/dismiss.
 - Global pause: stop scheduling new external actions; in-flight tasks reach a safe point (before `about_to_commit`) and stop.
 - Emergency stop: worker aborts all Playwright operations immediately and sets all sessions to `paused`; any task past `about_to_commit` becomes `unknown` and is reconciled later.
 
+Implemented (Phase 5c-1): the state is the setting `app.control` (survives restarts). While paused, the campaign engine's final pre-send check defers the send by a minute (`app.paused`) — nothing is lost and nothing is sent — and browser workflows do not start their next step; reading the inbox goes on so replies still stop sequences. Emergency stop additionally calls `worker.emergencyStop`, which aborts every running task and pauses every automated session; if the worker does not answer, the app is paused anyway. Controls: Status → Control, the banner on every screen, and the tray. Keep-awake (FR-APP-004) holds a `prevent-app-suspension` power blocker only while it is on, a campaign is active and nothing is paused.
+
 ## Recovery testing
 
 Tests must simulate:

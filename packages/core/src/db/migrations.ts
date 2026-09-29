@@ -666,4 +666,29 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX human_interventions_open ON human_interventions (status, requested_at);
     `,
   },
+  {
+    version: 17,
+    name: 'intervention_user_control',
+    foreignKeysOff: true,
+    sql: `
+      -- A person taking control (or pausing from the page) is a reason to wait too (Phase 5c).
+      CREATE TABLE human_interventions_new (
+        id                 TEXT PRIMARY KEY,
+        workflow_run_id    TEXT NOT NULL REFERENCES workflow_runs (id),
+        browser_session_id TEXT REFERENCES browser_sessions (id) ON DELETE SET NULL,
+        browser_profile_id TEXT REFERENCES browser_profiles (id) ON DELETE CASCADE,
+        browser_task_id    TEXT REFERENCES browser_tasks (id) ON DELETE SET NULL,
+        reason             TEXT NOT NULL CHECK (reason IN ('security_challenge', 'login_required', 'unsupported_state',
+                             'user_control')),
+        status             TEXT NOT NULL CHECK (status IN ('open', 'resolved', 'cancelled')),
+        resolution         TEXT CHECK (resolution IS NULL OR json_valid(resolution)),
+        requested_at       TEXT NOT NULL,
+        resolved_at        TEXT
+      ) STRICT;
+      INSERT INTO human_interventions_new SELECT * FROM human_interventions;
+      DROP TABLE human_interventions;
+      ALTER TABLE human_interventions_new RENAME TO human_interventions;
+      CREATE INDEX human_interventions_open ON human_interventions (status, requested_at);
+    `,
+  },
 ];

@@ -157,6 +157,8 @@ export interface CampaignEngineDeps {
    * a reply that already arrived stops the sequence. May throw a RetryableError to wait.
    */
   beforeSend?: (channel: MessageChannel, signal: AbortSignal, correlationId: string) => Promise<void>;
+  /** App-wide pause (docs/19): no send starts while it is on; it waits and goes out after. */
+  paused?: () => boolean;
   /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
   drafter?: { write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> };
   /** Told about every completed send (in its transaction), e.g. to thread replies to it. */
@@ -561,6 +563,13 @@ export class CampaignEngine {
           // Final pre-send check, in the reserving transaction (ADR 021 §6). Everything is read
           // again here: reconciliation may have awaited for a while, and a reply, a stop, a pause
           // or a rejection may have arrived meanwhile (audit 3.5).
+          if (this.d.paused?.()) {
+            throw new PolicyBlocked({
+              kind: 'defer',
+              until: new Date(this.d.now().getTime() + 60_000),
+              rule: 'app.paused',
+            });
+          }
           const freshRun = this.run(run.id);
           const freshE = this.enrollment(e.id);
           if (

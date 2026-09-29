@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { sessionChangedSchema, workerHeartbeatSchema } from './browser.js';
+import { sessionChangedSchema, sessionModeChangedSchema, workerHeartbeatSchema } from './browser.js';
 
 /** Entities whose data changed; the renderer refetches queries for these (ADR 020). */
 export const changedEntitySchema = z.enum([
@@ -30,6 +30,7 @@ export const events = {
   },
   'session.changed': { channel: 'browser', payload: sessionChangedSchema },
   'worker.heartbeat': { channel: 'browser', payload: workerHeartbeatSchema },
+  'session.modeChanged': { channel: 'browser', payload: sessionModeChangedSchema },
 } as const;
 
 export type EventType = keyof typeof events;

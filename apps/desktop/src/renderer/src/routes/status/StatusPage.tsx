@@ -3,6 +3,7 @@ import type { ComponentStatus, HealthReport } from '@tabreach/protocol';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Alert, Badge, Button, PageHeader } from '../../components/ui';
+import { AppControlSection } from './AppControl';
 import { Interventions } from './Interventions';
 import { NeedsAttention } from './NeedsAttention';
 import { translateKey } from '../../i18n';
@@ -120,6 +121,8 @@ export function StatusPage() {
         </ul>
 
         <Interventions />
+
+        <AppControlSection />
 
         <section
           className="grid gap-3 rounded-md border border-rule bg-raised p-4"

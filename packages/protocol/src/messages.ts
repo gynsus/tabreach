@@ -15,6 +15,8 @@ import {
   profileCheckSignInSchema,
   interventionSchema,
   interventionResolveSchema,
+  overlayContextSchema,
+  appControlSchema,
 } from './browser.js';
 import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
@@ -520,6 +522,33 @@ export const requests = {
   'profile.delete': { channel: 'browser', kind: 'command', request: workerProfileRefSchema, response: ok },
   'session.focus': { channel: 'browser', kind: 'command', request: workerSessionRefSchema, response: ok },
   'session.setMode': { channel: 'browser', kind: 'command', request: workerSetModeSchema, response: ok },
+  'session.setOverlay': {
+    channel: 'browser',
+    kind: 'command',
+    request: z.object({ sessionId: z.uuid(), context: overlayContextSchema.nullable() }),
+    response: ok,
+  },
+  /** Stops every browser task at once and pauses every session (docs/19). */
+  'worker.emergencyStop': { channel: 'browser', kind: 'command', request: z.object({}), response: ok },
+  'app.control.get': { channel: 'app', kind: 'query', request: z.object({}), response: appControlSchema },
+  'app.pauseAll': { channel: 'app', kind: 'command', request: z.object({}), response: appControlSchema },
+  'app.resumeAll': { channel: 'app', kind: 'command', request: z.object({}), response: appControlSchema },
+  'app.emergencyStop': { channel: 'app', kind: 'command', request: z.object({}), response: appControlSchema },
+  'app.setKeepAwake': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ keepAwake: z.boolean() }),
+    response: appControlSchema,
+  },
+  /** The person takes a session over: automation stops there (docs/11). */
+  'profiles.takeControl': { channel: 'app', kind: 'command', request: byId, response: browserProfileSchema },
+  /** Hands back: the page is checked again before automation continues (docs/11 "Resume validation"). */
+  'profiles.returnControl': {
+    channel: 'app',
+    kind: 'command',
+    request: byId,
+    response: browserProfileSchema,
+  },
   /** Runs one browser task in a session under automation; refused in any other control mode. */
   'task.run': {
     channel: 'browser',
@@ -538,6 +567,27 @@ export const requests = {
   'power.suspend': { channel: 'host', kind: 'command', request: z.object({}), response: ok },
   /** Main → core: the Mac woke up; re-plan overdue work into the active windows. */
   'power.resume': { channel: 'host', kind: 'command', request: z.object({}), response: ok },
+  /** Core → main: keep the Mac awake or let it sleep (FR-APP-004). */
+  'power.keepAwake': {
+    channel: 'host',
+    kind: 'command',
+    request: z.object({ on: z.boolean() }),
+    response: ok,
+  },
+  /** Main → core: the menu-bar item's Pause all / Resume / Emergency stop. */
+  'control.fromTray': {
+    channel: 'host',
+    kind: 'command',
+    request: z.object({ action: z.enum(['pause', 'resume', 'emergency_stop']) }),
+    response: ok,
+  },
+  /** Core → main: a native notification (a person is needed). */
+  'app.notify': {
+    channel: 'host',
+    kind: 'command',
+    request: z.object({ title: z.string().max(200), body: z.string().max(500) }),
+    response: ok,
+  },
   'secret.encrypt': {
     channel: 'host',
     kind: 'command',

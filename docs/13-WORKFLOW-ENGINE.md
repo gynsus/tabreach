@@ -150,7 +150,7 @@ CHECK_APPROVAL -> WAITING_APPROVAL
 VERIFY_SENT -> UNKNOWN_OUTCOME -> (reconciliation) -> COMPLETE | FAILED | WAITING_FOR_HUMAN
 ```
 
-Profile sign-in check (`browser_check`, Phase 5b): `RUN_TASK → COMPLETE`, or `RUN_TASK → WAITING_FOR_HUMAN` (status `waiting_for_human`, with an open `human_interventions` row) `→ RUN_TASK` on the person's Done, or `ENDED` on Cancel, a closed window or a lost worker.
+Profile sign-in check (`browser_check`, Phase 5b): `RUN_TASK → COMPLETE`, or `RUN_TASK → WAITING_FOR_HUMAN` (status `waiting_for_human`, with an open `human_interventions` row) `→ RUN_TASK` on the person's Done, or `ENDED` on Cancel, a closed window or a lost worker. Taking control, the overlay's Pause or an emergency stop also moves a running check to `WAITING_FOR_HUMAN` (reason `user_control`); Return control resumes it with a fresh check. While the app is paused the step is postponed, not run (Phase 5c-1).
 
 Campaign message steps (`campaign_message`, Phase 4c): `PREPARE_CONTENT → [GENERATE_DRAFT] → CHECK_POLICY → CHECK_APPROVAL → FINAL_PRE_SEND_CHECK → SEND → COMPLETE`. `GENERATE_DRAFT` runs only for AI steps: it waits for the company's research (starting it if needed, polling every 20 s) and calls the model outside any transaction; the draft is stored only if the run is still in `GENERATE_DRAFT`. A non-retryable AI failure stops the enrollment (`draft_failed`); a retryable one retries the job.
 

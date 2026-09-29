@@ -2,9 +2,14 @@ import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  Menu,
   MessageChannelMain,
+  nativeImage,
+  Notification,
   powerMonitor,
+  powerSaveBlocker,
   safeStorage,
+  Tray,
   session,
   shell,
   type UtilityProcess,
@@ -128,6 +133,44 @@ function main(): void {
     logger.info({ event: 'ipc.channel_created', name: 'browser' }, 'worker connected to core');
   }
 
+  /**
+   * The menu-bar item (docs/11 "User experience"): Pause all and Emergency stop reachable even when
+   * the window is closed or hidden behind Chrome.
+   */
+  let tray: Tray | null = null;
+  function createTray(): void {
+    const ru = app.getLocale().startsWith('ru');
+    const label = ru
+      ? { show: 'Показать TabReach', pause: 'Пауза всего', resume: 'Продолжить', stop: 'Аварийная остановка' }
+      : { show: 'Show TabReach', pause: 'Pause all', resume: 'Resume', stop: 'Emergency stop' };
+    const control = (action: 'pause' | 'resume' | 'emergency_stop') => () => {
+      if (!hostPeer) return;
+      hostPeer
+        .request('control.fromTray', { action })
+        .catch((error: unknown) =>
+          logger.warn({ event: 'tray.control_failed', action, err: error }, 'core did not answer'),
+        );
+    };
+    tray = new Tray(nativeImage.createEmpty());
+    tray.setTitle('TabReach');
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        {
+          label: label.show,
+          click: () => {
+            if (!window) createWindow();
+            window?.show();
+            window?.focus();
+          },
+        },
+        { type: 'separator' },
+        { label: label.pause, click: control('pause') },
+        { label: label.resume, click: control('resume') },
+        { label: label.stop, click: control('emergency_stop') },
+      ]),
+    );
+  }
+
   function createWindow(): void {
     window = new BrowserWindow({
       width: 1180,
@@ -204,6 +247,7 @@ function main(): void {
       powerMonitor.on('suspend', () => power('power.suspend'));
       powerMonitor.on('resume', () => power('power.resume'));
       core.start();
+      if (!selfCheck.enabled) createTray();
       // Chrome left over from a previous run (the app crashed) would keep its profile locked.
       void killOrphanChrome(profilesRoot, logger).finally(() => worker.start());
       if (selfCheck.enabled) {
@@ -266,7 +310,28 @@ function serveHost(proc: UtilityProcess, logger: Logger): RpcPeer {
     .handle('secret.decrypt', ({ ciphertext }) => {
       requireEncryption();
       return { plaintext: safeStorage.decryptString(Buffer.from(ciphertext, 'base64')) };
+    })
+    .handle('power.keepAwake', ({ on }) => {
+      setKeepAwake(on, log);
+      return { ok: true as const };
+    })
+    .handle('app.notify', ({ title, body }) => {
+      if (Notification.isSupported()) new Notification({ title, body }).show();
+      return { ok: true as const };
     });
+}
+
+let keepAwakeId: number | null = null;
+/** FR-APP-004: while campaigns are active and the user asked for it, the Mac does not sleep. */
+function setKeepAwake(on: boolean, log: Logger): void {
+  if (on && keepAwakeId === null) {
+    keepAwakeId = powerSaveBlocker.start('prevent-app-suspension');
+    log.info({ event: 'power.keep_awake', on }, 'keeping the Mac awake');
+  } else if (!on && keepAwakeId !== null) {
+    powerSaveBlocker.stop(keepAwakeId);
+    keepAwakeId = null;
+    log.info({ event: 'power.keep_awake', on }, 'the Mac may sleep again');
+  }
 }
 
 // Entry point last: everything above must be initialized before main() runs.

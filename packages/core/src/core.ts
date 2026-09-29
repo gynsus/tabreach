@@ -4,6 +4,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   RpcError,
   RpcPeer,
+  uuidv7,
   type ChangedEntity,
   type ComponentStatus,
   type HealthReport,
@@ -48,6 +49,20 @@ export class CoreService {
     this.services = new AppServices(db, {
       logger: options.logger,
       worker: () => this.workerPeer,
+      keepAwake: (on) => {
+        this.hostPeer
+          .request('power.keepAwake', { on })
+          .catch((error: unknown) =>
+            options.logger.warn({ event: 'power.keep_awake_failed', err: error }, 'main did not answer'),
+          );
+      },
+      notify: (title, body) => {
+        this.hostPeer
+          .request('app.notify', { title, body })
+          .catch((error: unknown) =>
+            options.logger.warn({ event: 'app.notify_failed', err: error }, 'main did not answer'),
+          );
+      },
       onChanged: (entities) => this.announce(entities),
       // Deferred: the enqueuing transaction must commit before the dispatcher looks.
       onJobEnqueued: () => queueMicrotask(() => this.dispatcher.wake()),
@@ -74,6 +89,13 @@ export class CoreService {
       .handle('power.suspend', () => {
         this.dispatcher.pause();
         options.logger.info({ event: 'power.suspend' }, 'system going to sleep; jobs paused');
+        return { ok: true as const };
+      })
+      .handle('control.fromTray', async ({ action }) => {
+        const ctx = { correlationId: uuidv7() };
+        if (action === 'pause') this.services.appControl.pauseAll(ctx);
+        else if (action === 'resume') this.services.appControl.resumeAll(ctx);
+        else await this.services.appControl.emergencyStop(ctx);
         return { ok: true as const };
       })
       .handle('power.resume', () => {
@@ -111,6 +133,7 @@ export class CoreService {
     core.services.engine.resync();
     core.services.inbox.resync();
     core.services.research.resync();
+    core.services.appControl.syncKeepAwake();
     return core;
   }
 
@@ -139,6 +162,7 @@ export class CoreService {
     this.workerPeer = peer;
     peer.on('session.changed', (change) => this.services.browser.onSessionChanged(change));
     peer.on('worker.heartbeat', ({ sessions }) => this.services.browser.onHeartbeat(sessions));
+    peer.on('session.modeChanged', (change) => this.services.signInChecks.onModeChanged(change));
     return () => {
       peer.close();
       if (this.workerPeer === peer) {
@@ -176,6 +200,8 @@ export class CoreService {
 
   private announce(entities: ChangedEntity[]): void {
     for (const peer of this.appPeers) peer.emit('data.changed', { entities });
+    // A campaign started or stopped: the Mac may now sleep, or must stay awake (FR-APP-004).
+    if (entities.includes('campaign')) this.services?.appControl.syncKeepAwake();
   }
 
   private async launchCheck(url: string, correlationId: string): Promise<LaunchCheckResult> {

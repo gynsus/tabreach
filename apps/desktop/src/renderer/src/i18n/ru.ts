@@ -81,6 +81,8 @@ export const ru: Catalog = {
     companyTimezoneHint: 'По нему считаются часы отправки для контактов без своего пояса.',
   },
   browser: {
+    takeControl: 'Взять управление',
+    returnControl: 'Вернуть управление',
     checkLinkedIn: 'Проверить вход в LinkedIn',
     checking: 'Проверяю…',
     title: 'Профили браузера',
@@ -138,6 +140,7 @@ export const ru: Catalog = {
       security_challenge: 'Проверка безопасности в «{{profile}}»',
       login_required: 'Нужен вход в «{{profile}}»',
       unsupported_state: 'TabReach не узнаёт страницу в «{{profile}}»',
+      user_control: 'На паузе в «{{profile}}»',
     },
     instructions: {
       security_challenge:
@@ -145,11 +148,26 @@ export const ru: Catalog = {
       login_required: 'Войдите сами в окне Chrome и нажмите «Готово».',
       unsupported_state:
         'Страница выглядит не так, как ожидает TabReach. Посмотрите на окно; если всё в порядке, нажмите «Готово» — проверка повторится.',
+      user_control:
+        'Вы взяли управление или поставили паузу со страницы. Когда закончите в окне, нажмите «Готово»: TabReach сначала заново проверит страницу.',
     },
     done: 'Готово — проверить снова',
     cancel: 'Отмена',
     diagnostics: 'Что увидел TabReach',
     expected: 'Ожидаемые страницы',
+  },
+  control: {
+    title: 'Управление',
+    hint: 'Пауза останавливает новые отправки и действия в браузере; чтение ответов продолжается. Аварийная остановка ещё и сразу останавливает браузер.',
+    pauseAll: 'Пауза всего',
+    resume: 'Продолжить',
+    emergencyStop: 'Аварийная остановка',
+    confirmEmergency: 'Остановить всё сейчас?',
+    emergencyHint:
+      'То, что могло уже произойти, будет проверено потом и никогда не повторится автоматически.',
+    pausedBanner: 'Вся рассылка на паузе. Ничего не отправляется, браузер ничего нового не делает.',
+    emergencyStopped: 'Аварийная остановка: всё на паузе.',
+    keepAwake: 'Не давать Mac засыпать, пока идут кампании',
   },
   companies: {
     suppress: 'Не связываться',
@@ -338,7 +356,18 @@ export const ru: Catalog = {
         opened: 'Профиль браузера открыт',
         closed: 'Профиль браузера закрыт',
       },
-      session: { interrupted: 'Окно браузера неожиданно закрылось' },
+      session: {
+        interrupted: 'Окно браузера неожиданно закрылось',
+        control_taken: 'Вы взяли управление окном браузера',
+        control_returned: 'Вы вернули управление окном браузера',
+        paused: 'Работа в браузере приостановлена',
+      },
+      app: {
+        paused: 'Вся рассылка на паузе',
+        resumed: 'Рассылка продолжена',
+        emergency_stop: 'Аварийная остановка',
+        keep_awake_changed: 'Изменена настройка «не засыпать»',
+      },
       research: {
         started: 'Исследование запущено',
         completed: 'Исследование готово',
@@ -904,6 +933,10 @@ export const ru: Catalog = {
     },
   },
   errors: {
+    session: {
+      nothingToReturn: 'Нет работы, которой можно вернуть управление.',
+      notAutomation: 'Окно не под управлением TabReach.',
+    },
     profile: {
       alreadyOpen: 'Этот профиль уже открыт.',
       open: 'Сначала закройте профиль.',

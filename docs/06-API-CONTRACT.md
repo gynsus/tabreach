@@ -191,11 +191,17 @@ command profiles.delete                # { id, confirmName } — closed profiles
 command profiles.open                  # { id, startUrl? } — visible Chrome, control mode `human`
 command profiles.close / profiles.focus / profiles.check
 command profiles.checkSignIn          # { id, packId: linkedin } — opens under automation, recognizes the site's page (Phase 5b)
+command profiles.takeControl           # { id } — the person takes over an automated window; the work waits (Phase 5c)
+command profiles.returnControl         # { id } — hand back; the work checks the page again first
+query   app.control.get                # { paused, pausedAt, emergencyStoppedAt, keepAwake }
+command app.pauseAll / app.resumeAll   # no new external action while paused; reading replies goes on
+command app.emergencyStop              # pause, and the worker stops every browser task at once
+command app.setKeepAwake               # { keepAwake } — keep the Mac awake while a campaign is active
 query   interventions.list             # open requests to the person, with diagnostics of unrecognized pages
 command interventions.resolve          # { id, outcome: done | cancel } — done checks again in the same window
 ```
 
-`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `chrome.missing`, `worker.notRunning`.
+`data.changed` carries `browser` when a profile or session changes. Errors: `profile.alreadyOpen`, `profile.open`, `profile.inUse`, `profile.openFailed`, `profile.nameMismatch`, `profile.notOpen`, `session.nothingToReturn`, `chrome.missing`, `worker.notRunning`. Worker → core: `session.modeChanged { sessionId, controlMode, by: overlay | challenge | emergency_stop }`; core → worker: `session.setOverlay`, `worker.emergencyStop`; core → main: `power.keepAwake`, `app.notify`; main → core: `control.fromTray`.
 
 ## Jobs and diagnostics
 

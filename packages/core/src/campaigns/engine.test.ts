@@ -401,6 +401,21 @@ describe('campaign engine', () => {
     expect(h.channel.deliveries()).toHaveLength(1);
   });
 
+  it('“Pause all” holds an approved send at the final check; resuming sends it once (Phase 5c)', async () => {
+    const campaign = h.launch([message()]);
+    h.services.campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    await h.run();
+    const [approval] = h.pending();
+    h.services.appControl.pauseAll(ctx());
+    h.services.approvals.approve(approval?.id as string, approval?.contentHash as string, ctx());
+    await h.advance(5 * 60_000);
+    expect(h.channel.deliveries()).toHaveLength(0);
+    h.services.appControl.resumeAll(ctx());
+    await h.advance(61_000);
+    await h.advance(61_000);
+    expect(h.channel.deliveries()).toHaveLength(1);
+  });
+
   it('stopping an enrollment closes its pending approval', async () => {
     const campaign = h.launch([message()]);
     h.services.campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());

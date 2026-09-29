@@ -37,9 +37,14 @@ describe('sign-in check workflow (Phase 5b)', () => {
   let env: Awaited<ReturnType<typeof testServices>>;
   let worker: FakeWorker;
   let dispatcher: Dispatcher;
+  const notices: string[] = [];
   beforeEach(async () => {
     worker = new FakeWorker();
-    env = await testServices({ worker: () => worker });
+    notices.length = 0;
+    env = await testServices({
+      worker: () => worker,
+      notify: (title, body) => notices.push(`${title}: ${body}`),
+    });
     dispatcher = new Dispatcher({ queue: env.services.jobs, now: () => new Date(), logger: silentLogger });
     for (const t of env.services.signInChecks.jobTypes()) dispatcher.register(t);
     dispatcher.start();
@@ -77,13 +82,18 @@ describe('sign-in check workflow (Phase 5b)', () => {
       sessionOpen: true,
       stateId: 'generic.captcha.recaptcha',
     });
-    expect(worker.calls.map((c) => c.type)).toEqual(['profile.open', 'task.run', 'session.focus']);
+    expect(worker.calls.map((c) => c.type)).toEqual([
+      'profile.open',
+      'session.setOverlay',
+      'task.run',
+      'session.focus',
+    ]);
     expect(worker.calls[0]?.payload).toMatchObject({ controlMode: 'automation' });
 
     await s().signInChecks.resolve(intervention!.id, 'done', ctx());
     await dispatcher.runDue();
     expect(runOf(p.id)).toEqual({ status: 'completed', current_state: 'COMPLETE' });
-    expect(worker.calls.map((c) => c.type).slice(3)).toEqual([
+    expect(worker.calls.map((c) => c.type).slice(4)).toEqual([
       'session.setMode',
       'task.run',
       'profile.close',
@@ -157,5 +167,89 @@ describe('sign-in check workflow (Phase 5b)', () => {
     s().browser.onSessionChanged({ sessionId, profileId: p.id, status: 'closed', currentUrl: null });
     expect(s().signInChecks.interventions()).toEqual([]);
     expect(runOf(p.id)).toMatchObject({ status: 'cancelled' });
+  });
+
+  describe('control (Phase 5c)', () => {
+    /** A check whose first task is still running when the person steps in. */
+    const started = async () => {
+      const p = profile();
+      s().signInChecks.start(p.id, 'linkedin', ctx());
+      await dispatcher.runDue();
+      return p;
+    };
+
+    it('taking control makes the work wait for the person; returning control checks again', async () => {
+      worker.results.push(
+        result({ status: 'failed', stateId: null, stateKind: null, errorKey: 'task.controlTaken' }),
+      );
+      const q = await started();
+      expect(s().signInChecks.interventions()).toMatchObject([{ reason: 'user_control', profileId: q.id }]);
+      expect(notices).toHaveLength(1);
+      expect(runOf(q.id)).toMatchObject({ status: 'waiting_for_human' });
+
+      await expect(s().signInChecks.takeControl(q.id, ctx())).resolves.toMatchObject({
+        session: { controlMode: 'human' },
+      });
+      await s().signInChecks.returnControl(q.id, ctx());
+      await dispatcher.runDue();
+      expect(runOf(q.id)).toEqual({ status: 'completed', current_state: 'COMPLETE' });
+      expect(s().signInChecks.interventions()).toEqual([]);
+    });
+
+    it('take control over an automated window records it and waits; a window the person opened has nothing to return to', async () => {
+      worker.results.push(
+        result({ status: 'needs_human', stateId: 'linkedin.checkpoint', stateKind: 'challenge' }),
+      );
+      const p = await started();
+      const [challenge] = s().signInChecks.interventions();
+      await s().signInChecks.takeControl(p.id, ctx());
+      expect(modeOf(p.id)).toBe('human');
+      expect(worker.calls.at(-1)).toMatchObject({
+        type: 'session.setMode',
+        payload: { controlMode: 'human' },
+      });
+      // Already waiting on the challenge: no second request.
+      expect(
+        s()
+          .signInChecks.interventions()
+          .map((i) => i.id),
+      ).toEqual([challenge!.id]);
+
+      const mine = profile();
+      await s().browser.open(mine.id, null, ctx());
+      await expect(s().signInChecks.returnControl(mine.id, ctx())).rejects.toMatchObject({
+        problem: { detail: 'session.nothingToReturn' },
+      });
+      await expect(s().signInChecks.takeControl(profile().id, ctx())).rejects.toMatchObject({
+        problem: { detail: 'profile.notOpen' },
+      });
+    });
+
+    it('a Pause from the page or an emergency stop is recorded and asks the person', async () => {
+      // A task the worker stopped because the page paused it; the event arrives after.
+      worker.results.push(
+        result({ status: 'failed', stateId: null, stateKind: null, errorKey: 'task.controlTaken' }),
+      );
+      const q = await started();
+      const sessionId = s().browser.get(q.id).session!.id;
+      s().signInChecks.onModeChanged({ sessionId, controlMode: 'paused', by: 'overlay' });
+      s().signInChecks.onModeChanged({ sessionId, controlMode: 'paused', by: 'emergency_stop' });
+      expect(modeOf(q.id)).toBe('paused');
+      // One request per wait, however many times it was paused.
+      expect(s().signInChecks.interventions()).toMatchObject([{ reason: 'user_control' }]);
+      const paused = env.db
+        .prepare(`SELECT payload_redacted AS payload FROM action_events WHERE action_type = 'session.paused'`)
+        .all() as { payload: string }[];
+      expect(paused.map((r) => JSON.parse(r.payload))).toEqual([{ by: 'overlay' }, { by: 'emergency_stop' }]);
+    });
+
+    it('a check started while everything is paused waits without opening a window', async () => {
+      s().appControl.pauseAll(ctx());
+      const p = profile();
+      s().signInChecks.start(p.id, 'linkedin', ctx());
+      await dispatcher.runDue();
+      expect(worker.calls).toEqual([]);
+      expect(runOf(p.id)).toMatchObject({ status: 'pending' });
+    });
   });
 });

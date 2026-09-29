@@ -2,11 +2,14 @@ import { existsSync } from 'node:fs';
 import { access, lstat, mkdir, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
-import { chromium, type BrowserContext } from 'playwright-core';
+import { chromium, type BrowserContext, type Page } from 'playwright-core';
+import { OVERLAY_BINDING, OVERLAY_SCRIPT, PAUSE_REQUESTED, overlaySetExpression } from './overlay.js';
 import {
   RpcError,
   type ControlMode,
   type Logger,
+  type OverlayContext,
+  type SessionModeChanged,
   type SessionChanged,
   type WorkerProfileHealth,
 } from '@tabreach/protocol';
@@ -35,6 +38,11 @@ interface Session {
   closing: boolean;
   /** docs/11: automation may act only in `automation`; the worker enforces it. */
   controlMode: ControlMode;
+  /** Aborted whenever the session leaves automation: the running task stops at its next step. */
+  abort: AbortController;
+  /** Sessions opened for automation carry the in-page overlay (docs/12). */
+  overlay: boolean;
+  overlayContext: OverlayContext | null;
 }
 
 export interface ProfileManagerOptions {
@@ -59,6 +67,8 @@ export class ProfileManager {
   private readonly sessions = new Map<string, Session>();
   /** Where session changes go; set by the current core connection. */
   notify: (change: SessionChanged) => void = () => {};
+  /** Control-mode changes made on the worker's side (overlay Pause, challenge, emergency stop). */
+  notifyMode: (change: SessionModeChanged) => void = () => {};
 
   constructor(private readonly options: ProfileManagerOptions) {}
 
@@ -111,8 +121,12 @@ export class ProfileManager {
       context,
       closing: false,
       controlMode: req.controlMode ?? 'human',
+      abort: new AbortController(),
+      overlay: req.controlMode === 'automation',
+      overlayContext: null,
     };
     this.sessions.set(req.sessionId, session);
+    if (session.overlay) await this.installOverlay(req.sessionId, session);
     context.on('close', () => {
       if (!this.sessions.delete(req.sessionId)) return;
       this.notify({ sessionId: req.sessionId, profileId: req.profileId, status: 'closed', currentUrl: null });
@@ -177,10 +191,70 @@ export class ProfileManager {
     await rm(this.dir(profileId), { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 
-  setMode(sessionId: string, mode: ControlMode): void {
+  /**
+   * Changes who drives a session. Leaving automation aborts the running task at its next step.
+   * `by` is set when the change starts in the worker (it is reported to core).
+   */
+  setMode(sessionId: string, mode: ControlMode, by?: SessionModeChanged['by']): void {
     const session = this.sessions.get(sessionId);
     if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    const changed = session.controlMode !== mode;
     session.controlMode = mode;
+    if (mode !== 'automation') {
+      session.abort.abort(new Error('control_changed'));
+      session.abort = new AbortController();
+    }
+    this.applyOverlay(session);
+    if (by && changed) this.notifyMode({ sessionId, controlMode: mode, by });
+  }
+
+  /** Aborted when the session leaves automation (take control, pause, emergency stop). */
+  taskSignal(sessionId: string): AbortSignal {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    return session.abort.signal;
+  }
+
+  setOverlayContext(sessionId: string, context: OverlayContext | null): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) throw new RpcError('NOT_FOUND', 'Session not open', 'session.notOpen');
+    session.overlayContext = context;
+    this.applyOverlay(session);
+  }
+
+  /** docs/19: every session paused and every task stopped, at once. */
+  emergencyStop(): void {
+    for (const [sessionId, s] of this.sessions) {
+      if (s.controlMode === 'automation') this.setMode(sessionId, 'paused', 'emergency_stop');
+    }
+  }
+
+  private async installOverlay(sessionId: string, session: Session): Promise<void> {
+    // The page can call this binding: it accepts one message, and that one only pauses (docs/12).
+    await session.context.exposeBinding(OVERLAY_BINDING, (_source, message: unknown) => {
+      if (message === PAUSE_REQUESTED && session.controlMode === 'automation') {
+        this.setMode(sessionId, 'paused', 'overlay');
+      } else if (message !== PAUSE_REQUESTED) {
+        this.options.logger.warn(
+          { event: 'overlay.ignored_message', sessionId },
+          'page sent an unknown overlay message',
+        );
+      }
+    });
+    await session.context.addInitScript(OVERLAY_SCRIPT);
+    const watch = (page: Page) => page.on('domcontentloaded', () => this.applyOverlay(session));
+    session.context.on('page', watch);
+    for (const page of session.context.pages()) {
+      watch(page);
+      await page.evaluate(OVERLAY_SCRIPT).catch(() => {});
+    }
+    this.applyOverlay(session);
+  }
+
+  private applyOverlay(session: Session): void {
+    if (!session.overlay) return;
+    const expression = overlaySetExpression({ mode: session.controlMode, context: session.overlayContext });
+    for (const page of session.context.pages()) void page.evaluate(expression).catch(() => {});
   }
 
   /**

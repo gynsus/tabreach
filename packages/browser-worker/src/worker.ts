@@ -1,4 +1,11 @@
-import { RpcError, RpcPeer, type Logger, type MessageEndpoint, type WorkerHealth } from '@tabreach/protocol';
+import {
+  RpcError,
+  RpcPeer,
+  type Logger,
+  type MessageEndpoint,
+  type TaskResult,
+  type WorkerHealth,
+} from '@tabreach/protocol';
 import { version as playwrightVersion } from 'playwright-core/package.json';
 import { detectChrome } from './chrome.js';
 import { launchCheck, type LaunchCheckOptions } from './launch-check.js';
@@ -7,6 +14,16 @@ import { bundledPacks, runCheckState, type TaskEnvironment } from './tasks.js';
 
 const HEARTBEAT_MS = 10_000;
 const TASK_TIMEOUT_MS = 120_000;
+
+const controlTaken = (): TaskResult => ({
+  status: 'failed',
+  stateId: null,
+  stateKind: null,
+  packVersion: 'unknown',
+  url: null,
+  diagnostics: null,
+  errorKey: 'task.controlTaken',
+});
 
 export interface WorkerOptions {
   /** Channel to core, provided by the host adapter (ADR 012). */
@@ -61,15 +78,37 @@ export class BrowserWorker {
           profiles.setMode(sessionId, controlMode);
           return { ok: true as const };
         })
+        .handle('session.setOverlay', ({ sessionId, context }) => {
+          profiles.setOverlayContext(sessionId, context);
+          return { ok: true as const };
+        })
+        .handle('worker.emergencyStop', () => {
+          profiles.emergencyStop();
+          return { ok: true as const };
+        })
         .handle('task.run', async (req) => {
           const context = profiles.automationContext(req.sessionId);
+          const control = profiles.taskSignal(req.sessionId);
           const page = context.pages()[0] ?? (await context.newPage());
-          const result = await runCheckState(page, req, this.taskEnv, AbortSignal.timeout(TASK_TIMEOUT_MS));
+          let result: TaskResult;
+          try {
+            result = await runCheckState(
+              page,
+              req,
+              this.taskEnv,
+              AbortSignal.any([control, AbortSignal.timeout(TASK_TIMEOUT_MS)]),
+            );
+          } catch (error) {
+            // The person took control, paused it, or an emergency stop: the task stops here.
+            if (control.aborted) return controlTaken();
+            throw error;
+          }
           // A challenge stops automation at once; core records why and asks the person (docs/11).
-          if (result.status === 'needs_human') profiles.setMode(req.sessionId, 'paused');
+          if (result.status === 'needs_human') profiles.setMode(req.sessionId, 'paused', 'challenge');
           return result;
         });
       profiles.notify = (change) => this.peer.emit('session.changed', change);
+      profiles.notifyMode = (change) => this.peer.emit('session.modeChanged', change);
       const beat = () => this.peer.emit('worker.heartbeat', { sessions: profiles.heartbeat() });
       beat(); // at once: a new core learns about windows that stayed open
       this.heartbeat = setInterval(beat, options.heartbeatMs ?? HEARTBEAT_MS);
