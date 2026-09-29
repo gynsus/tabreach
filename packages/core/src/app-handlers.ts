@@ -14,6 +14,7 @@ import { ReplyClassifier } from './ai/reply-classifier.js';
 import { TimelineService } from './audit/timeline.js';
 import { BrowserService } from './browser/browser-service.js';
 import { SignInCheckService } from './browser/sign-in-check.js';
+import { AppControlService } from './control/app-control.js';
 import { DraftWriter } from './drafts/draft-writer.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
@@ -68,6 +69,10 @@ export interface AppServicesOptions {
   worker?: () => Pick<RpcPeer, 'request'> | null;
   /** `chromium` for profiles in tests; the user's Google Chrome otherwise. */
   browserChannel?: 'chrome' | 'chromium';
+  /** Main keeps the Mac awake (FR-APP-004). */
+  keepAwake?: (on: boolean) => void;
+  /** A native notification (a person is needed). */
+  notify?: (title: string, body: string) => void;
 }
 
 const noCipher: SecretCipher = {
@@ -102,6 +107,7 @@ export class AppServices {
   readonly timeline: TimelineService;
   readonly browser: BrowserService;
   readonly signInChecks: SignInCheckService;
+  readonly appControl: AppControlService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -135,6 +141,9 @@ export class AppServices {
       worker: options.worker ?? (() => null),
       changed: (entities) => this.changed(entities),
       logger: logger.child({ component: 'browser' }),
+      paused: () => this.appControl.isPaused(),
+      notify: options.notify ?? (() => {}),
+      language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
     });
     this.ledger = new SideEffectLedger(db, now);
     this.prospects = new ProspectService(db, this.audit, now);
@@ -144,6 +153,16 @@ export class AppServices {
     this.settings = new SettingsRepository(db, now, (key) =>
       logger.warn({ event: 'settings.invalid', key }, 'stored setting failed validation; using defaults'),
     );
+    this.appControl = new AppControlService({
+      db,
+      settings: this.settings,
+      audit: this.audit,
+      now,
+      worker: options.worker ?? (() => null),
+      keepAwake: options.keepAwake ?? (() => {}),
+      changed: (entities) => this.changed(entities),
+      logger: logger.child({ component: 'control' }),
+    });
     this.secrets = new SecretStore(db, options.cipher ?? noCipher, now);
     this.accounts = new AccountService(
       db,
@@ -172,6 +191,7 @@ export class AppServices {
       logger: logger.child({ component: 'campaigns' }),
       changed: (entities) => this.changed(entities),
       onSent: (sent) => this.inbox.recordSent(sent),
+      paused: () => this.appControl.isPaused(),
       drafter: { write: (req, signal, correlationId) => this.drafts.write(req, signal, correlationId) },
       beforeSend: async (channel, signal, correlationId) => {
         if (channel.channel === 'email' && channel.accountId) {
@@ -490,6 +510,13 @@ export class AppServices {
         return { ok: true as const };
       })
       .handle('profiles.check', (p) => this.browser.check(p.id))
+      .handle('profiles.takeControl', (p, c) => this.signInChecks.takeControl(p.id, ctx(c)))
+      .handle('profiles.returnControl', (p, c) => this.signInChecks.returnControl(p.id, ctx(c)))
+      .handle('app.control.get', () => this.appControl.get())
+      .handle('app.pauseAll', (_p, c) => this.appControl.pauseAll(ctx(c)))
+      .handle('app.resumeAll', (_p, c) => this.appControl.resumeAll(ctx(c)))
+      .handle('app.emergencyStop', (_p, c) => this.appControl.emergencyStop(ctx(c)))
+      .handle('app.setKeepAwake', (p, c) => this.appControl.setKeepAwake(p.keepAwake, ctx(c)))
       .handle('profiles.checkSignIn', (p, c) => this.signInChecks.start(p.id, p.packId, ctx(c)))
       .handle('interventions.list', () => ({ items: this.signInChecks.interventions() }))
       .handle('interventions.resolve', async (p, c) => {

@@ -422,6 +422,23 @@ test('browser profiles: create, open in Chrome under your control, close, delete
   await expect(page.getByTestId('profile')).toHaveCount(0);
 });
 
+test('pause all shows a banner on every screen; emergency stop asks first; resume clears it', async () => {
+  await go('#/status');
+  const control = page.getByRole('region', { name: 'Control' });
+  await control.getByRole('button', { name: 'Pause all' }).click();
+  const banner = page.getByTestId('paused-banner');
+  await expect(banner).toContainText('All outreach is paused');
+  await page.getByRole('link', { name: 'Contacts' }).click();
+  await expect(banner).toBeVisible();
+  await go('#/status');
+  await control.getByRole('button', { name: 'Emergency stop' }).click();
+  await control.getByRole('button', { name: 'Stop everything now?' }).click();
+  await expect(banner).toContainText('Emergency stop');
+  await banner.getByRole('button', { name: 'Resume' }).click();
+  await expect(banner).toHaveCount(0);
+  await expect(control.getByRole('button', { name: 'Pause all' })).toBeVisible();
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

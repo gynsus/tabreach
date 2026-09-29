@@ -18,6 +18,13 @@ Human involvement is a first-class runtime state, used when:
 - **Done** puts the session back under automation and checks again in the same window (the check is the revalidation); **Cancel** closes the window and ends the run; closing the window or losing the worker cancels open requests.
 - Take control / return control, the overlay and outcome confirmation come with 5c.
 
+## Implementation status (Phase 5c-1, 2026-09-29)
+
+- **Take control** (Browser profiles, on a window under automation or paused) sets the session to `human`; the worker aborts the running task at once (`task.controlTaken`), and the work waits with a `user_control` request (migration 17). **Return control** resolves that request: the session goes back to automation and the work checks the page again first (for a sign-in check the check itself is the revalidation). A window the person opened has nothing to return to (`session.nothingToReturn`).
+- The overlay's **Pause** (docs/12) and an emergency stop pause the session in the worker, which reports `session.modeChanged`; core records `session.paused` and asks the person.
+- Every request to the person also sends a native notification; the tray menu offers Show, Pause all, Resume and Emergency stop.
+- Outcome confirmation ("Did you send it?") and the `about_to_commit` checkpoint come with 5c-2, together with the first critical browser action.
+
 ## Session control modes
 
 A browser session has exactly one control mode:

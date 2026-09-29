@@ -77,6 +77,8 @@ export const en = {
     companyTimezoneHint: 'Sending hours follow it for contacts without their own.',
   },
   browser: {
+    takeControl: 'Take control',
+    returnControl: 'Return control',
     checkLinkedIn: 'Check LinkedIn sign-in',
     checking: 'Checking…',
     title: 'Browser profiles',
@@ -134,6 +136,7 @@ export const en = {
       security_challenge: 'Security check in “{{profile}}”',
       login_required: 'Sign-in needed in “{{profile}}”',
       unsupported_state: 'TabReach does not recognize the page in “{{profile}}”',
+      user_control: 'Paused in “{{profile}}”',
     },
     instructions: {
       security_challenge:
@@ -141,11 +144,26 @@ export const en = {
       login_required: 'Sign in yourself in the Chrome window, then press Done.',
       unsupported_state:
         'The page looks different from what TabReach knows. Look at the window; if it is fine, press Done to check again.',
+      user_control:
+        'You took control or paused it from the page. When you are done in the window, press Done: TabReach checks the page again first.',
     },
     done: 'Done — check again',
     cancel: 'Cancel',
     diagnostics: 'What TabReach saw',
     expected: 'Expected pages',
+  },
+  control: {
+    title: 'Control',
+    hint: 'Pause stops every new send and browser action; reading replies goes on. Emergency stop also stops the browser at once.',
+    pauseAll: 'Pause all',
+    resume: 'Resume',
+    emergencyStop: 'Emergency stop',
+    confirmEmergency: 'Stop everything now?',
+    emergencyHint:
+      'Anything that may already have happened is checked afterwards and never repeated automatically.',
+    pausedBanner: 'All outreach is paused. Nothing is sent and the browser does nothing new.',
+    emergencyStopped: 'Emergency stop: everything is paused.',
+    keepAwake: 'Keep the Mac awake while campaigns are active',
   },
   companies: {
     suppress: 'Do not contact',
@@ -321,7 +339,18 @@ export const en = {
         opened: 'Browser profile opened',
         closed: 'Browser profile closed',
       },
-      session: { interrupted: 'Browser window closed unexpectedly' },
+      session: {
+        interrupted: 'Browser window closed unexpectedly',
+        control_taken: 'You took control of the browser window',
+        control_returned: 'You returned control of the browser window',
+        paused: 'Browser work paused',
+      },
+      app: {
+        paused: 'All outreach paused',
+        resumed: 'Outreach resumed',
+        emergency_stop: 'Emergency stop',
+        keep_awake_changed: 'Keep-awake setting changed',
+      },
       research: { started: 'Research started', completed: 'Research done', failed: 'Research failed' },
       ai: { settings_updated: 'AI settings changed', key_set: 'AI key saved', key_removed: 'AI key removed' },
       account: {
@@ -850,6 +879,10 @@ export const en = {
     },
   },
   errors: {
+    session: {
+      nothingToReturn: 'There is no work to return control to.',
+      notAutomation: 'The window is not under TabReach’s control.',
+    },
     profile: {
       alreadyOpen: 'This profile is already open.',
       open: 'Close the profile first.',

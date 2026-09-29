@@ -157,7 +157,13 @@ export type TaskResult = z.infer<typeof taskResultSchema>;
 export const signInPackSchema = z.enum(['linkedin']);
 export const profileCheckSignInSchema = z.object({ id, packId: signInPackSchema });
 
-export const interventionReasonSchema = z.enum(['security_challenge', 'login_required', 'unsupported_state']);
+export const interventionReasonSchema = z.enum([
+  'security_challenge',
+  'login_required',
+  'unsupported_state',
+  /** The person took control, or paused from the page: the work waits until control is returned. */
+  'user_control',
+]);
 export type InterventionReason = z.infer<typeof interventionReasonSchema>;
 
 /** Something only the person can do (docs/11): solve a challenge, sign in, or look at a page. */
@@ -181,3 +187,34 @@ export const interventionResolveSchema = z.object({
   /** done: the person dealt with it, TabReach checks again. cancel: stop the work. */
   outcome: z.enum(['done', 'cancel']),
 });
+
+// Control (Phase 5c) ------------------------------------------------------------------------------
+
+/** Worker → core: a session's control mode changed on the worker's side (overlay Pause, a challenge). */
+export const sessionModeChangedSchema = z.object({
+  sessionId: id,
+  controlMode: controlModeSchema,
+  by: z.enum(['overlay', 'challenge', 'emergency_stop']),
+});
+export type SessionModeChanged = z.infer<typeof sessionModeChangedSchema>;
+
+/** What the overlay shows about the current work (docs/12): short labels, no secrets, no drafts. */
+export const overlayContextSchema = z.object({
+  title: z.string().max(200),
+  detail: z.string().max(300).nullable(),
+  /** The interface language, for the overlay's own labels. */
+  lang: z.enum(['en', 'ru']),
+});
+export type OverlayContext = z.infer<typeof overlayContextSchema>;
+
+/** App-wide control (docs/19 "Global pause and emergency stop", FR-BRA-008, FR-APP-004). */
+export const appControlSchema = z.object({
+  /** No new external action starts: sends and browser tasks wait; reading mail goes on. */
+  paused: z.boolean(),
+  /** Set by an emergency stop (which also pauses): everything in the browser was stopped. */
+  emergencyStoppedAt: z.iso.datetime().nullable(),
+  pausedAt: z.iso.datetime().nullable(),
+  /** Keep the Mac awake while a campaign is active. */
+  keepAwake: z.boolean(),
+});
+export type AppControl = z.infer<typeof appControlSchema>;

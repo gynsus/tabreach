@@ -79,5 +79,12 @@ export const auditActionTypes = [
   'intervention.requested',
   'intervention.resolved',
   'intervention.cancelled',
+  'app.paused',
+  'app.resumed',
+  'app.emergency_stop',
+  'app.keep_awake_changed',
+  'session.control_taken',
+  'session.control_returned',
+  'session.paused',
 ] as const;
 export type AuditActionType = (typeof auditActionTypes)[number];

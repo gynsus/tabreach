@@ -20,6 +20,7 @@ import {
 import { translateKey } from '../../i18n';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
+import { useInterventions } from '../status/Interventions';
 
 const tone: Record<ProfileStatus, 'neutral' | 'ok' | 'warn' | 'bad' | 'accent'> = {
   ready: 'neutral',
@@ -87,6 +88,13 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
     onSuccess: () => invalidateEntities(qc, ['browser', 'activity']),
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
+  const control = useMutation({
+    mutationFn: (action: 'profiles.takeControl' | 'profiles.returnControl') => call(action, { id: p.id }),
+    onSuccess: () => invalidateEntities(qc, ['browser', 'activity']),
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
+  const interventions = useInterventions();
+  const waiting = (interventions.data?.items ?? []).some((i) => i.profileId === p.id);
   const open = p.session !== null;
   const opening = p.session?.status === 'opening' || (act.isPending && act.variables === 'profiles.open');
   return (
@@ -119,6 +127,25 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
+        {p.session && p.session.controlMode !== 'human' ? (
+          <Button
+            size="sm"
+            onClick={() => control.mutate('profiles.takeControl')}
+            disabled={control.isPending}
+          >
+            {t('browser.takeControl')}
+          </Button>
+        ) : null}
+        {p.session?.controlMode === 'human' && waiting ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => control.mutate('profiles.returnControl')}
+            disabled={control.isPending}
+          >
+            {t('browser.returnControl')}
+          </Button>
+        ) : null}
         {open ? (
           <>
             <Button

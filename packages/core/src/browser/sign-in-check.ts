@@ -7,8 +7,10 @@ import {
   type ChangedEntity,
   type Intervention,
   type InterventionReason,
+  type Language,
   type Logger,
   type RpcPeer,
+  type SessionModeChanged,
   type TaskDiagnostics,
   type TaskResult,
 } from '@tabreach/protocol';
@@ -18,6 +20,7 @@ import { transaction } from '../db/database.js';
 import { RetryableError, type JobType } from '../jobs/dispatcher.js';
 import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
+import { coreText } from '../control/texts.js';
 import type { BrowserService } from './browser-service.js';
 
 export const JOB_BROWSER_CHECK = 'browser.check';
@@ -52,6 +55,11 @@ export class SignInCheckService {
       worker: () => Worker | null;
       changed: (entities: ChangedEntity[]) => void;
       logger: Logger;
+      /** App-wide pause (docs/19): no new browser task starts. */
+      paused?: () => boolean;
+      /** Native notification when a person is needed. */
+      notify?: (title: string, body: string) => void;
+      language?: () => Language;
     },
   ) {
     d.browser.onSessionEnded = (sessionId) => this.sessionEnded(sessionId);
@@ -107,9 +115,11 @@ export class SignInCheckService {
 
   // The workflow -------------------------------------------------------------------------------
 
-  private async step(runId: string): Promise<void> {
+  private async step(runId: string): Promise<void | { continueAt: Date }> {
     const run = this.run(runId);
     if (!run || (run.status !== 'pending' && run.status !== 'running')) return;
+    // Paused app-wide: nothing new starts in the browser; it runs when resumed.
+    if (this.d.paused?.()) return { continueAt: new Date(this.d.now().getTime() + 30_000) };
     const context = JSON.parse(run.context) as { packId: string; sessionId: string | null };
     const worker = this.d.worker();
     if (!worker) throw new RetryableError('worker_not_running');
@@ -121,6 +131,16 @@ export class SignInCheckService {
     if (!sessionId || this.d.browser.sessionById(sessionId)?.status !== 'open') {
       sessionId = await this.d.browser.openSession(run.business_id, 'automation', null, run.correlation_id);
       this.update(run.id, { status: 'running', context: { ...context, sessionId } });
+      await worker
+        .request('session.setOverlay', {
+          sessionId,
+          context: {
+            title: coreText(this.lang(), 'overlay.signInCheck', { site: 'LinkedIn' }),
+            detail: null,
+            lang: this.lang(),
+          },
+        })
+        .catch(() => {}); // explanatory only (docs/12)
     }
     const taskId = uuidv7();
     this.d.db
@@ -148,7 +168,12 @@ export class SignInCheckService {
     }
     this.finishTask(taskId, result.status, result);
     const fresh = this.run(run.id);
-    if (!fresh || fresh.status !== 'running') return; // cancelled while it ran
+    if (!fresh || fresh.status !== 'running') return; // cancelled, or already waiting for the person
+    if (result.errorKey === 'task.controlTaken') {
+      // The person took control or paused it from the page; the work waits for them.
+      this.request(fresh, sessionId, taskId, 'user_control');
+      return;
+    }
 
     if (result.status === 'succeeded') {
       // Closed first: the profile's status then follows the health found (e.g. needs sign-in).
@@ -206,6 +231,90 @@ export class SignInCheckService {
       });
     });
     this.d.changed(['browser', 'activity']);
+    const lang = this.lang();
+    const profile = this.d.browser.get(run.business_id).name;
+    this.d.notify?.(coreText(lang, 'notify.title'), coreText(lang, `notify.${reason}`, { profile }));
+  }
+
+  // Control ------------------------------------------------------------------------------------
+
+  /** The person takes over an automated window: automation stops there and the work waits (docs/11). */
+  async takeControl(profileId: string, ctx: CommandContext): Promise<BrowserProfile> {
+    const session = this.d.browser.liveSessionOf(profileId);
+    if (!session) throw conflict('profile.notOpen');
+    if (session.controlMode === 'human') return this.d.browser.get(profileId);
+    await this.d.browser.setControlMode(session.id, 'human');
+    this.d.audit.record({
+      actorType: 'user',
+      actionType: 'session.control_taken',
+      objectType: 'browser_profile',
+      objectId: profileId,
+      correlationId: ctx.correlationId,
+    });
+    this.waitForPerson(session.id);
+    return this.d.browser.get(profileId);
+  }
+
+  /**
+   * Hands back: the page is checked again before automation continues — for a sign-in check the
+   * check itself is the revalidation (docs/11 "Resume validation").
+   */
+  async returnControl(profileId: string, ctx: CommandContext): Promise<BrowserProfile> {
+    const session = this.d.browser.liveSessionOf(profileId);
+    if (!session) throw conflict('profile.notOpen');
+    const open = this.d.db
+      .prepare(`SELECT id FROM human_interventions WHERE browser_session_id = ? AND status = 'open' LIMIT 1`)
+      .get(session.id) as { id: string } | undefined;
+    // A window the person opened themselves has no work to return to.
+    if (!open) throw conflict('session.nothingToReturn');
+    this.d.audit.record({
+      actorType: 'user',
+      actionType: 'session.control_returned',
+      objectType: 'browser_profile',
+      objectId: profileId,
+      correlationId: ctx.correlationId,
+    });
+    await this.resolve(open.id, 'done', ctx);
+    return this.d.browser.get(profileId);
+  }
+
+  /** A pause that started in the worker: the overlay's Pause, or an emergency stop. */
+  onModeChanged(change: SessionModeChanged): void {
+    this.d.db
+      .prepare('UPDATE browser_sessions SET control_mode = ? WHERE id = ?')
+      .run(change.controlMode, change.sessionId);
+    const profileId = this.d.browser.sessionById(change.sessionId)?.profileId;
+    if (change.by !== 'challenge' && profileId) {
+      this.d.audit.record({
+        actorType: change.by === 'overlay' ? 'user' : 'system',
+        actionType: 'session.paused',
+        objectType: 'browser_profile',
+        objectId: profileId,
+        payload: { by: change.by },
+        correlationId: uuidv7(),
+      });
+      this.waitForPerson(change.sessionId);
+    }
+    this.d.changed(['browser', 'activity']);
+  }
+
+  /** Work using this session waits for the person, if it is not already waiting. */
+  private waitForPerson(sessionId: string): void {
+    const runs = this.d.db
+      .prepare(`SELECT * FROM workflow_runs WHERE workflow_type = ? AND status IN ('pending', 'running')`)
+      .all(WORKFLOW_TYPE) as unknown as RunRow[];
+    for (const run of runs) {
+      const context = JSON.parse(run.context) as { sessionId: string | null };
+      if (context.sessionId !== sessionId) continue;
+      const task = this.d.db
+        .prepare(`SELECT id FROM browser_tasks WHERE workflow_run_id = ? ORDER BY dispatched_at DESC LIMIT 1`)
+        .get(run.id) as { id: string } | undefined;
+      if (task) this.request(run, sessionId, task.id, 'user_control');
+    }
+  }
+
+  private lang(): Language {
+    return this.d.language?.() ?? 'en';
   }
 
   // Interventions ------------------------------------------------------------------------------

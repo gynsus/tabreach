@@ -17,6 +17,7 @@ import { useLiveUpdates } from '../lib/live';
 import { cn } from '../lib/cn';
 import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
 import { useInboxCounts } from '../routes/inbox/InboxPage';
+import { PausedBanner } from '../routes/status/AppControl';
 import { useInterventions } from '../routes/status/Interventions';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
@@ -122,6 +123,7 @@ export function AppShell() {
       */}
       <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <CoreBanner />
+        <PausedBanner />
         <Outlet />
       </main>
     </div>
