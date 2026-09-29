@@ -57,6 +57,13 @@ jobs:
           path: apps/desktop/test-results/
           retention-days: 7
 
+      - name: Development build has no failing optional-dependency stubs
+        # Vite replaces an unresolved optional import with a stub that throws at load time in
+        # development builds only; `pnpm dev` then crashes while CI (production builds) stays green.
+        run: |
+          pnpm --filter @tabreach/desktop exec electron-vite build --mode development
+          ! grep -n 'Could not resolve "' apps/desktop/out/main/*.js
+
       - name: Package (unsigned smoke build)
         run: pnpm package
 
