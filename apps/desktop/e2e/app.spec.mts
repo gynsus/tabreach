@@ -246,6 +246,13 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await page.getByLabel('Approval', { exact: true }).selectOption('approve_campaign');
   await expect(page.getByText(/You approve the first 5 messages yourself/)).toBeVisible();
   await page.getByLabel('Approval', { exact: true }).selectOption('approve_each');
+  // A number is checked when typing is done, not on every key: 2000 can be typed over 1500.
+  await page.getByLabel('Maximum length, characters').fill('2000');
+  await page.getByLabel('Maximum length, characters').blur();
+  await expect(page.getByLabel('Maximum length, characters')).toHaveValue('2000');
+  await page.getByLabel('Maximum length, characters').fill('5');
+  await page.getByLabel('Maximum length, characters').press('Enter');
+  await expect(page.getByLabel('Maximum length, characters')).toHaveValue('100');
   // Any day and hour, so the test does not depend on when CI runs.
   await page.getByLabel('Fallback time zone').fill('UTC');
   await page.getByLabel('Use the default sending hours from Settings').uncheck();
@@ -254,7 +261,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await page.getByLabel('From', { exact: true }).fill('00:00');
   await page.getByLabel('Until', { exact: true }).fill('23:59');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
-  await expect(page.getByTestId('toast')).toHaveText('Campaign launched: version 1');
+  await expect(page.getByTestId('toast').filter({ hasText: 'Campaign launched: version 1' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Add contacts' }).click();
   const add = page.getByRole('dialog', { name: 'Add contacts' });
@@ -282,7 +289,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   // The campaign's history names the contact; the activity log says who got what, and shows it.
   await expect(page.getByTestId('timeline').getByRole('link', { name: 'Jane Again' }).first()).toBeVisible();
   await page.getByRole('link', { name: 'Activity' }).click();
-  await page.getByRole('tab', { name: 'Messages' }).click();
+  await page.getByRole('button', { name: 'Messages', exact: true }).click();
   const sent = page.getByRole('listitem').filter({ hasText: 'Message sent' }).first();
   await expect(sent.getByRole('link', { name: 'Jane Again' })).toBeVisible();
   await expect(sent.getByRole('link', { name: 'E2E campaign' })).toBeVisible();
@@ -390,7 +397,7 @@ test('a company page offers research, which needs an AI key', async () => {
 test('the inbox opens with its filters and says when there are no replies', async () => {
   await page.getByRole('link', { name: 'Inbox' }).click();
   await expect(page.getByRole('heading', { name: 'Inbox' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'To review' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'To review' })).toBeVisible();
   await expect(page.getByText('No replies yet.')).toBeVisible();
 });
 

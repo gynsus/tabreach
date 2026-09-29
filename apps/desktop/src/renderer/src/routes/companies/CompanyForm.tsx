@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { uuidv7, type Company } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Button, Field, Input, Modal } from '../../components/ui';
+import { Alert, Button, Field, Input, Modal, useDiscardGuard } from '../../components/ui';
 import { call, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -29,6 +29,10 @@ export function CompanyForm(props: {
     tags: c?.tags.join(', ') ?? '',
   });
   const [nameMissing, setNameMissing] = useState(false);
+  // Closing with unsaved edits asks first (audit 4.5).
+  const [initial] = useState(() => JSON.stringify(form));
+  const dirty = JSON.stringify(form) !== initial;
+  const { requestClose, confirmBar } = useDiscardGuard(dirty, props.onClose);
 
   const [idempotencyKey] = useState(() => uuidv7());
   const save = useMutation({
@@ -79,11 +83,12 @@ export function CompanyForm(props: {
   return (
     <Modal
       open={props.open}
-      onClose={props.onClose}
+      onClose={requestClose}
       title={c ? t('companies.edit') : t('companies.new')}
       footer={
         <>
-          <Button onClick={props.onClose}>{t('common.cancel')}</Button>
+          {confirmBar}
+          <Button onClick={requestClose}>{t('common.cancel')}</Button>
           <Button variant="primary" type="submit" form="company-form" disabled={save.isPending}>
             {save.isPending ? t('common.saving') : t('common.save')}
           </Button>

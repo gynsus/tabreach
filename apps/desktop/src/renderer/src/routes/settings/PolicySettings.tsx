@@ -3,7 +3,7 @@ import type { PolicySettings as Policy } from '@tabreach/protocol';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Alert, Input, SaveBar } from '../../components/ui';
+import { Alert, Loading, NumberInput, SaveBar, UnsavedChangesPrompt } from '../../components/ui';
 import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage } from '../../lib/api';
 import { useDraft } from '../../lib/draft';
@@ -17,7 +17,7 @@ export function PolicySettings() {
     queryFn: () => call('policy.settings.get', {}),
   });
   if (policy.isError) return <Alert>{errorMessage(t, policy.error)}</Alert>;
-  if (!policy.data) return null;
+  if (!policy.data) return <Loading />;
   return <PolicyForm initial={policy.data} />;
 }
 
@@ -37,34 +37,22 @@ function PolicyForm({ initial }: { initial: Policy }) {
   const cap = (which: 'contactCap' | 'companyCap') => (
     <div className="flex flex-wrap items-center gap-2 text-[13px]">
       <span className="w-48 text-soft">{t(`settings.policy.${which}`)}</span>
-      <Input
-        type="number"
+      <NumberInput
         min={1}
         max={100}
         aria-label={`${t(`settings.policy.${which}`)}`}
         className="w-20"
         value={value[which].touches}
-        onChange={(e) =>
-          setValue({
-            ...value,
-            [which]: { ...value[which], touches: Math.max(1, Math.min(100, Number(e.target.value) || 1)) },
-          })
-        }
+        onCommit={(touches) => setValue({ ...value, [which]: { ...value[which], touches } })}
       />
       <span className="text-soft">{t('settings.policy.per')}</span>
-      <Input
-        type="number"
+      <NumberInput
         min={1}
         max={365}
         aria-label={`${t(`settings.policy.${which}`)} · ${t('settings.policy.days')}`}
         className="w-20"
         value={value[which].days}
-        onChange={(e) =>
-          setValue({
-            ...value,
-            [which]: { ...value[which], days: Math.max(1, Math.min(365, Number(e.target.value) || 1)) },
-          })
-        }
+        onCommit={(days) => setValue({ ...value, [which]: { ...value[which], days } })}
       />
       <span className="text-soft">{t('settings.policy.days')}</span>
     </div>
@@ -103,6 +91,7 @@ function PolicyForm({ initial }: { initial: Policy }) {
         onSave={() => save.mutate()}
         onDiscard={reset}
       />
+      <UnsavedChangesPrompt when={dirty && !save.isPending} />
     </section>
   );
 }

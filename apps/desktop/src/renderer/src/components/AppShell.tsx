@@ -98,8 +98,6 @@ export function AppShell() {
             label={t('nav.approvals')}
             count={pending.data?.items.length ?? 0}
           />
-        </NavGroup>
-        <NavGroup label={t('nav.activity')}>
           <NavItem to="/activity" icon={Activity} label={t('nav.activity')} />
         </NavGroup>
         <div className="mt-auto">

@@ -8,7 +8,16 @@ import {
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
-import { Alert, Badge, Button, Field, Input, SaveBar } from '../../components/ui';
+import {
+  Alert,
+  Badge,
+  Button,
+  Field,
+  Input,
+  Loading,
+  SaveBar,
+  UnsavedChangesPrompt,
+} from '../../components/ui';
 import { translateKey } from '../../i18n';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { cn } from '../../lib/cn';
@@ -22,7 +31,7 @@ export function AiSettings() {
   const { t } = useTranslation();
   const settings = useQuery({ queryKey: ['settings', 'ai'], queryFn: () => call('ai.settings.get', {}) });
   if (settings.isError) return <Alert>{errorMessage(t, settings.error)}</Alert>;
-  if (!settings.data) return null;
+  if (!settings.data) return <Loading />;
   return (
     <section aria-labelledby="ai-heading" className="grid gap-5">
       <div className="grid gap-1">
@@ -61,31 +70,52 @@ function ProviderPicker({ settings }: { settings: Settings }) {
     onSuccess: () => invalidateEntities(qc, ['settings', 'activity']),
   });
   return (
-    <div role="radiogroup" aria-label={t('ai.provider')} className="grid grid-cols-3 gap-2">
-      {PROVIDERS.map((p) => {
-        const selected = settings.provider === p;
-        return (
-          <button
-            key={p}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            disabled={choose.isPending}
-            onClick={() => !selected && choose.mutate(p)}
-            className={cn(
-              'grid gap-1 rounded-md border px-3 py-2.5 text-left text-[13px]',
-              selected ? 'border-accent bg-accent-soft' : 'border-rule bg-raised hover:border-accent',
-            )}
-          >
-            <span className="flex items-center gap-2 font-medium">
-              {t(`ai.providers.${p}.name`)}
-              {settings.keys[p] ? <Badge tone="ok">{t('ai.hasKey')}</Badge> : null}
-            </span>
-            <span className="text-xs text-soft">{t(`ai.providers.${p}.description`)}</span>
-          </button>
-        );
-      })}
-    </div>
+    <>
+      {choose.isError ? <Alert>{errorMessage(t, choose.error)}</Alert> : null}
+      <div role="radiogroup" aria-label={t('ai.provider')} className="grid grid-cols-3 gap-2">
+        {PROVIDERS.map((p) => {
+          const selected = settings.provider === p;
+          return (
+            <button
+              key={p}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              tabIndex={selected ? 0 : -1}
+              data-provider={p}
+              disabled={choose.isPending}
+              onClick={() => !selected && choose.mutate(p)}
+              onKeyDown={(e) => {
+                // Arrow keys choose the next provider (WAI-ARIA radio group pattern).
+                const step =
+                  e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                    ? 1
+                    : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                      ? -1
+                      : 0;
+                if (!step) return;
+                e.preventDefault();
+                const next = PROVIDERS[(PROVIDERS.indexOf(p) + step + PROVIDERS.length) % PROVIDERS.length]!;
+                choose.mutate(next);
+                requestAnimationFrame(() =>
+                  document.querySelector<HTMLElement>(`[data-provider="${next}"]`)?.focus(),
+                );
+              }}
+              className={cn(
+                'grid gap-1 rounded-md border px-3 py-2.5 text-left text-[13px]',
+                selected ? 'border-accent bg-accent-soft' : 'border-rule bg-raised hover:border-accent',
+              )}
+            >
+              <span className="flex items-center gap-2 font-medium">
+                {t(`ai.providers.${p}.name`)}
+                {settings.keys[p] ? <Badge tone="ok">{t('ai.hasKey')}</Badge> : null}
+              </span>
+              <span className="text-xs text-soft">{t(`ai.providers.${p}.description`)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }
 
@@ -302,6 +332,7 @@ function ModelsAndBudget({ initial }: { initial: Settings }) {
       </Field>
       {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
       <SaveBar dirty={dirty} saving={save.isPending} onSave={() => save.mutate()} onDiscard={reset} />
+      <UnsavedChangesPrompt when={dirty && !save.isPending} />
     </div>
   );
 }

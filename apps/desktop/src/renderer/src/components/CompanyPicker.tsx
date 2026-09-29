@@ -77,7 +77,10 @@ export function CompanyPicker(props: {
           } else if (e.key === 'Enter' && open) {
             e.preventDefault();
             pick(options[current] ?? null);
-          } else if (e.key === 'Escape') {
+          } else if (e.key === 'Escape' && open) {
+            // Closes the list only, not the dialog around it (audit 4.5).
+            e.preventDefault();
+            e.stopPropagation();
             setOpen(false);
             setText(props.value?.name ?? '');
           }

@@ -3,7 +3,7 @@ import { uuidv7, type Contact } from '@tabreach/protocol';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CompanyPicker, type PickedCompany } from '../../components/CompanyPicker';
-import { Alert, Button, Field, Input, Modal } from '../../components/ui';
+import { Alert, Button, Field, Input, Modal, useDiscardGuard } from '../../components/ui';
 import { call, fieldErrors, formAlert } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 
@@ -36,6 +36,10 @@ export function ContactForm(props: {
   const [company, setCompany] = useState<PickedCompany | null>(
     c?.companyId ? { id: c.companyId, name: c.companyName ?? '' } : (props.company ?? null),
   );
+  // Closing with unsaved edits asks first (audit 4.5).
+  const [initial] = useState(() => JSON.stringify({ form, company: company?.id ?? null }));
+  const dirty = JSON.stringify({ form, company: company?.id ?? null }) !== initial;
+  const { requestClose, confirmBar } = useDiscardGuard(dirty, props.onClose);
 
   // One key per opened form: retrying after a timeout cannot create a second contact (ADR 020).
   const [idempotencyKey] = useState(() => uuidv7());
@@ -88,11 +92,12 @@ export function ContactForm(props: {
   return (
     <Modal
       open={props.open}
-      onClose={props.onClose}
+      onClose={requestClose}
       title={c ? t('contacts.edit') : t('contacts.new')}
       footer={
         <>
-          <Button onClick={props.onClose}>{t('common.cancel')}</Button>
+          {confirmBar}
+          <Button onClick={requestClose}>{t('common.cancel')}</Button>
           <Button variant="primary" type="submit" form="contact-form" disabled={save.isPending}>
             {save.isPending ? t('common.saving') : t('common.save')}
           </Button>

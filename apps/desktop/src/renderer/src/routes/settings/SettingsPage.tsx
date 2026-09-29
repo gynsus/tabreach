@@ -32,7 +32,17 @@ export function SettingsPage() {
             role="tab"
             aria-selected={current === id}
             aria-controls={`settings-panel-${id}`}
+            tabIndex={current === id ? 0 : -1}
             onClick={() => void navigate(`/settings/${id}`)}
+            onKeyDown={(e) => {
+              // Arrow keys move between tabs (WAI-ARIA tabs pattern).
+              const step = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+              if (!step) return;
+              e.preventDefault();
+              const next = TABS[(TABS.indexOf(current) + step + TABS.length) % TABS.length]!;
+              void navigate(`/settings/${next}`);
+              requestAnimationFrame(() => document.getElementById(`settings-tab-${next}`)?.focus());
+            }}
             className={cn(
               '-mb-px border-b-2 px-3 py-2 text-[13px]',
               current === id

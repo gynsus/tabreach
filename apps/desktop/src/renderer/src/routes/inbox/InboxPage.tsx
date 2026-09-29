@@ -25,26 +25,27 @@ const tone = { reply: 'accent', out_of_office: 'neutral', auto: 'neutral', bounc
 export function InboxPage() {
   const { t, i18n } = useTranslation();
   const [filter, setFilter] = useState<Filter>('all');
-  const [selected, setSelected] = useState<string | null>(null);
+  // Only the user opens a conversation (opening marks it read); it stays open when the filter
+  // no longer lists it, e.g. Unread once it has been read (audit 4.5).
+  const [selected, setSelected] = useState<ConversationSummary | null>(null);
   const list = useQuery({
     queryKey: ['conversations', filter],
     queryFn: () => call('conversations.list', { filter, limit: 200, offset: 0 }),
   });
   const items = list.data?.items ?? [];
-  const current = items.find((c) => c.id === selected) ?? items[0];
+  const current = selected ? (items.find((c) => c.id === selected.id) ?? selected) : null;
 
   return (
     <>
       <PageHeader title={t('inbox.title')} subtitle={t('inbox.subtitle')} />
       <div className="flex min-h-0 flex-1">
         <div className="flex w-80 shrink-0 flex-col border-r border-rule">
-          <div role="tablist" aria-label={t('inbox.title')} className="flex gap-1 border-b border-rule p-2">
+          <div role="group" aria-label={t('inbox.filter')} className="flex gap-1 border-b border-rule p-2">
             {(['all', 'unread', 'review'] as const).map((f) => (
               <button
                 key={f}
                 type="button"
-                role="tab"
-                aria-selected={filter === f}
+                aria-pressed={filter === f}
                 onClick={() => setFilter(f)}
                 className={cn(
                   'rounded-md px-2.5 py-1 text-xs',
@@ -72,7 +73,7 @@ export function InboxPage() {
                   conversation={c}
                   active={c.id === current?.id}
                   language={i18n.language}
-                  onSelect={() => setSelected(c.id)}
+                  onSelect={() => setSelected(c)}
                 />
               </li>
             ))}
@@ -154,7 +155,7 @@ function Thread({ summary }: { summary: ConversationSummary }) {
     );
   }
   const data = conversation.data;
-  if (!data) return null;
+  if (!data) return <p className="p-6 text-[13px] text-faint">{t('common.loading')}</p>;
   return (
     <article aria-label={data.title} className="grid max-w-3xl gap-4 p-6">
       <header className="flex flex-wrap items-center gap-3">
@@ -192,7 +193,10 @@ function Message({ message: m, latest }: { message: ConversationMessage; latest:
   const review = useMutation({
     mutationFn: (decision: 'confirm' | 'dismiss') =>
       call('conversations.review', { messageId: m.id, decision }),
-    onSuccess: () => invalidateEntities(qc, ['conversation', 'enrollment', 'campaign', 'activity']),
+    onSuccess: (_r, decision) => {
+      toast(t(decision === 'confirm' ? 'inbox.confirmed' : 'inbox.dismissed'));
+      return invalidateEntities(qc, ['conversation', 'enrollment', 'campaign', 'activity']);
+    },
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
   const suppress = useMutation({

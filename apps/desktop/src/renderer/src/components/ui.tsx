@@ -5,12 +5,14 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
 } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBlocker } from 'react-router';
 import { translateKey } from '../i18n';
 import { cn } from '../lib/cn';
 
@@ -180,6 +182,15 @@ export function Modal(props: {
     if (open && !dialog.open) dialog.showModal();
     if (!open && dialog.open) dialog.close();
   }, [open]);
+  // Parents often unmount an open dialog rather than closing it; either way, focus goes back to
+  // what opened it, not to <body> (audit 4.5).
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open]);
   return (
     <dialog
       ref={ref}
@@ -264,5 +275,109 @@ export function SaveBar({
         </>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Closing a form with unsaved edits asks first. `requestClose` goes to the dialog's onClose and to
+ * its Cancel button; `confirmBar` is shown in the footer while asking.
+ */
+export function useDiscardGuard(dirty: boolean, onClose: () => void) {
+  const { t } = useTranslation();
+  const [asking, setAsking] = useState(false);
+  const requestClose = () => (dirty ? setAsking(true) : onClose());
+  const confirmBar = asking ? (
+    <span
+      role="group"
+      aria-label={t('common.discardQuestion')}
+      className="mr-auto flex items-center gap-2 text-[13px]"
+    >
+      <span className="text-warn">{t('common.discardQuestion')}</span>
+      <Button size="sm" variant="danger" onClick={onClose} autoFocus>
+        {t('common.discard')}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setAsking(false)}>
+        {t('common.keepEditing')}
+      </Button>
+    </span>
+  ) : null;
+  return { requestClose, confirmBar };
+}
+
+/**
+ * Leaving a screen (or a settings tab) with unsaved edits asks first, in a bar at the bottom of the
+ * window: leave without saving, or stay.
+ */
+export function UnsavedChangesPrompt({ when }: { when: boolean }) {
+  const { t } = useTranslation();
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) => when && currentLocation.pathname !== nextLocation.pathname,
+  );
+  if (blocker.state !== 'blocked') return null;
+  return (
+    <div
+      role="alertdialog"
+      aria-label={t('common.unsavedLeave')}
+      className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-wrap items-center gap-3 rounded-lg border border-rule bg-raised px-4 py-3 text-[13px] shadow-2xl"
+    >
+      <span>{t('common.unsavedLeave')}</span>
+      <Button size="sm" variant="danger" onClick={() => blocker.proceed()}>
+        {t('common.leaveWithoutSaving')}
+      </Button>
+      <Button size="sm" variant="primary" onClick={() => blocker.reset()} autoFocus>
+        {t('common.stay')}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * A whole number kept within bounds when the user is done typing (on blur or Enter), not on every
+ * keystroke: clamping per key made "2000" impossible to type when the minimum is 100 (audit 4.5).
+ */
+export function NumberInput({
+  value,
+  min,
+  max,
+  onCommit,
+  ...rest
+}: Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'min' | 'max' | 'type'> & {
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const n = Math.round(Number(text));
+    const next = text.trim() !== '' && Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : value;
+    setText(String(next));
+    if (next !== value) onCommit(next);
+  };
+  return (
+    <Input
+      {...rest}
+      type="number"
+      inputMode="numeric"
+      min={min}
+      max={max}
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
+    />
+  );
+}
+
+/** Shown while a page's data loads. */
+export function Loading() {
+  const { t } = useTranslation();
+  return (
+    <p role="status" className="p-6 text-[13px] text-faint">
+      {t('common.loading')}
+    </p>
   );
 }
