@@ -50,6 +50,8 @@ No metrics server. Core computes local counters/aggregates from the database and
 
 The user-visible audit view is backed by `action_events`, not reconstructed from text logs.
 
+Implementation (2026-09-29): events store ids only (ADR 022), so each event is linked to the contact, company and campaign it concerns when it is read, through the current records — the enrollment, approval, conversation, research run or send it is about (`TimelineService`). The same query serves the contact page (its campaign steps: added, AI draft, approval by the user or the campaign policy, send with the message, reply with its AI label, stop reason), the company page (the company, its research and all its contacts), the campaign page and the Activity view (with category filters and paging). Adding a contact to a campaign records `enrollment.created` per contact.
+
 ## Diagnostics bundle
 
 The user can generate a sanitized bundle (zip, saved via a save dialog) containing:

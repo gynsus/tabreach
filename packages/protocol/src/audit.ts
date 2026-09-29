@@ -35,6 +35,7 @@ export const auditActionTypes = [
   'campaign.resumed',
   'campaign.archived',
   'campaign.enrolled',
+  'enrollment.created',
   'enrollment.paused',
   'enrollment.resumed',
   'enrollment.stopped',

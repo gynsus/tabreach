@@ -279,6 +279,16 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
     timeout: 15_000,
   });
+  // The campaign's history names the contact; the activity log says who got what, and shows it.
+  await expect(page.getByTestId('timeline').getByRole('link', { name: 'Jane Again' }).first()).toBeVisible();
+  await page.getByRole('link', { name: 'Activity' }).click();
+  await page.getByRole('tab', { name: 'Messages' }).click();
+  const sent = page.getByRole('listitem').filter({ hasText: 'Message sent' }).first();
+  await expect(sent.getByRole('link', { name: 'Jane Again' })).toBeVisible();
+  await expect(sent.getByRole('link', { name: 'E2E campaign' })).toBeVisible();
+  await sent.getByRole('button', { name: /Show the message/ }).click();
+  await expect(sent.getByTestId('activity-message')).toHaveText('Hi there, this is a test.');
+  await expect(page.getByRole('listitem').filter({ hasText: 'Campaign launched' })).toHaveCount(0);
 });
 
 test('connecting an email account fills in known servers and reports a wrong server', async () => {

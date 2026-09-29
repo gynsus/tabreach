@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { auditObjectTypeSchema } from './audit.js';
 
 /** Shared DTOs for prospects, imports, suppressions and activity (docs/06-API-CONTRACT.md). */
 
@@ -212,11 +211,41 @@ export const actionEventSchema = z.object({
 });
 export type ActionEvent = z.infer<typeof actionEventSchema>;
 
+/** What the activity view can be narrowed to, by kind of event. */
+export const activityCategorySchema = z.enum(['messages', 'campaigns', 'prospects', 'research', 'settings']);
+export type ActivityCategory = z.infer<typeof activityCategorySchema>;
+
 export const activityListRequestSchema = z.object({
-  objectType: auditObjectTypeSchema.optional(),
-  objectId: z.string().optional(),
-  limit: z.number().int().min(1).max(500).default(200),
+  /** One contact's, company's (with its contacts') or campaign's history. */
+  contactId: z.uuid().optional(),
+  companyId: z.uuid().optional(),
+  campaignId: z.uuid().optional(),
+  category: activityCategorySchema.optional(),
+  /** Older than this event (paging back). */
+  before: z.object({ createdAt: z.iso.datetime(), id: z.uuid() }).optional(),
+  limit: z.number().int().min(1).max(500).default(100),
 });
+
+const refSchema = z.object({ id: z.uuid(), name: z.string() });
+
+/**
+ * An audit event with what it concerns, resolved from the current records when it is read — the
+ * trail itself holds only ids (ADR 022). A deleted record resolves to null.
+ */
+export const timelineEntrySchema = actionEventSchema.extend({
+  contact: refSchema.nullable(),
+  company: refSchema.nullable(),
+  campaign: refSchema.nullable(),
+  /** The message the event is about: written, sent or received. */
+  message: z
+    .object({
+      subject: z.string().nullable(),
+      body: z.string(),
+      direction: z.enum(['inbound', 'outbound']),
+    })
+    .nullable(),
+});
+export type TimelineEntry = z.infer<typeof timelineEntrySchema>;
 
 // UI settings -------------------------------------------------------------------------------
 
