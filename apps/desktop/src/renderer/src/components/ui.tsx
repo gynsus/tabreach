@@ -232,3 +232,37 @@ export function DetailList(props: { items: { label: string; value: ReactNode }[]
     </dl>
   );
 }
+
+/** Save for an edit form: says when there are unsaved edits and lets the user drop them. */
+export function SaveBar({
+  dirty,
+  saving,
+  invalid = false,
+  onSave,
+  onDiscard,
+}: {
+  dirty: boolean;
+  saving: boolean;
+  invalid?: boolean;
+  onSave: () => void;
+  onDiscard: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="primary" onClick={onSave} disabled={!dirty || saving || invalid}>
+        {saving ? t('common.saving') : t('common.save')}
+      </Button>
+      {dirty && !saving ? (
+        <>
+          <span role="status" className="text-xs text-warn">
+            {t('common.unsaved')}
+          </span>
+          <Button variant="ghost" size="sm" onClick={onDiscard}>
+            {t('common.discard')}
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+}

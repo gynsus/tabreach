@@ -87,4 +87,42 @@ describe('OpenRouter and OpenAI providers', () => {
     h.services.ai.removeKey('anthropic', ctx());
     expect(h.services.ai.settings().keySet).toBe(false);
   });
+
+  it('saving a key again keeps the new key (it used to delete it every second time)', async () => {
+    useProvider('openrouter');
+    for (const key of [
+      'sk-or-v1-first-000000aaaa',
+      'sk-or-v1-second-00000bbbb',
+      ' sk-or-v1-third-00000cccc\n',
+    ]) {
+      await h.services.ai.setKey('openrouter', key, ctx());
+      expect(h.services.ai.settings()).toMatchObject({ keySet: true, keyHint: `…${key.trim().slice(-4)}` });
+    }
+    h.chat.answer({ content: '{"label":"a","score":0.1}' });
+    await call();
+    expect(h.chat.requests[0]?.authorization).toBe('Bearer sk-or-v1-third-00000cccc');
+    const stored = h.db.prepare(`SELECT COUNT(*) AS n FROM secrets WHERE purpose = 'ai_api_key'`).get();
+    expect(stored).toEqual({ n: 1 });
+  });
+
+  it('an answer cut off at the token limit is invalid output, repaired once', async () => {
+    useProvider('openrouter');
+    await h.services.ai.setKey('openrouter', 'sk-or-v1-test-0123456789', ctx());
+    h.chat.answer(
+      { content: '{"label":"interes', finishReason: 'length' },
+      { content: '{"label":"ok","score":1}' },
+    );
+    expect(await call()).toEqual({ label: 'ok', score: 1 });
+    expect(h.services.ai.usage()).toMatchObject({ calls: 2, failed: 1 });
+  });
+
+  it('on start, stored AI keys that no setting points at are deleted', async () => {
+    await h.services.ai.setKey('openai', 'sk-proj-test-0123456789', ctx());
+    const orphan = await h.services.secrets.put('ai_api_key', 'sk-or-v1-orphan-0123456789');
+    h.dispatcher.stop();
+    h.boot(); // the app starts again
+    const ids = h.db.prepare(`SELECT id FROM secrets WHERE purpose = 'ai_api_key'`).all() as { id: string }[];
+    expect(ids.map((r) => r.id)).not.toContain(orphan);
+    expect(h.services.ai.settings().keys.openai).toBe(true);
+  });
 });

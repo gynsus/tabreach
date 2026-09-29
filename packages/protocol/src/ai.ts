@@ -26,6 +26,8 @@ export type AiSettingsInput = z.infer<typeof aiSettingsInputSchema>;
 export const aiSettingsSchema = aiSettingsInputSchema.extend({
   /** Whether an API key is stored (encrypted) for the selected provider. */
   keySet: z.boolean(),
+  /** The stored key's last four characters (`…a1b2`), so the user can tell which key it is. */
+  keyHint: z.string().nullable(),
   /** Which providers have a stored key; switching provider keeps the others' keys. */
   keys: z.object({ anthropic: z.boolean(), openrouter: z.boolean(), openai: z.boolean() }),
 });

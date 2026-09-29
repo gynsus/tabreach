@@ -78,7 +78,7 @@ command policy.settings.update
 ## AI settings
 
 ```text
-query   ai.settings.get                # provider (anthropic|openrouter|openai), models per use case, prices, budget, keySet, keys per provider
+query   ai.settings.get                # provider (anthropic|openrouter|openai), models per use case, prices, budget, keySet, keyHint (last four characters), keys per provider
 command ai.settings.update
 command ai.setKey / ai.removeKey       # per provider; the key is stored encrypted and never returned
 command ai.testKey                     # one minimal call with the classification model

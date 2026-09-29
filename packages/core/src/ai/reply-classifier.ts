@@ -31,7 +31,7 @@ export const classifyReply: PromptTemplate<z.infer<typeof input>, z.infer<typeof
   useCase: 'classification',
   input,
   output,
-  maxTokens: 300,
+  maxTokens: 1_000,
   build: ({ subject, text, nonce }) => ({
     system: [
       'You label replies to a business outreach email.',
