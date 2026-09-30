@@ -25,7 +25,13 @@
   main.append(actions);
   const status = el('p', { role: 'status' });
   main.append(status);
-  document.body.append(el('nav', { 'aria-label': 'Primary' }, 'Home Network Messaging'), main);
+  // Like the real site, the header has a heading of its own before the profile's.
+  const header = el('header');
+  header.append(
+    el('h2', {}, 'Notifications'),
+    el('nav', { 'aria-label': 'Primary' }, 'Home Network Messaging'),
+  );
+  document.body.append(header, main);
 
   const pending = () => {
     actions.replaceChildren(el('button', { type: 'button' }, 'Pending'));
@@ -86,7 +92,13 @@
         if (q.get('result') !== 'silent') item('Sam Sender', box.value);
         box.value = '';
       };
-      dlg.append(el('h2', {}, p.name), list, box, send, el('button', { type: 'button' }, 'Open send options'));
+      dlg.append(
+        el('h2', {}, p.name),
+        list,
+        box,
+        send,
+        el('button', { type: 'button' }, 'Open send options'),
+      );
       document.body.append(dlg);
     };
   }

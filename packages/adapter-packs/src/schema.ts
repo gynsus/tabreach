@@ -136,7 +136,14 @@ export type PackReader = z.infer<typeof packReaderSchema>;
 export const identitySchema = z
   .object({
     /** The heading that names the person. */
-    name: z.object({ role: nonEmpty, level: z.number().int().min(1).max(6).optional() }).strict(),
+    name: z
+      .object({
+        role: nonEmpty,
+        level: z.number().int().min(1).max(6).optional(),
+        /** Looked for inside this landmark only (the site's header has headings too). */
+        within: nonEmpty.optional(),
+      })
+      .strict(),
     /** The profile path: `/in/<slug>` is compared, not the full URL. */
     profilePath: z.string().regex(/^\/[a-z]+\/$/),
   })

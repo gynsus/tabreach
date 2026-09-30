@@ -474,7 +474,10 @@ export async function identityMatches(
 ): Promise<boolean> {
   const slug = profileSlug(page.url(), rule.profilePath);
   if (!slug || slug !== profileSlug(expected.profileUrl, rule.profilePath)) return false;
-  const headings = page.getByRole(rule.name.role as Parameters<Page['getByRole']>[0], {
+  const scope = rule.name.within
+    ? page.getByRole(rule.name.within as Parameters<Page['getByRole']>[0]).first()
+    : page;
+  const headings = scope.getByRole(rule.name.role as Parameters<Page['getByRole']>[0], {
     ...(rule.name.level ? { level: rule.name.level } : {}),
   });
   if ((await headings.count()) < 1) return false;

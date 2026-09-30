@@ -206,7 +206,7 @@ const linkedin = {
       profileLinkAny: ['profile', 'профил'],
     },
   ],
-  identity: { name: { role: 'heading', level: 2 }, profilePath: '/in/' },
+  identity: { name: { role: 'heading', level: 2, within: 'main' }, profilePath: '/in/' },
   // Product defaults, not LinkedIn's limits and no guarantee against restrictions (FR-LIN-005).
   limits: {
     perDay: { connect: 15, message: 30, visit: 60 },
