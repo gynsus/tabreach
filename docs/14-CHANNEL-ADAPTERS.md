@@ -215,6 +215,8 @@ The `linkedin` pack 0.2.0 recognizes profile states (can connect, can message, i
 
 `LinkedinService` (core): Settings → LinkedIn holds the switch (off by default and whenever the setting cannot be read — fails closed, FR-LIN-001), the risk notice that must be acknowledged before it can be turned on, the browser profile signed in to the account, the opt-in to `auto` per action class (FR-LIN-002; otherwise every step is `assisted`), and the throttles (the pack's defaults; lowering is free, raising needs an explicit acknowledgement, FR-LIN-005). The `linkedin` channel is a `BrowserActionChannel`: an invitation (`linkedin.connect`, or `.note` with the step's text) or a message is one `commit` task with the contact's profile URL and full name as the identity to check (FR-LIN-003); a message first reads the conversation in the same send and nothing is written if the person answered (FR-LIN-004) or the thread cannot be read. The switch and the per-class limits (invitations per day and week, messages per day) are checked at the final pre-send check and again at the checkpoint; spacing is 90 s. Every attempt is a `browser_tasks` row with the pack version (FR-LIN-006). A LinkedIn profile used by the adapter cannot be archived or deleted.
 
+Phase 7c: Status → Adapter packs shows, per pack version over 30 days, the browser tasks, unrecognized pages (their share turns amber above 10 %), requests to the person, unconfirmed outcomes and the last unrecognized page (`packs.health`).
+
 ## Webhook adapter
 
 Lightweight integration output:

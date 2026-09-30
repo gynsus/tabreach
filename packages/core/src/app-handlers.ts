@@ -465,6 +465,7 @@ export class AppServices {
       .handle('drafts.revise', (p, c) =>
         mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
       )
+      .handle('packs.health', () => ({ items: this.browser.packHealth() }))
       .handle('linkedin.settings.get', () => this.linkedin.settings())
       .handle('linkedin.settings.update', (p, c) =>
         mutate(['settings', 'activity'], () => this.linkedin.update(p, ctx(c))),

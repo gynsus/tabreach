@@ -12,6 +12,7 @@ import {
   workerSetModeSchema,
   workerTaskRunSchema,
   workerRenderSchema,
+  packHealthSchema,
   workerThreadReadSchema,
   threadReadResultSchema,
   workerFormPrepareSchema,
@@ -321,6 +322,13 @@ export const requests = {
     kind: 'command',
     request: draftReviseSchema,
     response: approvalSchema.nullable(),
+  },
+  /** Per pack version over 30 days: tasks, unrecognized pages, requests to the person, unknown outcomes. */
+  'packs.health': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(packHealthSchema) }),
   },
   'linkedin.settings.get': {
     channel: 'app',

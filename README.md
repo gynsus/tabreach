@@ -102,7 +102,7 @@ Exact commands may evolve, but onboarding must remain near-one-command and fully
 
 ## Status
 
-Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-09-29, Phases 0–6 and the 1.5, 3.5, 4.5 and 5.5 audits are done:
+Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-09-30, Phases 0–7 and the 1.5, 3.5, 4.5, 5.5 and 6.5 audits are done:
 
 - prospects, CSV import/export and the do-not-contact list;
 - campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
@@ -110,6 +110,7 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - the AI gateway with the user's key (Anthropic, OpenRouter, OpenAI), research with verified quotes, reply labels and AI drafts with automated checks and `approve_campaign`;
 - timelines of every contact, company and campaign;
 - managed Chrome profiles, page recognition by adapter packs, challenges handed to the person, the in-page overlay, take/return control, Pause all and Emergency stop, the `about_to_commit` checkpoint for critical browser actions, and JavaScript-only sites rendered for research.;
-- website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list.
+- website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list.;
+- a LinkedIn adapter behind a switch that is off by default: invitations and messages from a signed-in browser profile, the person pressing Send unless auto is allowed per action class, the profile's identity checked before any click, the conversation read before every message, conservative per-account limits, and the share of unrecognized pages per pack version on the status screen. The pack was built on representative fixtures and still needs checking against real LinkedIn pages.
 
-Next: Phase 7, the LinkedIn adapter.
+Next: Phase 8, hardening and release.

@@ -198,7 +198,7 @@ Order, each a working slice:
 
 - **7a — worker and pack (done 2026-09-29)**: LinkedIn pack 0.2.0 (profile, invitation, message and conversation states in English and Russian; connect, connect with a note, message; the thread reader; identity rule; default throttles), `commit` steps and identity checks, `thread.read`, LinkedIn-like fixtures.
 - **7b — the campaign channel (done 2026-09-29)**: LinkedIn account on a channel-identity profile, kill switch (fails closed) and risk notice, `linkedin` connect/message steps (assisted by default, auto only by opt-in per action class), the mandatory conversation check before follow-ups, per-account throttles, pack version on every action.
-- **7c — visibility and polish**: `unsupported_state` rate per pack version, UI, E2E, docs.
+- **7c — visibility and polish (done 2026-09-30)**: `unsupported_state` rate per pack version, UI, E2E, docs.
 
 Exit criteria:
 
@@ -208,6 +208,8 @@ Exit criteria:
 - critical action requires configured policy; all attempts logged with pack version.
 
 Automated tests use fixture pages only; real LinkedIn is checked manually by the developer.
+
+Exit criteria status (2026-09-30): the adapter is off by default and when its setting cannot be read, and the switch is checked again at the checkpoint (core tests); an unrecognized page or a page about someone else is never clicked (browser tests on fixtures with the bundled pack); a follow-up is not sent when the thread has a new answer (browser and core tests); `auto` needs the per-class opt-in and every attempt is a `browser_tasks` row with its pack version, summarized per version on the status screen. Not yet done: checking the pack against real LinkedIn pages by hand (the states were built on representative fixtures), and a `manual` execution mode (only `auto` and `assisted` exist).
 
 ---
 

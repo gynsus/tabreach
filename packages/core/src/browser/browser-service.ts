@@ -3,6 +3,7 @@ import {
   RpcError,
   uuidv7,
   type BrowserProfile,
+  type PackHealth,
   type ChangedEntity,
   type ControlMode,
   type Logger,
@@ -270,6 +271,31 @@ export class BrowserService {
       correlationId: uuidv7(),
     });
     this.d.changed(['browser', 'activity']);
+  }
+
+  /**
+   * How each adapter pack version fares (FR-LIN-006, docs/22 Phase 7): a rising share of
+   * unrecognized pages means the site changed and the pack must be updated.
+   */
+  packHealth(): PackHealth[] {
+    const since = new Date(this.d.now().getTime() - 30 * 24 * 60 * 60_000).toISOString();
+    const rows = this.d.db
+      .prepare(
+        `SELECT adapter_pack_id AS packId, adapter_pack_version AS version, COUNT(*) AS tasks,
+                SUM(status = 'unsupported_state') AS unsupported, SUM(status = 'needs_human') AS needsHuman,
+                SUM(status = 'unknown') AS unknown,
+                MAX(CASE WHEN status = 'unsupported_state' THEN dispatched_at END) AS lastUnsupportedAt
+         FROM browser_tasks WHERE dispatched_at > ? AND adapter_pack_id IS NOT NULL
+         GROUP BY adapter_pack_id, adapter_pack_version ORDER BY adapter_pack_id, adapter_pack_version DESC`,
+      )
+      .all(since) as unknown as (Omit<PackHealth, 'version'> & { version: string | null })[];
+    return rows.map((r) => ({
+      ...r,
+      version: r.version ?? 'unknown',
+      unsupported: Number(r.unsupported),
+      needsHuman: Number(r.needsHuman),
+      unknown: Number(r.unknown),
+    }));
   }
 
   /** A worker (re)connected: its first heartbeat tells which windows it kept (audit 5.5). */
