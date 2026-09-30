@@ -78,6 +78,8 @@ test('status screen shows core, database, secret storage and worker working', as
     });
   }
   await expect(page.getByTestId('component-database')).toContainText(/schema version \d+/);
+  // Adapter pack health is on the status screen (FR-LIN-006); a fresh app has no browser work yet.
+  await expect(page.getByTestId('pack-health')).toContainText('No browser work in the last 30 days.');
 });
 
 test('renderer has no Node access and cannot reach host or browser channels', async () => {

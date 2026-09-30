@@ -251,6 +251,10 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     const wrong = await start();
     await approveAll();
     expect(h.status(wrong)).toMatchObject({ status: 'stopped', stopReason: 'invalid_target' });
+    // The attempt shows in the pack's health: one task, one unrecognized page (FR-LIN-006).
+    expect(s().browser.packHealth()).toEqual([
+      expect.objectContaining({ packId: 'linkedin', version: '0.2.0', tasks: 1, unsupported: 1 }),
+    ]);
 
     const two = await start(
       [{}],

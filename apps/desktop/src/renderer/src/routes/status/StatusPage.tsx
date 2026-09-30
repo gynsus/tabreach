@@ -6,6 +6,7 @@ import { Alert, Badge, Button, PageHeader } from '../../components/ui';
 import { AppControlSection } from './AppControl';
 import { Interventions } from './Interventions';
 import { NeedsAttention } from './NeedsAttention';
+import { PackHealthSection } from './PackHealth';
 import { translateKey } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 
@@ -168,6 +169,8 @@ export function StatusPage() {
         </section>
 
         <NeedsAttention />
+
+        <PackHealthSection />
       </div>
     </>
   );

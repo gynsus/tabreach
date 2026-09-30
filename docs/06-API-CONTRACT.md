@@ -181,6 +181,7 @@ query   app.control.get                # { paused, pausedAt, emergencyStoppedAt,
 command app.pauseAll / app.resumeAll   # no new external action while paused; reading replies goes on
 command app.emergencyStop              # pause, and the worker stops every browser task at once
 command app.setKeepAwake               # { keepAwake } — keep the Mac awake while a campaign is active
+query   packs.health                   # per pack version, 30 days: tasks, unsupported, needsHuman, unknown (Phase 7c)
 query   linkedin.settings.get          # { enabled, profileId, riskAcknowledgedAt, autoConnect, autoMessage, limits, limitsRaised } (Phase 7b)
 command linkedin.settings.update       # + acknowledgeRisk; errors linkedin.riskRequired | profileRequired | limitsRaiseRequired
 query   forms.sender.get               # { profileId, name, email, phone, company, website } (Phase 6b)

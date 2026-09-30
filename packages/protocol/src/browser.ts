@@ -462,3 +462,18 @@ export const appControlSchema = z.object({
   keepAwake: z.boolean(),
 });
 export type AppControl = z.infer<typeof appControlSchema>;
+
+// Adapter pack health (Phase 7c, FR-LIN-006) ----------------------------------------------------
+
+/** How a pack version fares on real pages: an unrecognized page means the pack needs updating. */
+export const packHealthSchema = z.object({
+  packId: z.string(),
+  version: z.string(),
+  /** Browser tasks with this pack version in the last 30 days. */
+  tasks: z.number().int(),
+  unsupported: z.number().int(),
+  needsHuman: z.number().int(),
+  unknown: z.number().int(),
+  lastUnsupportedAt: z.iso.datetime().nullable(),
+});
+export type PackHealth = z.infer<typeof packHealthSchema>;

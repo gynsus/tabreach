@@ -887,6 +887,17 @@ export const en = {
     },
   },
   status: {
+    packs: {
+      title: 'Adapter packs',
+      hint: 'How each version of the page knowledge fared over 30 days. Unrecognized pages mean the site changed: nothing is clicked there, and the pack needs an update.',
+      empty: 'No browser work in the last 30 days.',
+      pack: 'Pack',
+      tasks: 'Tasks',
+      unsupported: 'Unrecognized pages',
+      needsHuman: 'Needed you',
+      unknown: 'Unconfirmed',
+      last: 'Last unrecognized',
+    },
     title: 'System status',
     subtitle: 'Every part of TabReach runs on this Mac. This screen shows whether each one is working.',
     refresh: 'Refresh',
