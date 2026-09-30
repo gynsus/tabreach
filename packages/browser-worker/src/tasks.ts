@@ -145,6 +145,35 @@ async function recognize(
 /** How long a page may take to become an expected state before a known other one counts. */
 const SETTLE_OTHERS_MS = 3_000;
 
+/**
+ * A page can be recognized before its scripts are ready: a click then does nothing (LinkedIn's
+ * "Message" on a live profile, 2026-09-30). Steps wait for the load and a moment more.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('load', { timeout: 15_000 }).catch(() => {}); // a slow page is tried anyway
+  await page.waitForTimeout(SETTLE_MS);
+}
+
+/**
+ * A non-critical click that should lead to one of `expect`: if the page has not got there after a
+ * few seconds, it is clicked once more (such a click opens something, it never sends anything).
+ */
+async function clickStep(
+  page: Page,
+  control: NonNullable<Awaited<ReturnType<typeof findControl>>>,
+  expect: PageState[],
+  signal: AbortSignal,
+): Promise<PageState | null> {
+  await control.click({ timeout: 10_000 });
+  const first = await recognize(page, expect, STEP_RETRY_MS, signal);
+  if (first) return first;
+  await control.click({ timeout: 10_000 }).catch(() => {}); // gone meanwhile: the wait below decides
+  return recognize(page, expect, RECOGNIZE_TIMEOUT_MS, signal);
+}
+
+const SETTLE_MS = 1_500;
+const STEP_RETRY_MS = 5_000;
+
 /** Exactly one visible control with one of the names; otherwise nothing (no guessing — docs/07). */
 async function findControl(page: Page, control: Control) {
   for (const name of control.nameAny) {
@@ -244,6 +273,7 @@ export async function runCommit(
   // Non-critical clicks that lead to the action (open a dialog, "Add a note"), each landing in an
   // expected state, or nothing more happens.
   let at = start;
+  if (action.steps.length > 0) await settle(page);
   for (const step of action.steps) {
     signal.throwIfAborted();
     const control = await findControl(page, step.click);
@@ -254,8 +284,7 @@ export async function runCommit(
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       });
     }
-    await control.click({ timeout: 10_000 });
-    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
+    const next = await clickStep(page, control, [...challenges, ...byId(step.expect)], signal);
     if (!next || next.kind === 'challenge') {
       if (next) await page.bringToFront();
       return notCommitted({
@@ -544,6 +573,7 @@ export async function readThread(
   if (reader.identity && (!pack.identity || !(await identityMatches(page, pack.identity, req.identity)))) {
     return { ...base, status: 'unsupported_state', stateId: at.id, errorKey: 'task.identityMismatch' };
   }
+  if (reader.steps.length > 0) await settle(page);
   for (const step of reader.steps) {
     signal.throwIfAborted();
     const control = await findControl(page, step.click);
@@ -555,8 +585,7 @@ export async function readThread(
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       };
     }
-    await control.click({ timeout: 10_000 });
-    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
+    const next = await clickStep(page, control, [...challenges, ...byId(step.expect)], signal);
     if (!next || next.kind === 'challenge') {
       return {
         ...base,
