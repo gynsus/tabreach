@@ -28,6 +28,14 @@ test.afterAll(async () => {
   rmSync(userData, { recursive: true, force: true });
 });
 
+/** Chrome windows opened by a test take the focus; the app window gets it back. */
+const focusApp = () =>
+  app.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    win?.show();
+    win?.focus();
+  });
+
 const go = (path: string) => page.evaluate((p) => (window.location.hash = p), path);
 
 /**
@@ -416,6 +424,9 @@ test('browser profiles: create, open in Chrome under your control, close, delete
   await expect(profile.getByRole('button', { name: 'Delete' })).toBeDisabled();
   await profile.getByRole('button', { name: 'Close' }).click();
   await expect(profile).toContainText('Ready', { timeout: 30_000 });
+  // The Chrome window took the focus; in a background window animation frames slow down and
+  // Playwright's "stable" check can stall (a CI flake). Bring the app back to the front.
+  await focusApp();
   await profile.getByRole('button', { name: 'Delete' }).click();
   const confirm = page.getByRole('dialog', { name: 'Delete “E2E profile”?' });
   await expect(confirm.getByRole('button', { name: 'Delete' })).toBeDisabled();
@@ -515,6 +526,7 @@ test('a campaign writes through a website contact form: prepared, approved as sh
     'Never ticked by TabReach',
   );
   await expect(preview.getByRole('img', { name: 'The form as the site shows it' })).toBeVisible();
+  await focusApp(); // preparing the form opened Chrome, which took the focus
   await page.getByRole('button', { name: 'Approve' }).click();
 
   await go('#/campaigns');
