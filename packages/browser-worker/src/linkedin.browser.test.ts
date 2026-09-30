@@ -113,7 +113,7 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
     expect(await act('linkedin.connect', 'ann-lee', 'Ann Lee')).toMatchObject({
       status: 'succeeded',
       committed: true,
-      packVersion: '0.3.0',
+      packVersion: '0.4.0',
     });
     expect(
       await act('linkedin.connect.note', 'ann-lee', 'Ann Lee', { note: 'Hi Ann, glad to connect.' }),

@@ -84,12 +84,19 @@ const generic = {
  * checked by hand and the pack is versioned whenever they change (ADR 017).
  */
 const IN = 'https://www.linkedin.com/in/*';
-// On real profile pages the person's name is the first level-2 heading (live check, 2026-09-30).
-const heading = { role: 'heading', level: 2 };
+const MESSAGING = 'https://www.linkedin.com/messaging/*';
+// Live check, 2026-09-30: on a profile the person's name is the first level-2 heading in `main`;
+// a sidebar of other people outside `main` has its own Connect buttons, a floating chat window
+// its own composer. Profile conditions and controls are therefore looked for in `main` only.
+const heading = { role: 'heading', level: 2, within: 'main' };
+// Dialogs (an invitation) open over the page, outside `main`.
 const button = (...nameAny: string[]) => ({ role: 'button', nameAny });
+const mainButton = (...nameAny: string[]) => ({ ...button(...nameAny), within: 'main' });
+const dialogButton = (...nameAny: string[]) => ({ ...button(...nameAny), within: 'dialog' });
+const messageLink = { role: 'link', nameAny: ['Message', 'Сообщение'], within: 'main' };
 const linkedin = {
   id: 'linkedin',
-  version: '0.3.0',
+  version: '0.4.0',
   channel: 'linkedin',
   states: [
     {
@@ -130,12 +137,13 @@ const linkedin = {
       url: [IN],
       requires: [{ role: 'dialog' }, button('Send without a note', 'Отправить без заметки')],
     },
+    // The full-page conversation a profile's "Message" link leads to (/messaging/compose/...).
     {
-      id: 'linkedin.composer',
-      url: [IN],
+      id: 'linkedin.messaging',
+      url: [MESSAGING],
       requires: [
-        { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
-        { role: 'textbox', nameAny: ['Write a message', 'Напишите сообщение'] },
+        { role: 'heading', level: 1, nameAny: ['Messaging', 'Сообщения'] },
+        { role: 'textbox', nameAny: ['Write a message', 'Напишите сообщение'], within: 'main' },
       ],
     },
     {
@@ -143,26 +151,23 @@ const linkedin = {
       url: [IN],
       requires: [heading, { textAny: ['Invitation sent', 'Приглашение отправлено'] }],
     },
-    { id: 'linkedin.profile.pending', url: [IN], requires: [heading, button('Pending', 'Ожидание')] },
+    { id: 'linkedin.profile.pending', url: [IN], requires: [heading, mainButton('Pending', 'Ожидание')] },
     {
       id: 'linkedin.profile.connectable',
       url: [IN],
-      requires: [heading, button('Connect', 'Установить контакт')],
+      requires: [heading, mainButton('Connect', 'Установить контакт')],
     },
-    // "Message" is a link on real profile pages (to /messaging/compose/), opening the composer over the page.
-    {
-      id: 'linkedin.profile.messageable',
-      url: [IN],
-      requires: [heading, { role: 'link', nameAny: ['Message', 'Сообщение'] }],
-    },
+    // "Message" is a link to the conversation (/messaging/compose/...); followed, never clicked:
+    // a click opens a floating window, a new page or nothing, depending on what LinkedIn remembers.
+    { id: 'linkedin.profile.messageable', url: [IN], requires: [heading, messageLink] },
   ],
   actions: [
     {
       id: 'linkedin.connect',
       from: ['linkedin.profile.connectable'],
       identity: true,
-      steps: [{ click: button('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] }],
-      commit: button('Send without a note', 'Отправить без заметки'),
+      steps: [{ click: mainButton('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] }],
+      commit: dialogButton('Send without a note', 'Отправить без заметки'),
       success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
     },
     {
@@ -170,28 +175,29 @@ const linkedin = {
       from: ['linkedin.profile.connectable'],
       identity: true,
       steps: [
-        { click: button('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] },
-        { click: button('Add a note', 'Добавить заметку'), expect: ['linkedin.invite.note'] },
+        { click: mainButton('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] },
+        { click: dialogButton('Add a note', 'Добавить заметку'), expect: ['linkedin.invite.note'] },
       ],
       fill: [{ control: { role: 'textbox', nameAny: ['Add a note', 'Добавьте заметку'] }, param: 'note' }],
-      commit: button('Send', 'Отправить'),
+      commit: dialogButton('Send', 'Отправить'),
       success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
     },
     {
       id: 'linkedin.message',
       from: ['linkedin.profile.messageable'],
       identity: true,
-      steps: [{ click: { role: 'link', nameAny: ['Message', 'Сообщение'] }, expect: ['linkedin.composer'] }],
+      steps: [{ follow: messageLink, expect: ['linkedin.messaging'] }],
       fill: [
         {
           control: {
             role: 'textbox',
             nameAny: ['Write a message…', 'Write a message', 'Напишите сообщение…', 'Напишите сообщение'],
+            within: 'main',
           },
           param: 'body',
         },
       ],
-      commit: button('Send', 'Отправить'),
+      commit: mainButton('Send', 'Отправить'),
       // LinkedIn says nothing like "sent": the new message of ours in the thread is the proof.
       confirm: { reader: 'linkedin.thread' },
     },
@@ -201,8 +207,8 @@ const linkedin = {
       id: 'linkedin.thread',
       from: ['linkedin.profile.messageable'],
       identity: true,
-      steps: [{ click: { role: 'link', nameAny: ['Message', 'Сообщение'] }, expect: ['linkedin.composer'] }],
-      within: { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
+      steps: [{ follow: messageLink, expect: ['linkedin.messaging'] }],
+      within: { role: 'main' },
       profileLinkAny: ['profile', 'профил'],
     },
   ],

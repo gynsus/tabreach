@@ -9,7 +9,7 @@ export interface PageProbe {
    */
   frameUrls(): Promise<readonly string[]>;
   /** An element with this role (and accessible name containing `name`, case-insensitive). */
-  hasRole(role: string, options: { name?: string; level?: number }): Promise<boolean>;
+  hasRole(role: string, options: { name?: string; level?: number; within?: string }): Promise<boolean>;
   /** Visible text containing this, case-insensitive. */
   hasText(text: string): Promise<boolean>;
 }
@@ -30,8 +30,12 @@ export async function conditionHolds(c: Condition, probe: PageProbe): Promise<bo
   }
   const names = c.nameAny ?? (c.name ? [c.name] : [undefined]);
   for (const name of names) {
-    if (await probe.hasRole(c.role, { ...(name ? { name } : {}), ...(c.level ? { level: c.level } : {}) }))
-      return true;
+    const options = {
+      ...(name ? { name } : {}),
+      ...(c.level ? { level: c.level } : {}),
+      ...(c.within ? { within: c.within } : {}),
+    };
+    if (await probe.hasRole(c.role, options)) return true;
   }
   return false;
 }

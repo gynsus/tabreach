@@ -1,8 +1,10 @@
 /* global window, document, location */
 // A minimal LinkedIn-like profile for adapter tests (Phase 7). Own markup — nothing copied —
 // with the roles and names the linkedin pack recognizes, shaped like the live check of
-// 2026-09-30: the name is a level-2 heading, "Message" is a link opening a "Messaging" dialog,
-// the conversation is an unnamed list whose first item of a group names the sender by links. Every invitation and message sent is
+// 2026-09-30: the name is a level-2 heading in main, a sidebar of other people outside main has
+// Connect buttons, "Message" is a link to the conversation's own page (messaging/compose/), where
+// the conversation is an unnamed list whose first item of a group names the sender by links and
+// a floating chat window outside main has a composer of its own. Every invitation and message sent is
 // counted in localStorage (`li_actions`) so tests can prove an action happened once.
 // ?thread=replied: the person answered after our last message. ?result=silent: nothing confirms.
 (() => {
@@ -20,7 +22,8 @@
     return e;
   };
   const main = el('main');
-  main.append(el('h2', {}, p.name), el('p', {}, p.headline), el('h2', {}, 'About'));
+  if (p.page === 'messaging') main.append(el('h1', {}, 'Messaging'));
+  else main.append(el('h2', {}, p.name), el('p', {}, p.headline), el('h2', {}, 'About'));
   const actions = el('div', { role: 'group', 'aria-label': 'Profile actions' });
   main.append(actions);
   const status = el('p', { role: 'status' });
@@ -64,42 +67,71 @@
     };
   }
   if (p.degree === '1st') {
-    const message = el('a', { href: '#compose' }, 'Message');
+    // Like the real link: the conversation's own page, naming the recipient (here by slug and name).
+    const to = new URLSearchParams(q);
+    to.set('recipient', location.pathname.split('/').filter(Boolean).pop());
+    to.set('name', p.name);
+    const message = el('a', { href: `../../messaging/compose/?${to}` }, 'Message');
     actions.append(message, el('button', { type: 'button' }, 'More'));
+    // A click is not what the pack does: it opens a floating window, like the real site sometimes.
     message.onclick = (event) => {
       event.preventDefault();
-      if (document.querySelector('[aria-label="Messaging"]')) return;
-      const dlg = el('div', { role: 'dialog', 'aria-label': 'Messaging' });
-      const list = el('ul');
-      let lastSender = null;
-      const item = (sender, text) => {
-        const li = el('li');
-        if (sender !== lastSender) {
-          const first = sender.split(' ')[0];
-          li.append(el('a', { href: '#' }, `View ${first}’s profile`), el('a', { href: '#' }, sender));
-          lastSender = sender;
-        }
-        li.append(el('p', {}, text));
-        list.append(li);
-      };
-      list.append(el('li', {}, 'Jul 3, 2025'));
-      item('Sam Sender', 'Hello, nice to meet you.');
-      if (q.get('thread') === 'replied') item(p.name, 'Thanks, tell me more.');
-      const box = el('textarea', { 'aria-label': 'Write a message…' });
-      const send = el('button', { type: 'button' }, 'Send');
-      send.onclick = () => {
-        record({ type: 'message', profile: location.pathname, body: box.value });
-        if (q.get('result') !== 'silent') item('Sam Sender', box.value);
-        box.value = '';
-      };
-      dlg.append(
-        el('h2', {}, p.name),
-        list,
-        box,
-        send,
-        el('button', { type: 'button' }, 'Open send options'),
-      );
-      document.body.append(dlg);
+      document.body.append(el('aside', { 'aria-label': 'Chat' }, 'Floating chat'));
     };
+  }
+  if (p.page === 'messaging') {
+    const name = q.get('name') ?? '';
+    const list = el('ul');
+    let lastSender = null;
+    const item = (sender, text) => {
+      const li = el('li');
+      if (sender !== lastSender) {
+        const first = sender.split(' ')[0];
+        li.append(el('a', { href: '#' }, `View ${first}’s profile`), el('a', { href: '#' }, sender));
+        lastSender = sender;
+      }
+      li.append(el('p', {}, text));
+      list.append(li);
+    };
+    list.append(el('li', {}, 'Jul 3, 2025'));
+    item('Sam Sender', 'Hello, nice to meet you.');
+    if (q.get('thread') === 'replied') item(name, 'Thanks, tell me more.');
+    // Other conversations: names, but no profile links.
+    const others = el('ul', { 'aria-label': 'Conversations' });
+    for (const who of ['Old Friend', 'Former Colleague', name]) {
+      const li = el('li');
+      li.append(el('a', { href: '#' }, who));
+      others.append(li);
+    }
+    const box = el('textarea', { 'aria-label': 'Write a message…' });
+    const send = el('button', { type: 'button' }, 'Send');
+    send.onclick = () => {
+      record({ type: 'message', profile: `/li/in/${q.get('recipient')}/`, body: box.value });
+      if (q.get('result') !== 'silent') item('Sam Sender', box.value);
+      box.value = '';
+    };
+    main.replaceChildren(
+      el('h1', {}, 'Messaging'),
+      others,
+      el('h2', {}, name),
+      list,
+      box,
+      send,
+      el('button', { type: 'button' }, 'Open send options'),
+    );
+  }
+  if (p.page !== 'messaging') {
+    // Outside main, like the real sidebar: other people, with buttons of their own.
+    const aside = el('aside', { 'aria-label': 'More profiles for you' });
+    aside.append(el('a', { href: '#' }, 'Dana Other'), el('button', { type: 'button' }, 'Connect'));
+    document.body.append(aside);
+  } else {
+    // A floating chat window left open on another page: a composer of its own, outside main.
+    const chat = el('aside', { 'aria-label': 'Chat' });
+    chat.append(
+      el('textarea', { 'aria-label': 'Write a message…' }),
+      el('button', { type: 'button' }, 'Send'),
+    );
+    document.body.append(chat);
   }
 })();

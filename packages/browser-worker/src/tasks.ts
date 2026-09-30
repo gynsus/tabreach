@@ -6,6 +6,7 @@ import {
   type AdapterPack,
   type Control,
   type PackReader,
+  type PackStep,
   type PageProbe,
   type PageState,
 } from '@tabreach/adapter-packs';
@@ -46,8 +47,8 @@ export function probeOf(page: Page): PageProbe {
       }
       return shown;
     },
-    hasRole: async (role, { name, level }) =>
-      (await page
+    hasRole: async (role, { name, level, within }) =>
+      (await (within ? page.getByRole(within as Parameters<Page['getByRole']>[0]).first() : page)
         // Roles come from validated pack data; Playwright checks them against ARIA.
         .getByRole(role as Parameters<Page['getByRole']>[0], {
           ...(name ? { name } : {}),
@@ -155,31 +156,56 @@ async function settle(page: Page): Promise<void> {
 }
 
 /**
- * A non-critical click that should lead to one of `expect`: if the page has not got there after a
- * few seconds, it is clicked once more (such a click opens something, it never sends anything).
+ * A non-critical step towards one of `expect`: a click (once — a click that did nothing is not
+ * repeated), or `follow`: the link's address opened in this tab, same site only. A followed link
+ * does not depend on what the site does with a click (LinkedIn's "Message" opens a floating
+ * window, a new page or nothing — live check, 2026-09-30).
  */
-async function clickStep(
+async function performStep(
   page: Page,
-  control: NonNullable<Awaited<ReturnType<typeof findControl>>>,
+  step: PackStep,
   expect: PageState[],
   signal: AbortSignal,
-): Promise<PageState | null> {
-  await control.click({ timeout: 10_000 });
-  const first = await recognize(page, expect, STEP_RETRY_MS, signal);
-  if (first) return first;
-  await control.click({ timeout: 10_000 }).catch(() => {}); // gone meanwhile: the wait below decides
+): Promise<PageState | null | 'missing'> {
+  const target = step.click ?? step.follow;
+  const control = target ? await findControl(page, target) : null;
+  if (!control) return 'missing';
+  if (step.click) {
+    await control.click({ timeout: 10_000 });
+  } else {
+    const href = await control.getAttribute('href', { timeout: 5_000 }).catch(() => null);
+    const here = new URL(page.url());
+    const to = href ? new URL(href, here) : null;
+    if (!to || to.origin !== here.origin) return 'missing';
+    await page.goto(to.href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  }
   return recognize(page, expect, RECOGNIZE_TIMEOUT_MS, signal);
 }
 
 const SETTLE_MS = 1_500;
-const STEP_RETRY_MS = 5_000;
 
-/** Exactly one visible control with one of the names; otherwise nothing (no guessing — docs/07). */
+/** The little of the DOM that in-page reads use (the worker is compiled without DOM types). */
+interface QueryRoot {
+  querySelectorAll(selector: string): ArrayLike<QueryRoot> & Iterable<QueryRoot>;
+  getAttribute(name: string): string | null;
+  textContent: string | null;
+}
+
+/**
+ * Exactly one visible control with one of the names (or, with no names, the only one with its
+ * role), inside its landmark when it names one; otherwise nothing (no guessing — docs/07).
+ */
 async function findControl(page: Page, control: Control) {
+  const scope = control.within
+    ? page.getByRole(control.within as Parameters<Page['getByRole']>[0]).first()
+    : page;
+  const role = control.role as Parameters<Page['getByRole']>[0];
+  if (!control.nameAny) {
+    const found = scope.getByRole(role).filter({ visible: true });
+    return (await found.count()) === 1 ? found : null;
+  }
   for (const name of control.nameAny) {
-    const found = page
-      .getByRole(control.role as Parameters<Page['getByRole']>[0], { name, exact: true })
-      .filter({ visible: true });
+    const found = scope.getByRole(role, { name, exact: true }).filter({ visible: true });
     const count = await found.count();
     if (count === 1) return found;
     if (count > 1) return null;
@@ -276,15 +302,14 @@ export async function runCommit(
   if (action.steps.length > 0) await settle(page);
   for (const step of action.steps) {
     signal.throwIfAborted();
-    const control = await findControl(page, step.click);
-    if (!control) {
+    const next = await performStep(page, step, [...challenges, ...byId(step.expect)], signal);
+    if (next === 'missing') {
       return notCommitted({
         status: 'unsupported_state',
         stateId: at.id,
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       });
     }
-    const next = await clickStep(page, control, [...challenges, ...byId(step.expect)], signal);
     if (!next || next.kind === 'challenge') {
       if (next) await page.bringToFront();
       return notCommitted({
@@ -325,14 +350,19 @@ export async function runCommit(
   const handle = await commit.elementHandle({ timeout: 5_000 }).catch(() => null);
   if (!handle) return notCommitted({ errorKey: 'task.stateChanged' });
   const where = action.steps.at(-1)?.expect ?? action.from;
+  // On a profile the person is checked again; a page reached from it (the conversation a verified
+  // profile's "Message" link leads to) is held to its exact address instead.
+  const stillTheirs = async () =>
+    !action.identity ||
+    !pack.identity ||
+    !req.identity ||
+    !profileSlug(page.url(), pack.identity.profilePath) ||
+    (await identityMatches(page, pack.identity, req.identity));
   const stillThere = async () =>
     page.url() === startUrl &&
     (await handle.evaluate((el) => el.isConnected).catch(() => false)) &&
     (await matchState(byId(where), probeOf(page)).catch(() => null))?.id === at.id &&
-    (!action.identity ||
-      !pack.identity ||
-      !req.identity ||
-      (await identityMatches(page, pack.identity, req.identity)));
+    (await stillTheirs());
   if (!(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
 
   // Actions no page confirms (a LinkedIn message) are proven by the reader: one more of ours.
@@ -576,8 +606,8 @@ export async function readThread(
   if (reader.steps.length > 0) await settle(page);
   for (const step of reader.steps) {
     signal.throwIfAborted();
-    const control = await findControl(page, step.click);
-    if (!control) {
+    const next = await performStep(page, step, [...challenges, ...byId(step.expect)], signal);
+    if (next === 'missing') {
       return {
         ...base,
         status: 'unsupported_state',
@@ -585,7 +615,6 @@ export async function readThread(
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       };
     }
-    const next = await clickStep(page, control, [...challenges, ...byId(step.expect)], signal);
     if (!next || next.kind === 'challenge') {
       return {
         ...base,
@@ -612,8 +641,8 @@ export async function readThread(
 }
 
 /**
- * The directions of a conversation's messages (a pack reader): the longest list inside the
- * reader's container; an item's sender is a link naming the contact (theirs) or another profile
+ * The directions of a conversation's messages (a pack reader): the list inside the reader's
+ * container with the most items carrying a profile link (a list of conversations has none); an item's sender is a link naming the contact (theirs) or another profile
  * link (ours); an item without one continues the sender before it. null: no conversation found.
  */
 export async function readMessages(
@@ -623,25 +652,28 @@ export async function readMessages(
 ): Promise<{ direction: 'in' | 'out' }[] | null> {
   const container = await findControl(page, reader.within);
   if (!container) return null;
-  const sizes = await container
+  // Each list's items as the labels of their links, read in the page (the worker has no DOM types).
+  const lists = await container
     .getByRole('list')
-    .evaluateAll((els) => els.map((e) => e.querySelectorAll(':scope > li').length))
-    .catch(() => [] as number[]);
-  if (sizes.length === 0) return [];
-  const longest = sizes.indexOf(Math.max(...sizes));
-  const senders = await container
-    .getByRole('list')
-    .nth(longest)
-    .locator(':scope > li')
-    .evaluateAll((items) =>
-      items.map((li) =>
-        Array.from(li.querySelectorAll('a')).map((a) =>
-          `${a.getAttribute('aria-label') ?? ''} ${a.textContent ?? ''}`.replace(/\s+/g, ' ').trim(),
+    .evaluateAll((els) =>
+      els.map((e) =>
+        Array.from((e as unknown as QueryRoot).querySelectorAll(':scope > li')).map((li) =>
+          Array.from(li.querySelectorAll('a')).map((a) =>
+            `${a.getAttribute('aria-label') ?? ''} ${a.textContent ?? ''}`.replace(/\s+/g, ' ').trim(),
+          ),
         ),
       ),
     )
     .catch(() => null);
-  if (!senders) return null;
+  if (!lists) return null;
+  const words = reader.profileLinkAny;
+  const withSender = lists.map(
+    (items) =>
+      items.filter((links) => links.some((l) => words.some((w) => normalizeName(l).includes(w)))).length,
+  );
+  // No list with a sender in it: a conversation not started yet.
+  if (withSender.length === 0 || Math.max(...withSender) === 0) return [];
+  const senders = lists[withSender.indexOf(Math.max(...withSender))] ?? [];
   const them = normalizeName(contactName);
   const messages: { direction: 'in' | 'out' }[] = [];
   let current: 'in' | 'out' | null = null;

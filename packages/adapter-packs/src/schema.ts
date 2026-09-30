@@ -16,6 +16,8 @@ export const roleConditionSchema = z
     /** Any of these accessible names; lists UI-language variants. */
     nameAny: z.array(nonEmpty).min(1).optional(),
     level: z.number().int().min(1).max(6).optional(),
+    /** Only inside this landmark (e.g. `main`): a sidebar of other people has the same buttons. */
+    within: nonEmpty.optional(),
   })
   .strict()
   .refine((c) => !(c.name && c.nameAny), { message: 'Use either name or nameAny, not both' });
@@ -71,10 +73,32 @@ const stateId = z
 export const controlSchema = z
   .object({
     role: nonEmpty,
-    nameAny: z.array(nonEmpty).min(1),
+    /** Any of these accessible names; none: the only visible element with this role. */
+    nameAny: z.array(nonEmpty).min(1).optional(),
+    /**
+     * Looked for inside this landmark only (e.g. `main`): a floating chat window or a sidebar of
+     * other people has the same controls (live check on LinkedIn, 2026-09-30).
+     */
+    within: nonEmpty.optional(),
   })
   .strict();
 export type Control = z.infer<typeof controlSchema>;
+
+/**
+ * A non-critical step towards an action: `click` a control, or `follow` a link — go to its address
+ * in the same site instead of clicking it (a click can open a floating window or a new page,
+ * depending on what the site remembers). Each lands in one of `expect`.
+ */
+const stepSchema = z
+  .object({
+    click: controlSchema.optional(),
+    follow: controlSchema.optional(),
+    expect: z.array(stateId).min(1),
+  })
+  .strict()
+  .refine((st) => (st.click ? 1 : 0) + (st.follow ? 1 : 0) === 1, { message: 'A step clicks or follows' });
+export type PackStep = z.infer<typeof stepSchema>;
+const stepsSchema = z.array(stepSchema).default([]);
 
 /**
  * A critical action (docs/07 "Checkpoint rule", Phase 5c): from a recognized state, fill the
@@ -92,7 +116,7 @@ export const packActionSchema = z
      * the message composer): each control must be unique and visible, and after it the page must
      * be in one of `expect`. Nothing here sends anything.
      */
-    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    steps: stepsSchema,
     /** The target is checked (profile URL and name, docs/14) on the start page before any click. */
     identity: z.boolean().default(false),
     fill: z
@@ -124,7 +148,7 @@ export const packReaderSchema = z
   .object({
     id: stateId,
     from: z.array(stateId).min(1),
-    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    steps: stepsSchema,
     identity: z.boolean().default(false),
     within: controlSchema,
     profileLinkAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
