@@ -456,6 +456,7 @@ test('a campaign writes through a website contact form: prepared, approved as sh
   await page.getByLabel('Your company').fill('Sender Co');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Form sender saved' })).toBeVisible();
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
 
   // A company whose website has a contact page (the local fixture site), and a contact there.
   // Chrome sends any *.localhost to this machine; a website needs a host name, not an IP.
@@ -538,6 +539,8 @@ test('LinkedIn stays off until the risk is accepted; a LinkedIn step starts assi
   await page.getByLabel('I have read this and accept the risk for my account').check();
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'LinkedIn settings saved' })).toBeVisible();
+  // Saved means saved: no "Unsaved changes", and leaving the screen does not ask.
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
 
   await go('#/campaigns');
   await page.getByRole('button', { name: 'New campaign' }).first().click();
@@ -554,6 +557,19 @@ test('LinkedIn stays off until the risk is accepted; a LinkedIn step starts assi
   await step.getByLabel('Who presses Send').selectOption('auto');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(step.getByText(/Auto is not allowed for this LinkedIn action/)).toBeVisible();
+});
+
+test('a saved settings screen is saved: no "Unsaved changes", leaving does not ask', async () => {
+  await go('#/settings/policy');
+  const cap = page.getByRole('spinbutton').first();
+  await cap.fill('4');
+  await cap.press('Enter');
+  await expect(page.getByText('Unsaved changes')).toBeVisible();
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
+  await page.getByRole('link', { name: 'Contacts' }).click();
+  await expect(page.getByText('You have unsaved changes on this screen.')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Contacts', level: 1 })).toBeVisible();
 });
 
 test('switches the interface to Russian and keeps it after a reload', async () => {
