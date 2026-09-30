@@ -84,11 +84,12 @@ const generic = {
  * checked by hand and the pack is versioned whenever they change (ADR 017).
  */
 const IN = 'https://www.linkedin.com/in/*';
-const heading = { role: 'heading', level: 1 };
+// On real profile pages the person's name is the first level-2 heading (live check, 2026-09-30).
+const heading = { role: 'heading', level: 2 };
 const button = (...nameAny: string[]) => ({ role: 'button', nameAny });
 const linkedin = {
   id: 'linkedin',
-  version: '0.2.0',
+  version: '0.3.0',
   channel: 'linkedin',
   states: [
     {
@@ -130,14 +131,6 @@ const linkedin = {
       requires: [{ role: 'dialog' }, button('Send without a note', 'Отправить без заметки')],
     },
     {
-      id: 'linkedin.message.sent',
-      url: [IN],
-      requires: [
-        { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
-        { textAny: ['Message sent', 'Сообщение отправлено'] },
-      ],
-    },
-    {
       id: 'linkedin.composer',
       url: [IN],
       requires: [
@@ -156,7 +149,12 @@ const linkedin = {
       url: [IN],
       requires: [heading, button('Connect', 'Установить контакт')],
     },
-    { id: 'linkedin.profile.messageable', url: [IN], requires: [heading, button('Message', 'Сообщение')] },
+    // "Message" is a link on real profile pages (to /messaging/compose/), opening the composer over the page.
+    {
+      id: 'linkedin.profile.messageable',
+      url: [IN],
+      requires: [heading, { role: 'link', nameAny: ['Message', 'Сообщение'] }],
+    },
   ],
   actions: [
     {
@@ -183,12 +181,19 @@ const linkedin = {
       id: 'linkedin.message',
       from: ['linkedin.profile.messageable'],
       identity: true,
-      steps: [{ click: button('Message', 'Сообщение'), expect: ['linkedin.composer'] }],
+      steps: [{ click: { role: 'link', nameAny: ['Message', 'Сообщение'] }, expect: ['linkedin.composer'] }],
       fill: [
-        { control: { role: 'textbox', nameAny: ['Write a message', 'Напишите сообщение'] }, param: 'body' },
+        {
+          control: {
+            role: 'textbox',
+            nameAny: ['Write a message…', 'Write a message', 'Напишите сообщение…', 'Напишите сообщение'],
+          },
+          param: 'body',
+        },
       ],
       commit: button('Send', 'Отправить'),
-      success: ['linkedin.message.sent'],
+      // LinkedIn says nothing like "sent": the new message of ours in the thread is the proof.
+      confirm: { reader: 'linkedin.thread' },
     },
   ],
   readers: [
@@ -196,13 +201,12 @@ const linkedin = {
       id: 'linkedin.thread',
       from: ['linkedin.profile.messageable'],
       identity: true,
-      steps: [{ click: button('Message', 'Сообщение'), expect: ['linkedin.composer'] }],
-      list: { role: 'list', nameAny: ['Conversation', 'Переписка'] },
-      item: 'listitem',
-      outgoingAny: ['message from you', 'сообщение от вас', 'you sent'],
+      steps: [{ click: { role: 'link', nameAny: ['Message', 'Сообщение'] }, expect: ['linkedin.composer'] }],
+      within: { role: 'dialog', nameAny: ['Messaging', 'Сообщения'] },
+      profileLinkAny: ['profile', 'профил'],
     },
   ],
-  identity: { name: { role: 'heading', level: 1 }, profilePath: '/in/' },
+  identity: { name: { role: 'heading', level: 2 }, profilePath: '/in/' },
   // Product defaults, not LinkedIn's limits and no guarantee against restrictions (FR-LIN-005).
   limits: {
     perDay: { connect: 15, message: 30, visit: 60 },

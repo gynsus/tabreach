@@ -4,7 +4,7 @@ import { bundledPack, bundledPacks } from './packs.js';
 
 const probe = (over: Partial<PageProbe> & { roles?: string[]; texts?: string[] }): PageProbe => ({
   url: over.url ?? 'https://example.com/',
-  frameUrls: over.frameUrls ?? [],
+  frameUrls: () => Promise.resolve(over.frameUrls ?? []),
   hasRole: async (role, { name }) =>
     (over.roles ?? []).some(
       (r) =>

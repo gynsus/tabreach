@@ -3,7 +3,11 @@ import type { Condition, PageState } from './schema.js';
 /** What state matching needs to know about a page; the worker answers it with Playwright. */
 export interface PageProbe {
   url: string;
-  frameUrls: readonly string[];
+  /**
+   * URLs of the frames a person can see (laid out, not tiny, not an invisible widget): LinkedIn
+   * and others load an invisible reCAPTCHA for a moment, which is no challenge (live check, 7.5).
+   */
+  frameUrls(): Promise<readonly string[]>;
   /** An element with this role (and accessible name containing `name`, case-insensitive). */
   hasRole(role: string, options: { name?: string; level?: number }): Promise<boolean>;
   /** Visible text containing this, case-insensitive. */
@@ -18,7 +22,8 @@ export function urlMatches(pattern: string, url: string): boolean {
 const escape = (s: string) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&');
 
 export async function conditionHolds(c: Condition, probe: PageProbe): Promise<boolean> {
-  if ('frameUrlAny' in c) return probe.frameUrls.some((f) => c.frameUrlAny.some((p) => urlMatches(p, f)));
+  if ('frameUrlAny' in c)
+    return (await probe.frameUrls()).some((f) => c.frameUrlAny.some((p) => urlMatches(p, f)));
   if ('textAny' in c) {
     for (const text of c.textAny) if (await probe.hasText(text)) return true;
     return false;

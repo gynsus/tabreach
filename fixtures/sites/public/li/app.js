@@ -1,6 +1,8 @@
 /* global window, document, location */
 // A minimal LinkedIn-like profile for adapter tests (Phase 7). Own markup — nothing copied —
-// with the roles and names the linkedin pack recognizes. Every invitation and message sent is
+// with the roles and names the linkedin pack recognizes, shaped like the live check of
+// 2026-09-30: the name is a level-2 heading, "Message" is a link opening a "Messaging" dialog,
+// the conversation is an unnamed list whose first item of a group names the sender by links. Every invitation and message sent is
 // counted in localStorage (`li_actions`) so tests can prove an action happened once.
 // ?thread=replied: the person answered after our last message. ?result=silent: nothing confirms.
 (() => {
@@ -18,7 +20,7 @@
     return e;
   };
   const main = el('main');
-  main.append(el('h1', {}, p.name), el('p', {}, p.headline));
+  main.append(el('h2', {}, p.name), el('p', {}, p.headline), el('h2', {}, 'About'));
   const actions = el('div', { role: 'group', 'aria-label': 'Profile actions' });
   main.append(actions);
   const status = el('p', { role: 'status' });
@@ -56,24 +58,35 @@
     };
   }
   if (p.degree === '1st') {
-    const message = el('button', { type: 'button' }, 'Message');
+    const message = el('a', { href: '#compose' }, 'Message');
     actions.append(message, el('button', { type: 'button' }, 'More'));
-    message.onclick = () => {
+    message.onclick = (event) => {
+      event.preventDefault();
+      if (document.querySelector('[aria-label="Messaging"]')) return;
       const dlg = el('div', { role: 'dialog', 'aria-label': 'Messaging' });
-      const list = el('ul', { 'aria-label': 'Conversation' });
-      const item = (from, text) => list.append(el('li', { 'aria-label': `Message from ${from}` }, text));
-      item('you', 'Hello, nice to meet you.');
+      const list = el('ul');
+      let lastSender = null;
+      const item = (sender, text) => {
+        const li = el('li');
+        if (sender !== lastSender) {
+          const first = sender.split(' ')[0];
+          li.append(el('a', { href: '#' }, `View ${first}’s profile`), el('a', { href: '#' }, sender));
+          lastSender = sender;
+        }
+        li.append(el('p', {}, text));
+        list.append(li);
+      };
+      list.append(el('li', {}, 'Jul 3, 2025'));
+      item('Sam Sender', 'Hello, nice to meet you.');
       if (q.get('thread') === 'replied') item(p.name, 'Thanks, tell me more.');
-      const box = el('textarea', { 'aria-label': 'Write a message' });
+      const box = el('textarea', { 'aria-label': 'Write a message…' });
       const send = el('button', { type: 'button' }, 'Send');
-      const sentNote = el('p', { role: 'status' });
       send.onclick = () => {
         record({ type: 'message', profile: location.pathname, body: box.value });
-        item('you', box.value);
+        if (q.get('result') !== 'silent') item('Sam Sender', box.value);
         box.value = '';
-        if (q.get('result') !== 'silent') sentNote.textContent = 'Message sent';
       };
-      dlg.append(el('h2', {}, p.name), list, box, send, sentNote);
+      dlg.append(el('h2', {}, p.name), list, box, send, el('button', { type: 'button' }, 'Open send options'));
       document.body.append(dlg);
     };
   }

@@ -100,7 +100,13 @@ export const packActionSchema = z
       .default([]),
     /** The control whose press is irreversible. */
     commit: controlSchema,
-    success: z.array(stateId).min(1),
+    /** States that show the action happened (or `confirm`, when no page says so). */
+    success: z.array(stateId).default([]),
+    /**
+     * No page says "sent" (LinkedIn messages): the action happened when this reader shows one more
+     * message of ours than before the press.
+     */
+    confirm: z.object({ reader: stateId }).strict().optional(),
     /** The site refused before anything left (a validation error on the same form, say). */
     rejected: z.array(stateId).default([]),
   })
@@ -109,8 +115,10 @@ export type PackAction = z.infer<typeof packActionSchema>;
 
 /**
  * Reads a conversation (FR-LIN-004): from a recognized state, the listed steps open the thread;
- * the messages are the `item`s inside the `list` control, and an item whose accessible name or
- * text says one of `outgoingAny` is ours. Only directions are read, never message text.
+ * the messages are the direct items of the longest list inside `within`. An item names its sender
+ * with a link: one naming the contact is theirs; another profile link (its text has one of
+ * `profileLinkAny`) is ours; an item without one continues the sender before it. Only directions
+ * are read, never message text (live check on LinkedIn, 2026-09-30).
  */
 export const packReaderSchema = z
   .object({
@@ -118,9 +126,8 @@ export const packReaderSchema = z
     from: z.array(stateId).min(1),
     steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
     identity: z.boolean().default(false),
-    list: controlSchema,
-    item: nonEmpty,
-    outgoingAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
+    within: controlSchema,
+    profileLinkAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
   })
   .strict();
 export type PackReader = z.infer<typeof packReaderSchema>;
@@ -231,6 +238,20 @@ export const adapterPackSchema = z
           if (!seen.has(ref)) {
             ctx.addIssue({ code: 'custom', path: ['actions', i, key, j], message: `Unknown state ${ref}` });
           }
+        });
+      }
+      if (action.success.length === 0 && !action.confirm) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'success'],
+          message: 'An action needs success states or a confirm reader',
+        });
+      }
+      if (action.confirm && !pack.readers.some((r) => r.id === action.confirm?.reader)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'confirm'],
+          message: `Unknown reader ${action.confirm.reader}`,
         });
       }
       action.steps.forEach((step, j) =>

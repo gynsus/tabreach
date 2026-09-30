@@ -5,6 +5,7 @@ import {
   matchState,
   type AdapterPack,
   type Control,
+  type PackReader,
   type PageProbe,
   type PageState,
 } from '@tabreach/adapter-packs';
@@ -35,7 +36,16 @@ export const bundledPacks = (id: string) => bundledPack(id);
 export function probeOf(page: Page): PageProbe {
   return {
     url: page.url(),
-    frameUrls: page.frames().map((f) => f.url()),
+    frameUrls: async () => {
+      const shown: string[] = [];
+      for (const frame of page.frames()) {
+        if (frame === page.mainFrame() || /[?&]size=invisible\b/.test(frame.url())) continue;
+        const element = await frame.frameElement().catch(() => null);
+        const box = await element?.boundingBox().catch(() => null);
+        if (box && box.width >= 50 && box.height >= 50) shown.push(frame.url());
+      }
+      return shown;
+    },
     hasRole: async (role, { name, level }) =>
       (await page
         // Roles come from validated pack data; Playwright checks them against ARIA.
@@ -296,6 +306,18 @@ export async function runCommit(
       (await identityMatches(page, pack.identity, req.identity)));
   if (!(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
 
+  // Actions no page confirms (a LinkedIn message) are proven by the reader: one more of ours.
+  const confirmReader = action.confirm
+    ? pack.readers.find((r) => r.id === action.confirm?.reader)
+    : undefined;
+  const outgoing = async () =>
+    confirmReader && req.identity
+      ? ((await readMessages(page, confirmReader, req.identity.name))?.filter((m) => m.direction === 'out')
+          .length ?? null)
+      : null;
+  const outgoingBefore = await outgoing();
+  if (action.confirm && outgoingBefore === null) return notCommitted({ errorKey: 'task.confirmUnavailable' });
+
   signal.throwIfAborted();
   if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
   // Auto: checked once more after core's answer; not pressed is still a verified "not sent".
@@ -312,6 +334,19 @@ export async function runCommit(
       await page.bringToFront();
       await handle.focus().catch(() => {}); // only a pointer for the person
       waitMs = ASSISTED_WAIT_MS;
+    }
+    if (action.confirm && outgoingBefore !== null) {
+      const deadline = Date.now() + waitMs;
+      for (;;) {
+        signal.throwIfAborted();
+        const now = await outgoing();
+        if (now !== null && now > outgoingBefore) {
+          return { ...committed, status: 'succeeded', stateId: null, stateKind: null, url: page.url() };
+        }
+        if (Date.now() > deadline) break;
+        await page.waitForTimeout(POLL_MS);
+      }
+      return { ...committed, status: 'unknown', url: page.url() };
     }
     const after = await recognize(page, [...byId(action.success), ...byId(action.rejected)], waitMs, signal);
     if (after && action.success.includes(after.id)) {
@@ -529,10 +564,9 @@ export async function readThread(
     }
     at = next;
   }
-  const list = await findControl(page, reader.list);
-  if (!list) {
-    // No conversation yet is an empty thread only when the page says so by having no list; the
-    // reader does not guess: an unrecognized page is unsupported.
+  const messages = await readMessages(page, reader, req.identity.name);
+  if (!messages) {
+    // No recognizable conversation where one should be: the reader does not guess.
     return {
       ...base,
       status: 'unsupported_state',
@@ -540,19 +574,51 @@ export async function readThread(
       diagnostics: await diagnose(page, req.taskId, [reader.id], env),
     };
   }
-  const items = list.getByRole(reader.item as Parameters<Page['getByRole']>[0]);
-  const count = Math.min(await items.count(), 500);
-  const messages: { direction: 'in' | 'out' }[] = [];
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    const label = (
-      (await item.getAttribute('aria-label').catch(() => null)) ??
-      (await item.textContent({ timeout: 5_000 }).catch(() => '')) ??
-      ''
-    ).toLowerCase();
-    messages.push({ direction: reader.outgoingAny.some((p) => label.includes(p)) ? 'out' : 'in' });
-  }
   const lastOut = messages.map((m) => m.direction).lastIndexOf('out');
   const replied = messages.some((m, i) => m.direction === 'in' && i > lastOut);
   return { ...base, status: 'ok', stateId: at.id, messages, replied };
+}
+
+/**
+ * The directions of a conversation's messages (a pack reader): the longest list inside the
+ * reader's container; an item's sender is a link naming the contact (theirs) or another profile
+ * link (ours); an item without one continues the sender before it. null: no conversation found.
+ */
+export async function readMessages(
+  page: Page,
+  reader: PackReader,
+  contactName: string,
+): Promise<{ direction: 'in' | 'out' }[] | null> {
+  const container = await findControl(page, reader.within);
+  if (!container) return null;
+  const sizes = await container
+    .getByRole('list')
+    .evaluateAll((els) => els.map((e) => e.querySelectorAll(':scope > li').length))
+    .catch(() => [] as number[]);
+  if (sizes.length === 0) return [];
+  const longest = sizes.indexOf(Math.max(...sizes));
+  const senders = await container
+    .getByRole('list')
+    .nth(longest)
+    .locator(':scope > li')
+    .evaluateAll((items) =>
+      items.map((li) =>
+        Array.from(li.querySelectorAll('a')).map((a) =>
+          `${a.getAttribute('aria-label') ?? ''} ${a.textContent ?? ''}`.replace(/\s+/g, ' ').trim(),
+        ),
+      ),
+    )
+    .catch(() => null);
+  if (!senders) return null;
+  const them = normalizeName(contactName);
+  const messages: { direction: 'in' | 'out' }[] = [];
+  let current: 'in' | 'out' | null = null;
+  for (const links of senders.slice(-500)) {
+    const names = links.map(normalizeName);
+    if (names.some((n) => n.includes(them))) current = 'in';
+    else if (names.some((n) => reader.profileLinkAny.some((p) => n.includes(p)))) current = 'out';
+    // Items before the first sender (a date line) belong to no one.
+    if (current) messages.push({ direction: current });
+  }
+  return messages;
 }
