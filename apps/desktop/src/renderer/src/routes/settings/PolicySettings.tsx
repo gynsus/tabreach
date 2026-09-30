@@ -25,11 +25,12 @@ function PolicyForm({ initial }: { initial: Policy }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const { value, setValue, dirty, reset } = useDraft(initial);
+  const { value, setValue, dirty, reset, saved } = useDraft(initial);
   const stopId = useId();
   const save = useMutation({
     mutationFn: () => call('policy.settings.update', value),
     onSuccess: async () => {
+      saved();
       toast(t('settings.policy.saved'));
       await invalidateEntities(qc, ['settings', 'activity']);
     },

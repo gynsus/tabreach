@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LinkedinSettings as Settings } from '@tabreach/protocol';
-import { useId, useState } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '../../components/toast';
 import {
@@ -36,8 +36,11 @@ function LinkedinForm({ initial }: { initial: Settings }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const { value, setValue, dirty, reset } = useDraft(initial);
-  const [acknowledged, setAcknowledged] = useState(initial.riskAcknowledgedAt !== null);
+  const { value, setValue, dirty, reset, saved } = useDraft(initial);
+  // The risk acknowledgement is not part of the settings object: its own working copy.
+  const ack = useDraft(initial.riskAcknowledgedAt !== null);
+  const acknowledged = ack.value;
+  const setAcknowledged = ack.setValue;
   const ids = { ack: useId(), enabled: useId(), autoConnect: useId(), autoMessage: useId(), raise: useId() };
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
@@ -56,13 +59,15 @@ function LinkedinForm({ initial }: { initial: Settings }) {
         acknowledgeRisk: acknowledged,
       }),
     onSuccess: async () => {
+      saved();
+      ack.saved();
       toast(t('settings.linkedin.saved'));
       await invalidateEntities(qc, ['settings', 'activity']);
     },
   });
   const errors = fieldErrors(save.error);
   const alert = formAlert(t, save.error, ['acknowledgeRisk', 'profileId', 'limits']);
-  const changed = dirty || acknowledged !== (initial.riskAcknowledgedAt !== null);
+  const changed = dirty || ack.dirty;
   const box = (
     id: string,
     checked: boolean,
@@ -175,7 +180,7 @@ function LinkedinForm({ initial }: { initial: Settings }) {
         onSave={() => save.mutate()}
         onDiscard={() => {
           reset();
-          setAcknowledged(initial.riskAcknowledgedAt !== null);
+          ack.reset();
         }}
       />
       <UnsavedChangesPrompt when={changed && !save.isPending} />

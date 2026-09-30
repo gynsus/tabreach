@@ -234,7 +234,7 @@ function ModelsAndBudget({ initial }: { initial: Settings }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const { value, setValue, dirty, reset } = useDraft<Editable>({
+  const { value, setValue, dirty, reset, saved } = useDraft<Editable>({
     provider: initial.provider,
     models: initial.models,
     prices: initial.prices,
@@ -249,6 +249,7 @@ function ModelsAndBudget({ initial }: { initial: Settings }) {
         monthlyBudgetUsd: value.monthlyBudgetUsd,
       }),
     onSuccess: async () => {
+      saved();
       toast(t('ai.saved'));
       await invalidateEntities(qc, ['settings', 'activity']);
     },

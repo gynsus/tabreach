@@ -23,7 +23,7 @@ function SenderForm({ initial }: { initial: FormSender }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
-  const { value, setValue, dirty, reset } = useDraft(initial);
+  const { value, setValue, dirty, reset, saved } = useDraft(initial);
   const profiles = useQuery({
     queryKey: ['profiles', 'list'],
     queryFn: () => call('profiles.list', { includeArchived: false }),
@@ -32,6 +32,7 @@ function SenderForm({ initial }: { initial: FormSender }) {
   const save = useMutation({
     mutationFn: () => call('forms.sender.update', value),
     onSuccess: async () => {
+      saved();
       toast(t('settings.forms.saved'));
       await invalidateEntities(qc, ['settings', 'activity']);
     },
