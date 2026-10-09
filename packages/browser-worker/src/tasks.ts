@@ -17,7 +17,7 @@ import type {
   TaskResult,
   ThreadReadResult,
 } from '@tabreach/protocol';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import { safeUrl } from './profiles.js';
 
 const RECOGNIZE_TIMEOUT_MS = 15_000;
@@ -184,6 +184,22 @@ async function performStep(
 
 const SETTLE_MS = 1_500;
 
+/**
+ * What a filled control holds: the value of a field, or the text of an editable element (LinkedIn's
+ * composer is a contenteditable `div`, live check 2026-10-09), compared without whitespace runs.
+ */
+async function typedText(control: Locator): Promise<string | null> {
+  const text = await control
+    .evaluate((el) => {
+      const e = el as unknown as { value?: unknown; innerText?: string };
+      return typeof e.value === 'string' ? e.value : (e.innerText ?? '');
+    })
+    .catch(() => null);
+  return text === null ? null : normalizeText(text);
+}
+
+const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim();
+
 /** The little of the DOM that in-page reads use (the worker is compiled without DOM types). */
 interface QueryRoot {
   querySelectorAll(selector: string): ArrayLike<QueryRoot> & Iterable<QueryRoot>;
@@ -333,7 +349,8 @@ export async function runCommit(
       });
     }
     await control.fill(value);
-    if ((await control.inputValue()) !== value) return notCommitted({ errorKey: 'task.fillFailed' });
+    if ((await typedText(control)) !== normalizeText(value))
+      return notCommitted({ errorKey: 'task.fillFailed' });
   }
   const commit = await findControl(page, action.commit);
   if (!commit) {

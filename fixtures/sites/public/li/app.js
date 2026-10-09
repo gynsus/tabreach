@@ -107,12 +107,18 @@
       li.append(el('a', { href: '#' }, who));
       others.append(li);
     }
-    const box = el('textarea', { 'aria-label': 'Write a message…' });
+    // Like the real composer: an editable div, not a field.
+    const box = el('div', {
+      role: 'textbox',
+      contenteditable: 'true',
+      'aria-multiline': 'true',
+      'aria-label': 'Write a message…',
+    });
     const send = el('button', { type: 'button' }, 'Send');
     send.onclick = () => {
-      record({ type: 'message', profile: `/li/in/${q.get('recipient')}/`, body: box.value });
-      if (q.get('result') !== 'silent') item('Sam Sender', box.value);
-      box.value = '';
+      record({ type: 'message', profile: `/li/in/${q.get('recipient')}/`, body: box.innerText });
+      if (q.get('result') !== 'silent') item('Sam Sender', box.innerText);
+      box.textContent = '';
     };
     main.replaceChildren(
       el('h1', {}, 'Messaging'),
