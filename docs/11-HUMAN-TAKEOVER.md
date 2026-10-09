@@ -27,7 +27,7 @@ Human involvement is a first-class runtime state, used when:
 
 ## Implementation status (Phase 5c-2, 2026-09-29)
 
-A browser action whose result is not recognized after the checkpoint is `unknown`. The window stays open and paused, and the send is listed under **Status → Needs attention → Unconfirmed sends** with "It was sent" / "It was not sent" (ADR 018 `user_confirmation`). "Not sure" is leaving it undecided: the step waits and nothing is pressed again. "It was not sent" asks first and then lets the step run again from the start, re-validating the page.
+A browser action whose result is not recognized after the checkpoint is `unknown`. The window stays open and paused, and the send is listed under **Status → Needs attention → Unconfirmed sends** with "It was sent" / "It was not sent" (ADR 018 `user_confirmation`). A browser channel has nothing to look the attempt up in, so its `unknown` is not retried: it waits for the person at once (2026-10-09; retrying only re-read `unknown` and kept the buttons on "checking" for a minute and a half). A window handed to the person for a `manual` step (ADR 015) is taken back by the next send of that profile once the person has given the outcome. "Not sure" is leaving it undecided: the step waits and nothing is pressed again. "It was not sent" asks first and then lets the step run again from the start, re-validating the page.
 
 ## Session control modes
 

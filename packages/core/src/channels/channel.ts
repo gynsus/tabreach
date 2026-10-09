@@ -43,6 +43,11 @@ export interface MessageChannel {
    * ledger stays `reserved` until then, so a failure before it is a verified "not sent".
    */
   readonly commitsAtCheckpoint?: boolean;
+  /**
+   * Nothing can look an uncertain attempt up afterwards (a browser action): only the person can
+   * say whether it was sent, so an `unknown` waits for them at once instead of being retried.
+   */
+  readonly confirmedByPerson?: boolean;
   readonly channel: string;
   /** The channel account that sends; pacing is per account. Null for the test channel. */
   readonly accountId: string | null;

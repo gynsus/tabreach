@@ -3,7 +3,13 @@ import { access, lstat, mkdir, rm } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { join } from 'node:path';
 import { chromium, type BrowserContext, type Page } from 'playwright-core';
-import { OVERLAY_BINDING, OVERLAY_SCRIPT, PAUSE_REQUESTED, overlaySetExpression } from './overlay.js';
+import {
+  OVERLAY_BINDING,
+  OVERLAY_SCRIPT,
+  PAUSE_REQUESTED,
+  overlayContextFor,
+  overlaySetExpression,
+} from './overlay.js';
 import {
   RpcError,
   type ControlMode,
@@ -330,9 +336,12 @@ export class ProfileManager {
 
   private applyOverlay(session: Session): void {
     if (!session.overlay) return;
-    const expression = overlaySetExpression({ mode: session.controlMode, context: session.overlayContext });
+    const context = session.overlayContext;
     // Explanatory only; a page mid-navigation is updated on its domcontentloaded.
-    for (const page of session.context.pages()) void page.evaluate(expression).catch(() => {});
+    for (const page of session.context.pages()) {
+      const shown = overlayContextFor(context, page.url());
+      void page.evaluate(overlaySetExpression({ mode: session.controlMode, context: shown })).catch(() => {});
+    }
   }
 
   /**

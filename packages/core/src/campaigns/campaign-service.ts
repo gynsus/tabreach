@@ -308,6 +308,9 @@ export class CampaignService {
       // Only a browser channel has a person press the final button (docs/01 "Execution modes").
       if (step.channel !== 'web_form' && step.channel !== 'linkedin' && step.executionMode !== 'auto')
         fields[`steps.${i}.executionMode`] = 'mode.autoOnly';
+      // A website form is pressed by TabReach or by the person in assisted mode; `manual` is LinkedIn's.
+      else if (step.channel === 'web_form' && step.executionMode === 'manual')
+        fields[`steps.${i}.executionMode`] = 'mode.manualUnsupported';
       if (step.channel === 'linkedin') {
         const off = this.linkedinCheck?.(step);
         if (off) fields[off.field.replace('{i}', String(i))] = off.key;

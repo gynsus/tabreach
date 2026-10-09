@@ -80,6 +80,7 @@ export function packActionDispatch(spec: BrowserActionSpec): BrowserDispatch {
  */
 export class BrowserActionChannel implements MessageChannel {
   readonly commitsAtCheckpoint = true;
+  readonly confirmedByPerson = true;
   readonly minSpacingMs: number;
   readonly dailyLimit: number | null;
 
@@ -116,7 +117,13 @@ export class BrowserActionChannel implements MessageChannel {
     // The run's correlation id follows the action into the worker's logs (CLAUDE.md §5).
     const correlationId = effect.correlation_id ?? uuidv7();
     let sessionId: string;
-    const live = this.d.browser.liveSessionOf(this.accountId);
+    let live = this.d.browser.liveSessionOf(this.accountId);
+    // A window handed over for a manual step whose outcome the person has since given: that work
+    // is over, and the window comes back (otherwise the next step would wait on it for ever).
+    if (live && live.controlMode === 'human' && this.handOverSettled(live.id)) {
+      await this.d.browser.setControlMode(live.id, 'automation');
+      live = this.d.browser.liveSessionOf(this.accountId);
+    }
     // The person holds the profile's window: it is theirs (docs/11); the send waits for it.
     if (live && live.controlMode !== 'automation')
       return { outcome: 'not_sent', errorClass: 'profile.inUseByYou' };
@@ -194,6 +201,15 @@ export class BrowserActionChannel implements MessageChannel {
         await close();
         return { outcome: 'not_sent', errorClass: 'site_rejected', permanent: true };
       }
+      // Manual (ADR 015): the window is the person's to finish in; they say whether it was sent.
+      if (result.errorKey === 'task.manual') {
+        await this.quietly(
+          this.d.browser.setControlMode(sessionId, 'human'),
+          'browser.hand_over_failed',
+          correlationId,
+        );
+        return { outcome: 'unknown', errorClass: 'manual' };
+      }
       // Left open and paused so the person can see what the page shows before deciding; a window
       // the person already holds stays theirs (docs/11).
       if (this.d.browser.sessionById(sessionId)?.controlMode === 'automation') {
@@ -248,6 +264,28 @@ export class BrowserActionChannel implements MessageChannel {
   /** Housekeeping whose failure changes no outcome; logged, never thrown. */
   private async quietly(work: Promise<unknown>, event: string, correlationId: string): Promise<void> {
     await work.catch((error: unknown) => this.d.logger.warn({ event, correlationId, err: error }, event));
+  }
+
+  /**
+   * The window's last task handed it to the person for a manual step (`task.manual`), and they have
+   * said what happened (its ledger entry is no longer unknown or executing).
+   */
+  private handOverSettled(sessionId: string): boolean {
+    const last = this.d.db
+      .prepare(
+        `SELECT result, workflow_run_id FROM browser_tasks WHERE browser_session_id = ?
+         ORDER BY dispatched_at DESC LIMIT 1`,
+      )
+      .get(sessionId) as { result: string | null; workflow_run_id: string | null } | undefined;
+    if (!last?.result || !last.workflow_run_id) return false;
+    const result = JSON.parse(last.result) as { errorKey?: string | null };
+    if (result.errorKey !== 'task.manual') return false;
+    const open = this.d.db
+      .prepare(
+        `SELECT 1 FROM side_effects WHERE workflow_run_id = ? AND status IN ('unknown', 'executing') LIMIT 1`,
+      )
+      .get(last.workflow_run_id);
+    return open === undefined;
   }
 
   /** A generic browser action leaves nothing to look up afterwards: a person confirms. */

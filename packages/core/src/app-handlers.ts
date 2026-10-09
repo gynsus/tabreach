@@ -226,6 +226,7 @@ export class AppServices {
       checkpoints: this.checkpoints,
       worker: options.worker ?? (() => null),
       logger: logger.child({ component: 'linkedin' }),
+      language: () => (this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI).language,
     });
     const channels: ChannelResolver = (channel, config) =>
       named.get(channel) ??

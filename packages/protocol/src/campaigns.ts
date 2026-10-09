@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { browserExecutionModeSchema, formFieldSchema } from './browser.js';
+import { browserExecutionModeSchema, formFieldSchema, stepExecutionModeSchema } from './browser.js';
 
 /** DTOs for campaigns, enrollments, approvals, contact policy and jobs (docs/06, docs/17, ADR 021). */
 
@@ -97,7 +97,7 @@ export const sendMessageStepSchema = z.object({
    * Website forms: `auto` sends after approval; `assisted` fills the form and the person presses
    * Send (docs/01 "Execution modes"). Email and the test channel are always `auto`.
    */
-  executionMode: browserExecutionModeSchema.default('auto'),
+  executionMode: stepExecutionModeSchema.default('auto'),
   delaySeconds,
   /** template: subject and body with placeholders. ai: written per recipient from research facts. */
   mode: z.enum(['template', 'ai']).default('template'),

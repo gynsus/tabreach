@@ -172,7 +172,7 @@ Fields the phrases miss and a contact page no link names are resolved by AI from
 
 Isolated module with a kill switch (setting, fails closed).
 
-Execution modes: `assisted` (default), `manual`, `auto` (explicit opt-in per action class: message, connect).
+Execution modes: `assisted` (default), `manual` (TabReach opens and checks the page and shows the text with a Copy button; the person sends and confirms — ADR 015), `auto` (explicit opt-in per action class: message, connect).
 
 Responsibilities:
 

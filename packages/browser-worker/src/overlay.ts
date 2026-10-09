@@ -19,8 +19,8 @@ export const OVERLAY_SCRIPT = `(() => {
   if (window.top !== window || window.__tabreachOverlayInstalled) return;
   window.__tabreachOverlayInstalled = true;
   const labels = {
-    en: { automation: 'TabReach is working here', paused: 'Paused', human: 'You are in control', pause: 'Pause', hint: 'Resume or take control in the TabReach app.' },
-    ru: { automation: 'Здесь работает TabReach', paused: 'На паузе', human: 'Управляете вы', pause: 'Пауза', hint: 'Продолжить или взять управление — в приложении TabReach.' },
+    en: { automation: 'TabReach is working here', paused: 'Paused', human: 'You are in control', pause: 'Pause', hint: 'Resume or take control in the TabReach app.', copy: 'Copy', copied: 'Copied' },
+    ru: { automation: 'Здесь работает TabReach', paused: 'На паузе', human: 'Управляете вы', pause: 'Пауза', hint: 'Продолжить или взять управление — в приложении TabReach.', copy: 'Копировать', copied: 'Скопировано' },
   };
   let state = { mode: 'paused', context: null };
   let host = null;
@@ -34,7 +34,8 @@ export const OVERLAY_SCRIPT = `(() => {
     }
     host.setAttribute('data-tabreach-mode', state.mode);
     const l = labels[(state.context && state.context.lang) || 'en'];
-    const style = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;font:12px -apple-system,system-ui,sans-serif;background:#1f2430;color:#fff;border-radius:8px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center;max-width:360px';
+    const style = 'all:initial;position:fixed;right:12px;bottom:12px;z-index:2147483647;font:12px -apple-system,system-ui,sans-serif;background:#1f2430;color:#fff;border-radius:8px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.3);display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:360px';
+    const content = state.context && state.context.content;
     root.innerHTML = '';
     const box = document.createElement('div');
     box.setAttribute('style', style);
@@ -45,9 +46,9 @@ export const OVERLAY_SCRIPT = `(() => {
     text.appendChild(strong);
     const sub = document.createElement('div');
     sub.setAttribute('style', 'opacity:.8');
-    sub.textContent = state.mode === 'automation' ? ((state.context && state.context.title) || '') : l.hint;
+    sub.textContent = state.mode === 'automation' || content ? ((state.context && state.context.title) || '') : l.hint;
     text.appendChild(sub);
-    if (state.mode === 'automation' && state.context && state.context.detail) {
+    if ((state.mode === 'automation' || content) && state.context && state.context.detail) {
       const detail = document.createElement('div');
       detail.setAttribute('style', 'opacity:.7');
       detail.textContent = state.context.detail;
@@ -60,6 +61,24 @@ export const OVERLAY_SCRIPT = `(() => {
       button.setAttribute('style', 'all:initial;cursor:pointer;background:#fff;color:#1f2430;border-radius:6px;padding:4px 8px;font:600 12px -apple-system,system-ui,sans-serif');
       button.addEventListener('click', () => window.${OVERLAY_BINDING} && window.${OVERLAY_BINDING}('${PAUSE_REQUESTED}'));
       box.appendChild(button);
+    }
+    if (content) {
+      // Manual mode (docs/09): the prepared text, to copy; the overlay never types it anywhere.
+      const area = document.createElement('textarea');
+      area.readOnly = true;
+      area.value = content;
+      area.setAttribute('style', 'all:initial;box-sizing:border-box;width:100%;height:96px;background:#fff;color:#1f2430;border-radius:6px;padding:6px;font:12px -apple-system,system-ui,sans-serif;white-space:pre-wrap;overflow:auto');
+      const copy = document.createElement('button');
+      copy.textContent = l.copy;
+      copy.setAttribute('style', 'all:initial;cursor:pointer;background:#fff;color:#1f2430;border-radius:6px;padding:4px 8px;font:600 12px -apple-system,system-ui,sans-serif');
+      const done = () => { copy.textContent = l.copied; };
+      copy.addEventListener('click', () => {
+        const fallback = () => { area.select(); try { if (document.execCommand('copy')) done(); } catch (e) { /* the text stays selected to copy by hand */ } };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(content).then(done, fallback);
+        else fallback();
+      });
+      box.appendChild(area);
+      box.appendChild(copy);
     }
     root.appendChild(box);
   };
@@ -80,3 +99,14 @@ export const OVERLAY_SCRIPT = `(() => {
 /** Applies the current state to a page that already has the overlay script. */
 export const overlaySetExpression = (state: OverlayState) =>
   `window.__tabreachOverlaySet && window.__tabreachOverlaySet(${JSON.stringify(state)})`;
+
+/**
+ * What a page is shown: the prepared text (`manual` mode) only on pages of the site it is meant
+ * for — any page can read the overlay (docs/12, ADR 015).
+ */
+export function overlayContextFor(context: OverlayContext | null, pageUrl: string): OverlayContext | null {
+  if (!context?.content) return context;
+  const origin = URL.canParse(pageUrl) ? new URL(pageUrl).origin : null;
+  const own = context.contentOrigin !== null && origin === new URL(context.contentOrigin).origin;
+  return own ? context : { ...context, content: null };
+}

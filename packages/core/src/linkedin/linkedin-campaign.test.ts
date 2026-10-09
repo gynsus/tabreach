@@ -68,6 +68,13 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
             status: 'failed',
             errorKey: 'task.checkpointRefused',
           } as ResponseOf<T>);
+        if (req.mode === 'manual')
+          return Promise.resolve({
+            ...base,
+            status: 'unknown',
+            errorKey: 'task.manual',
+            committed: true,
+          } as ResponseOf<T>);
         return Promise.resolve({
           ...base,
           status: 'succeeded',
@@ -189,7 +196,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.ledger()).toMatchObject([{ status: 'completed' }]);
     expect(h.status(campaign)).toMatchObject({ status: 'completed' });
     const attempts = h.db.prepare(`SELECT adapter_pack_id, adapter_pack_version FROM browser_tasks`).all();
-    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.5.0' }]);
+    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.5.1' }]);
   });
 
   it('auto only where opted in, per action class (FR-LIN-002)', async () => {
@@ -269,7 +276,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.status(wrong)).toMatchObject({ status: 'stopped', stopReason: 'invalid_target' });
     // The attempt shows in the pack's health: one task, one unrecognized page (FR-LIN-006).
     expect(s().browser.packHealth()).toEqual([
-      expect.objectContaining({ packId: 'linkedin', version: '0.5.0', tasks: 1, unsupported: 1 }),
+      expect.objectContaining({ packId: 'linkedin', version: '0.5.1', tasks: 1, unsupported: 1 }),
     ]);
 
     const two = await start(
@@ -289,6 +296,68 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
         .items.map((i) => i.status)
         .sort(),
     ).toEqual(['active', 'completed']);
+  });
+
+  it('manual: the text goes to the overlay, the window to the person, and the outcome is theirs to confirm (ADR 015)', async () => {
+    account();
+    const campaign = await start([
+      { linkedinAction: 'message', executionMode: 'manual', body: 'Hello {{firstName}}.' },
+    ]);
+    await approveAll();
+    expect(runs()[0]).toMatchObject({ mode: 'manual', actionId: 'linkedin.message' });
+    const overlay = calls.find((c) => c.type === 'session.setOverlay')
+      ?.payload as RequestOf<'session.setOverlay'>;
+    expect(overlay.context).toMatchObject({ content: 'Hello Ann.' });
+    expect(calls.filter((c) => c.type === 'session.setMode').map((c) => c.payload)).toEqual([
+      expect.objectContaining({ controlMode: 'human' }),
+    ]);
+    expect(h.db.prepare(`SELECT status, error_class FROM side_effects`).all()).toEqual([
+      { status: 'unknown', error_class: 'manual' },
+    ]);
+    expect(h.status(campaign)).toMatchObject({ status: 'active' });
+    // Nothing is pressed again while the person has not said what happened, and nothing retries:
+    // the decision is theirs at once (not "still checking").
+    h.clock.advance(60 * 60_000);
+    await h.run();
+    expect(runs()).toHaveLength(1);
+    expect(
+      h.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'message.send' AND status = 'unknown'`,
+        )
+        .get(),
+    ).toEqual({ n: 1 });
+    const [uncertain] = s().uncertainSends();
+    expect(uncertain).toMatchObject({ channel: 'linkedin', checking: false });
+
+    // "It was not sent": the step runs again, in the window handed over before — taken back first.
+    s().resolveSideEffect(uncertain!.id, 'not_sent', 'c');
+    await h.run();
+    expect(runs()).toHaveLength(2);
+    expect(
+      calls
+        .filter((c) => c.type === 'session.setMode')
+        .map((c) => (c.payload as { controlMode: string }).controlMode),
+    ).toEqual(['human', 'automation', 'human']);
+  });
+
+  it('a website form step cannot be manual', () => {
+    account();
+    expect(() =>
+      s().campaigns.launch(
+        s().campaigns.create(
+          { name: 'F', config: config([{ channel: 'web_form', executionMode: 'manual' }]) },
+          ctx(),
+        ).id,
+        ctx(),
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        problem: expect.objectContaining({
+          fields: expect.objectContaining({ 'steps.0.executionMode': 'mode.manualUnsupported' }),
+        }),
+      }),
+    );
   });
 
   it('raising a limit above the product default needs an explicit acknowledgement (FR-LIN-005)', () => {

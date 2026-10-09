@@ -74,6 +74,7 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
     name: string,
     params: Record<string, string> = {},
     query = '',
+    mode: 'auto' | 'manual' = 'auto',
   ): Promise<TaskResult> =>
     core.request(
       'task.run',
@@ -85,7 +86,7 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
         url: url(slug, query),
         actionId,
         params,
-        mode: 'auto',
+        mode,
         identity: identity(slug, name),
       },
       { timeoutMs: 90_000 },
@@ -113,7 +114,7 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
     expect(await act('linkedin.connect', 'ann-lee', 'Ann Lee')).toMatchObject({
       status: 'succeeded',
       committed: true,
-      packVersion: '0.5.0',
+      packVersion: '0.5.1',
     });
     expect(
       await act('linkedin.connect.note', 'ann-lee', 'Ann Lee', { note: 'Hi Ann, glad to connect.' }),
@@ -195,6 +196,33 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
       await act('linkedin.message', 'bob-first', 'Bob First', { body: 'First' }, '?thread=none'),
     ).toMatchObject({ status: 'succeeded', committed: true });
     expect((await actions()).map((a) => a.body)).toEqual(['Hello Bob', 'Second', 'Third', 'First']);
+  }, 180_000);
+
+  it('manual: opens the conversation or the invitation, passes the checkpoint, types and presses nothing (ADR 015)', async () => {
+    expect(
+      await act('linkedin.message', 'bob-first', 'Bob First', { body: 'Hello Bob' }, '', 'manual'),
+    ).toMatchObject({
+      status: 'unknown',
+      committed: true,
+      errorKey: 'task.manual',
+      stateId: 'linkedin.messaging',
+    });
+    expect(await page.getByRole('main').getByRole('textbox').textContent()).toBe('');
+    expect(
+      await act('linkedin.connect.note', 'ann-lee', 'Ann Lee', { note: 'Hi' }, '', 'manual'),
+    ).toMatchObject({
+      status: 'unknown',
+      errorKey: 'task.manual',
+      // The profile: the person presses Connect (the invitation page has nothing under its dialog).
+      stateId: 'linkedin.profile.connectable',
+    });
+    // Someone else's page is still never handed over as theirs.
+    expect(await act('linkedin.connect', 'ann-lee', 'Anna Leeds', {}, '', 'manual')).toMatchObject({
+      errorKey: 'task.identityMismatch',
+      committed: false,
+    });
+    expect(checkpoints).toBe(2);
+    expect(await actions()).toEqual([]);
   }, 180_000);
 
   it('reads whether the person answered, without sending anything (FR-LIN-004)', async () => {

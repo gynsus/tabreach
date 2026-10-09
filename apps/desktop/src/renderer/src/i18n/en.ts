@@ -507,7 +507,11 @@ export const en = {
     connectAccountHint: 'Connect an email account in Settings first.',
     channel: 'Channel',
     executionMode: 'Who presses Send',
-    executionModes: { auto: 'TabReach, after approval', assisted: 'You, in the browser window' },
+    executionModes: {
+      auto: 'TabReach, after approval',
+      assisted: 'You, in the browser window',
+      manual: 'You do it all; TabReach opens the page and shows the text',
+    },
     executionModeHints: {
       auto: 'TabReach fills the form and sends it once you approve. A form with a CAPTCHA or a field it cannot fill is always sent by you.',
       assisted: 'TabReach fills the form and waits in the browser window; you check it and press Send.',
@@ -518,6 +522,8 @@ export const en = {
       assisted:
         'TabReach opens the profile, checks it is the right person, fills in the text and waits; you press Send.',
       auto: 'TabReach presses Send after approval — only if allowed in Settings → LinkedIn.',
+      manual:
+        'TabReach opens the profile, checks it is the right person (for a message it then opens the conversation) and shows the text with a Copy button; you send it yourself — for an invitation, press Connect — then tell TabReach whether it was sent.',
     },
     inviteNote: 'Invitation note',
     inviteNoteHint: 'Optional, up to 300 characters.',
@@ -1016,7 +1022,11 @@ export const en = {
       profileUnsuitable: 'Use a general browser profile for forms.',
       notPrepared: 'The form is not prepared yet.',
     },
-    mode: { autoOnly: 'Only a website form can be sent by you pressing its button.' },
+    mode: {
+      autoOnly: 'Only a website form or LinkedIn can be sent by you pressing its button.',
+      manualUnsupported:
+        'A website form is sent by TabReach or by you pressing its button; doing it all yourself is for LinkedIn.',
+    },
     session: {
       busy: 'TabReach is already doing something in this window. Try again in a moment.',
       notOpen: 'This browser window is closed.',

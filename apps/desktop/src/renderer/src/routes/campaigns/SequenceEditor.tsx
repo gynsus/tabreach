@@ -218,11 +218,13 @@ function MessageFields(props: {
       {step.channel === 'web_form' || step.channel === 'linkedin' ? (
         <Field
           label={t('campaigns.executionMode')}
-          hint={t(
+          hint={
             step.channel === 'linkedin'
-              ? `campaigns.linkedinModeHints.${step.executionMode}`
-              : `campaigns.executionModeHints.${step.executionMode}`,
-          )}
+              ? t(`campaigns.linkedinModeHints.${step.executionMode}`)
+              : t(
+                  `campaigns.executionModeHints.${step.executionMode === 'manual' ? 'assisted' : step.executionMode}`,
+                )
+          }
           errorKey={props.errors[`steps.${index}.executionMode`]}
           className="max-w-md"
         >
@@ -235,12 +237,16 @@ function MessageFields(props: {
               onChange={(e) =>
                 props.onChange({
                   ...step,
-                  executionMode: e.target.value === 'assisted' ? 'assisted' : 'auto',
+                  executionMode:
+                    e.target.value === 'assisted' || e.target.value === 'manual' ? e.target.value : 'auto',
                 })
               }
             >
               <option value="auto">{t('campaigns.executionModes.auto')}</option>
               <option value="assisted">{t('campaigns.executionModes.assisted')}</option>
+              {step.channel === 'linkedin' ? (
+                <option value="manual">{t('campaigns.executionModes.manual')}</option>
+              ) : null}
             </Select>
           )}
         </Field>

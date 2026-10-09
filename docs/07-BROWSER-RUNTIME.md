@@ -137,7 +137,7 @@ Constraints:
 
 - `auto` — worker performs the final action after the checkpoint acknowledgement.
 - `assisted` — worker prepares, focuses the final control, brings the window forward and waits (up to 10 minutes) for the user's click, observing the page for the expected post-action state. On timeout or an ambiguous outcome it returns `unknown` and the person confirms the outcome (Unconfirmed sends). Highlighting the control in the overlay comes with the channel phases.
-- `manual` — worker opens the target and shows the prepared content in the overlay (copy button); the user does everything; core asks for outcome confirmation.
+- `manual` — worker opens the target and shows the prepared content in the overlay (copy button); the user does everything; core asks for outcome confirmation. Implemented for LinkedIn (2026-10-09, ADR 015): the `commit` task in `manual` mode runs the navigation steps and the checkpoint, types and presses nothing, and ends `unknown` (`task.manual`) with the window handed to the person.
 
 ## Browser action lifecycle (within a task)
 
