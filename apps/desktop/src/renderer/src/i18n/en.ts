@@ -332,6 +332,10 @@ export const en = {
       channel_adapter: 'Channel',
     },
     actions: {
+      retention: {
+        updated: 'Data retention changed',
+        pruned: 'Old data removed (retention)',
+      },
       profile: {
         created: 'Browser profile created',
         updated: 'Browser profile renamed',
@@ -962,6 +966,33 @@ export const en = {
     },
   },
   settings: {
+    data: {
+      title: 'Data retention',
+      subtitle:
+        'How long sensitive data is kept on this Mac. Older data is removed once a day; records, codes and the history of what was sent stay.',
+      kinds: {
+        screenshots: 'Screenshots',
+        browserDiagnostics: 'Page details of browser tasks',
+        messageBodies: 'Message texts',
+        researchEvidence: 'Research page text',
+        logs: 'Older log files',
+      },
+      hints: {
+        screenshots: 'Pages TabReach did not recognize, and forms as prepared for approval.',
+        browserDiagnostics:
+          'Titles, addresses and structure of pages, kept to explain a failed browser step.',
+        messageBodies: 'Drafts, filled-in forms and emails — only after the contact’s sequence has ended.',
+        researchEvidence: 'Text captured from company websites; the facts and their quotes stay.',
+        logs: 'Rotated logs; the current ones are kept.',
+      },
+      keep: 'Keep',
+      days_one: '{{count}} day',
+      days_other: '{{count}} days',
+      always: 'The activity history is always kept: it holds ids and codes, no personal data.',
+      lastRun: 'Last cleanup {{at}}: {{count}} items removed.',
+      notYet: 'No cleanup has run yet.',
+      saved: 'Data retention saved.',
+    },
     tabs: {
       general: 'General',
       email: 'Email accounts',
@@ -969,6 +1000,7 @@ export const en = {
       linkedin: 'LinkedIn',
       ai: 'AI',
       policy: 'Contact policy',
+      data: 'Data',
     },
     title: 'Settings',
     language: 'Language',

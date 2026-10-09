@@ -15,7 +15,6 @@ import { renderForResearch, type RenderEnvironment } from './render.js';
 import {
   ASSISTED_WAIT_MS,
   bundledPacks,
-  pruneDiagnostics,
   readThread,
   runCheckState,
   runCommit,
@@ -203,11 +202,6 @@ export class BrowserWorker {
       profiles.notifyMode = (change) => this.peer.emit('session.modeChanged', change);
       const beat = () => this.peer.emit('worker.heartbeat', { sessions: profiles.heartbeat() });
       beat(); // at once: a new core learns about windows that stayed open
-      void pruneDiagnostics(this.taskEnv.diagnosticsDir).then(
-        (removed) =>
-          removed > 0 && log.info({ event: 'diagnostics.pruned', removed }, 'old diagnostics removed'),
-        (error: unknown) => log.warn({ event: 'diagnostics.prune_failed', err: error }, 'could not prune'),
-      );
       this.heartbeat = setInterval(beat, options.heartbeatMs ?? HEARTBEAT_MS);
     }
   }

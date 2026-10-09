@@ -1,4 +1,4 @@
-import { chmod, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   bundledPack,
@@ -516,6 +516,8 @@ export async function diagnose(
   let screenshot: string | null = `${taskId}.png`;
   try {
     await mkdir(env.diagnosticsDir, { recursive: true, mode: 0o700 });
+    // A folder made earlier with wider rights is made private too: screenshots may show personal data.
+    await chmod(env.diagnosticsDir, 0o700).catch(() => {});
     // What was typed into the page is not evidence of a failure: fields are masked (audit 5.5).
     await page.screenshot({
       path: join(env.diagnosticsDir, screenshot),
@@ -552,25 +554,6 @@ export function redactSnapshot(snapshot: string): string {
           ),
     )
     .join('\n');
-}
-
-/** Diagnostics are kept for this long, then removed (audit 5.5): they may show personal data. */
-export const DIAGNOSTICS_RETENTION_MS = 30 * 24 * 60 * 60_000;
-
-/** Removes old diagnostics and keeps the folder private to the user. */
-export async function pruneDiagnostics(dir: string, now = Date.now()): Promise<number> {
-  const names = await readdir(dir).catch(() => [] as string[]);
-  await chmod(dir, 0o700).catch(() => {}); // absent until the first failure
-  let removed = 0;
-  for (const name of names) {
-    const file = join(dir, name);
-    const info = await stat(file).catch(() => null);
-    if (info && now - info.mtimeMs > DIAGNOSTICS_RETENTION_MS) {
-      await rm(file, { force: true });
-      removed++;
-    }
-  }
-  return removed;
 }
 
 /** Lower case, without accents, spaces collapsed: "Ánn  Lee" ~ "ann lee". */

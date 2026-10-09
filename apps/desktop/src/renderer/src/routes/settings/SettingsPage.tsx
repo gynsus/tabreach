@@ -7,12 +7,13 @@ import { languages, setLanguage } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { AiSettings } from './AiSettings';
+import { DataSettings } from './DataSettings';
 import { EmailAccounts } from './EmailAccounts';
 import { FormSettings } from './FormSettings';
 import { LinkedinSettings } from './LinkedinSettings';
 import { PolicySettings } from './PolicySettings';
 
-const TABS = ['general', 'email', 'forms', 'linkedin', 'ai', 'policy'] as const;
+const TABS = ['general', 'email', 'forms', 'linkedin', 'ai', 'policy', 'data'] as const;
 type Tab = (typeof TABS)[number];
 
 /** Settings, one logical group per tab; each tab has its own address (#/settings/ai). */
@@ -69,6 +70,7 @@ export function SettingsPage() {
           {current === 'linkedin' ? <LinkedinSettings /> : null}
           {current === 'ai' ? <AiSettings /> : null}
           {current === 'policy' ? <PolicySettings /> : null}
+          {current === 'data' ? <DataSettings /> : null}
         </div>
       </div>
     </>

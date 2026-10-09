@@ -226,7 +226,7 @@ On task failure capture, where safe:
 - workflow state;
 - error stack in local developer logs.
 
-Implemented (Phase 5b, tightened in audit 5.5): URL (origin and path), title, a screenshot with every input, textarea, select and editable region masked, the accessibility snapshot with field values replaced by `[value]` and link targets without query strings, and the expected states. The pack version is on the task result. Files live in `<app data>/diagnostics` (mode 0700) and are removed after 30 days. Failed conditions, target description and workflow state are not captured yet.
+Implemented (Phase 5b, tightened in audit 5.5): URL (origin and path), title, a screenshot with every input, textarea, select and editable region masked, the accessibility snapshot with field values replaced by `[value]` and link targets without query strings, and the expected states. The pack version is on the task result. Files live in `<app data>/diagnostics` (mode 0700) and are removed by core's retention job after the configured time, 30 days by default (docs/18, Phase 8a-3); the page's title, URL and snapshot kept with the task result follow the same setting. Failed conditions, target description and workflow state are not captured yet.
 
 Never capture or persist password-field values.
 

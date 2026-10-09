@@ -109,6 +109,18 @@ Configurable retention categories:
 
 Defaults minimize unnecessary sensitive data while preserving debugging/audit value. Retention is enforced by a periodic core job.
 
+Implementation (Phase 8a-3, 2026-10-09): Settings → Data. Each kind takes 7, 30, 90, 180 or 365 days, or "keep"; a daily core job (`retention.prune`, also run a minute after the settings change) removes what is older and records `retention.pruned` with counts only.
+
+| Kind | Default | What is removed | What stays |
+|---|---|---|---|
+| screenshots | 30 days | worker screenshots of unrecognized pages; screenshots of prepared forms | the screenshot's file name in the task result |
+| browser diagnostics | 30 days | page title, URL and accessibility snapshot in browser task results | states, error keys, pack version, expected states |
+| message bodies | keep | draft subject and text, filled-in form fields, email bodies — a draft or form only once its step is over and the contact's sequence has ended (the next step's draft reads earlier messages) | the row, its content hash (the ledger still guards the send), the event history |
+| research evidence | 180 days | page text captured as evidence (brought back if the same page is captured again) | facts, their quotes and sources |
+| logs | 30 days | rotated log files (`core.1.log` …) | the current log of each process |
+
+AI raw responses are not stored (`ai_calls` keeps counts, cost and status). Audit events are kept. The worker no longer prunes its own folder: the setting decides.
+
 ## Updates and dependencies
 
 - lockfiles required; automated dependency scanning in CI;
