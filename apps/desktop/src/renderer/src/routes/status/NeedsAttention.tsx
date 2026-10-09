@@ -146,6 +146,7 @@ function UncertainRow({ item }: { item: UncertainSend }) {
         {BROWSER_CHANNELS.has(item.channel) ? (
           <span className="text-xs text-soft">{t('attention.browserHint')}</span>
         ) : null}
+        {confirmNotSent ? <span className="text-xs text-warn">{t('attention.notSentHint')}</span> : null}
       </span>
       <span className="flex gap-1">
         <Button
