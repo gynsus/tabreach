@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ctx, Harness } from '../email/harness.js';
 
 /** What the LinkedIn page shows next: an action's outcome, or the conversation. */
-type Page = 'ok' | 'pending' | 'connectable' | 'someone_else' | 'replied';
+type Page = 'ok' | 'pending' | 'connectable' | 'someone_else' | 'replied' | 'login';
 
 describe('LinkedIn as a campaign channel (Phase 7b)', () => {
   let h: Harness;
@@ -54,6 +54,14 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
             ...base,
             status: 'unsupported_state',
             stateId: 'linkedin.profile.pending',
+          } as ResponseOf<T>);
+        if (next === 'login')
+          return Promise.resolve({
+            ...base,
+            status: 'failed',
+            stateId: 'linkedin.login',
+            stateKind: 'login',
+            errorKey: 'task.loginRequired',
           } as ResponseOf<T>);
         if (next === 'someone_else')
           return Promise.resolve({
@@ -339,6 +347,26 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
         .filter((c) => c.type === 'session.setMode')
         .map((c) => (c.payload as { controlMode: string }).controlMode),
     ).toEqual(['human', 'automation', 'human']);
+  });
+
+  it('signed out: nothing is pressed, the step waits an hour and goes on once signed in (docs/19)', async () => {
+    account();
+    pages.push('login');
+    const campaign = await start([{}]);
+    await approveAll();
+    expect(runs()).toHaveLength(1);
+    expect(h.db.prepare(`SELECT status, error_class FROM side_effects`).all()).toEqual([
+      { status: 'not_sent', error_class: 'task.loginRequired' },
+    ]);
+    expect(h.status(campaign)).toMatchObject({ status: 'active' });
+    h.clock.advance(30 * 60_000);
+    await h.run();
+    expect(runs()).toHaveLength(1); // not before the hour
+    h.clock.advance(31 * 60_000);
+    await h.run();
+    expect(runs()).toHaveLength(2);
+    expect(h.db.prepare(`SELECT status FROM side_effects`).all()).toEqual([{ status: 'completed' }]);
+    expect(h.status(campaign)).toMatchObject({ status: 'completed' });
   });
 
   it('a website form step cannot be manual', () => {

@@ -22,6 +22,17 @@ export type ExecutionOutcome =
  *
  * A crash after step 3 leaves `executing`; the next run lands in step 2 and never sends twice.
  */
+/**
+ * Intents a channel that commits at its checkpoint is executing right now, per ledger. Such a
+ * channel (a browser action) keeps its row `reserved` until the worker's checkpoint, minutes later
+ * in assisted mode; a second attempt meanwhile would read that as "never sent" and act again.
+ * Other channels mark `executing` before the call, so a second attempt reconciles instead. Only
+ * core writes the ledger, and a core restart ends every attempt, so memory is the whole picture
+ * (docs/19 "Duplicate prevention").
+ */
+const inFlightByLedger = new WeakMap<SideEffectLedger, Set<string>>();
+const IN_FLIGHT_RETRY_MS = 30_000;
+
 export async function executeSideEffect(opts: {
   ledger: SideEffectLedger;
   channel: MessageChannel;
@@ -41,9 +52,30 @@ export async function executeSideEffect(opts: {
   onReconciled?: (outcome: 'completed' | 'not_sent') => void;
   /** Told why a send threw (the outcome is `unknown` either way), for the logs. */
   onSendError?: (error: unknown) => void;
+  now?: () => Date;
 }): Promise<ExecutionOutcome> {
-  const { ledger, channel, signal } = opts;
   const key = intentKey(opts.intent);
+  if (opts.channel.commitsAtCheckpoint !== true) return execute(opts, key);
+  let inFlight = inFlightByLedger.get(opts.ledger);
+  if (!inFlight) inFlightByLedger.set(opts.ledger, (inFlight = new Set()));
+  if (inFlight.has(key)) {
+    // Another attempt at the same send is under way here: wait for it, never act alongside it.
+    const retryAt = new Date((opts.now?.() ?? new Date()).getTime() + IN_FLIGHT_RETRY_MS);
+    return { outcome: 'pending', sideEffectId: opts.ledger.byKey(key)?.id ?? '', retryAt };
+  }
+  inFlight.add(key);
+  try {
+    return await execute(opts, key);
+  } finally {
+    inFlight.delete(key);
+  }
+}
+
+async function execute(
+  opts: Parameters<typeof executeSideEffect>[0],
+  key: string,
+): Promise<ExecutionOutcome> {
+  const { ledger, channel, signal } = opts;
   const reserve = () =>
     ledger.reserve(opts.intent, opts.workflowRunId, opts.message.contentHash, opts.guard, channel.accountId);
   let reservation = reserve();
