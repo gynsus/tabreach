@@ -652,29 +652,36 @@ export async function readMessages(
 ): Promise<{ direction: 'in' | 'out' }[] | null> {
   const container = await findControl(page, reader.within);
   if (!container) return null;
-  // Each list's items as the labels of their links, read in the page (the worker has no DOM types).
+  // Each list's items: the labels of their links and their text, read in the page (the worker
+  // has no DOM types).
   const lists = await container
     .getByRole('list')
     .evaluateAll((els) =>
       els.map((e) =>
-        Array.from((e as unknown as QueryRoot).querySelectorAll(':scope > li')).map((li) =>
-          Array.from(li.querySelectorAll('a')).map((a) =>
+        Array.from((e as unknown as QueryRoot).querySelectorAll(':scope > li')).map((li) => ({
+          links: Array.from(li.querySelectorAll('a')).map((a) =>
             `${a.getAttribute('aria-label') ?? ''} ${a.textContent ?? ''}`.replace(/\s+/g, ' ').trim(),
           ),
-        ),
+          text: li.textContent ?? '',
+        })),
       ),
     )
     .catch(() => null);
   if (!lists) return null;
   const words = reader.profileLinkAny;
+  const them = normalizeName(contactName);
   const withSender = lists.map(
     (items) =>
-      items.filter((links) => links.some((l) => words.some((w) => normalizeName(l).includes(w)))).length,
+      items.filter((item) => item.links.some((l) => words.some((w) => normalizeName(l).includes(w)))).length,
   );
-  // No list with a sender in it: a conversation not started yet.
-  if (withSender.length === 0 || Math.max(...withSender) === 0) return [];
-  const senders = lists[withSender.indexOf(Math.max(...withSender))] ?? [];
-  const them = normalizeName(contactName);
+  if (withSender.length === 0 || Math.max(...withSender) === 0) {
+    // No list with a sender in it: a conversation not started yet — unless a list names the person
+    // (their conversation among the others): then it is one this reader cannot read, and nothing
+    // is written without knowing (fails closed).
+    const named = lists.some((items) => items.some((item) => normalizeName(item.text).includes(them)));
+    return named ? null : [];
+  }
+  const senders = (lists[withSender.indexOf(Math.max(...withSender))] ?? []).map((item) => item.links);
   const messages: { direction: 'in' | 'out' }[] = [];
   let current: 'in' | 'out' | null = null;
   for (const links of senders.slice(-500)) {

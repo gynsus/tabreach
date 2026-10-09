@@ -211,16 +211,32 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
 
   it('before a follow-up the conversation is read: an answer stops it, nothing is sent (FR-LIN-004)', async () => {
     account();
+    const campaign = await start([{}, { linkedinAction: 'message', body: 'Following up.' }]);
+    await approveAll();
     pages.push('replied');
-    const campaign = await start([{ linkedinAction: 'message', body: 'Following up.' }]);
+    h.clock.advance(3 * 24 * 60 * 60_000); // past the contact policy's gap between messages
+    await h.run();
     await approveAll();
     expect(calls.map((c) => c.type)).toContain('thread.read');
-    expect(runs()).toEqual([]);
+    expect(runs()).toHaveLength(1); // the invitation only
     expect(h.status(campaign)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
     const reply = h.db
       .prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'linkedin.reply_detected'`)
       .get();
     expect(reply).toEqual({ n: 1 });
+  });
+
+  it('their unanswered message from before the campaign is no reply, and is not written over', async () => {
+    account();
+    pages.push('replied');
+    const campaign = await start([{ linkedinAction: 'message', body: 'Hello.' }]);
+    await approveAll();
+    expect(runs()).toEqual([]);
+    expect(h.status(campaign)).toMatchObject({ status: 'stopped', stopReason: 'unanswered_message' });
+    const reply = h.db
+      .prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'linkedin.reply_detected'`)
+      .get();
+    expect(reply).toEqual({ n: 0 });
   });
 
   it('a message waits for the invitation to be accepted, then gives up; an existing invitation is not sent again', async () => {

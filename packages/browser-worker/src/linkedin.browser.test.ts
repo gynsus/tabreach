@@ -180,7 +180,11 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
       status: 'unknown',
       committed: true,
     });
-    expect((await actions()).map((a) => a.body)).toEqual(['Hello Bob', 'Second']);
+    // A first message, where there is no conversation yet.
+    expect(
+      await act('linkedin.message', 'bob-first', 'Bob First', { body: 'First' }, '?thread=none'),
+    ).toMatchObject({ status: 'succeeded', committed: true });
+    expect((await actions()).map((a) => a.body)).toEqual(['Hello Bob', 'Second', 'First']);
   }, 180_000);
 
   it('reads whether the person answered, without sending anything (FR-LIN-004)', async () => {
@@ -193,6 +197,16 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
       status: 'ok',
       replied: true,
       messages: [{ direction: 'out' }, { direction: 'in' }],
+    });
+    expect(await read('bob-first', 'Bob First', '?thread=none')).toMatchObject({
+      status: 'ok',
+      replied: false,
+      messages: [],
+    });
+    // Their conversation is there but cannot be read: not "no messages" (fails closed).
+    expect(await read('bob-first', 'Bob First', '?thread=unreadable')).toMatchObject({
+      status: 'unsupported_state',
+      stateId: 'linkedin.messaging',
     });
     expect(await read('bob-first', 'Someone Else')).toMatchObject({
       status: 'unsupported_state',

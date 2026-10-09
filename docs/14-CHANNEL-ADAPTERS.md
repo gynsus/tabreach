@@ -217,6 +217,19 @@ The `linkedin` pack 0.2.0 recognizes profile states (can connect, can message, i
 
 Phase 7c: Status → Adapter packs shows, per pack version over 30 days, the browser tasks, unrecognized pages (their share turns amber above 10 %), requests to the person, unconfirmed outcomes and the last unrecognized page (`packs.health`).
 
+### Checked against real LinkedIn (pack 0.4.0, 2026-10-09)
+
+A hand check on real pages (English interface) replaced several fixture assumptions:
+
+- The person's name is the first level-2 heading inside `main` (the header has headings of its own). Profile states and controls are looked for inside `main` only: the "More profiles for you" sidebar has Connect buttons of other people.
+- "Message" is a link to `/messaging/compose/...`. A click opens a floating window, a new page or nothing, depending on what LinkedIn remembers, so the action and the reader **follow** the link: the identity is checked on the profile, then the conversation's own page (`linkedin.messaging`: heading "Messaging" and a composer in `main`) is opened from that link. The text is typed into the composer inside `main` (a floating chat window has one of its own) and Send inside `main` is pressed once after the checkpoint.
+- LinkedIn shows no "sent" text: a message counts as sent when the thread has one more message of ours after the press (`confirm` by the reader); otherwise the outcome is `unknown`.
+- The reader takes the list whose items carry sender profile links ("View …’s profile"); a list that names the person but cannot be read stops the step (fails closed).
+- An invisible reCAPTCHA widget that LinkedIn loads for a moment is not a challenge; only frames a person can see count.
+- Before the campaign has invited or written to someone, their own unanswered message in the thread is no reply to the campaign: the enrollment stops as `unanswered_message` (the person answers it themselves), and no reply is recorded. After an invitation or a message of the campaign, an answer stops it as `replied`.
+
+Still to be checked by hand: the message press on a person without a conversation, and an invitation (Connect may sit under "More" on some profiles).
+
 ## Webhook adapter
 
 Lightweight integration output:

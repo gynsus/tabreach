@@ -6,7 +6,8 @@
 // the conversation is an unnamed list whose first item of a group names the sender by links and
 // a floating chat window outside main has a composer of its own. Every invitation and message sent is
 // counted in localStorage (`li_actions`) so tests can prove an action happened once.
-// ?thread=replied: the person answered after our last message. ?result=silent: nothing confirms.
+// ?thread=replied: the person answered after our last message; ?thread=none: no conversation yet;
+// ?thread=unreadable: messages without sender links. ?result=silent: nothing confirms.
 (() => {
   const p = window.LI;
   const q = new URLSearchParams(location.search);
@@ -85,7 +86,7 @@
     let lastSender = null;
     const item = (sender, text) => {
       const li = el('li');
-      if (sender !== lastSender) {
+      if (sender !== lastSender && q.get('thread') !== 'unreadable') {
         const first = sender.split(' ')[0];
         li.append(el('a', { href: '#' }, `View ${first}’s profile`), el('a', { href: '#' }, sender));
         lastSender = sender;
@@ -93,12 +94,15 @@
       li.append(el('p', {}, text));
       list.append(li);
     };
-    list.append(el('li', {}, 'Jul 3, 2025'));
-    item('Sam Sender', 'Hello, nice to meet you.');
+    const none = q.get('thread') === 'none';
+    if (!none) {
+      list.append(el('li', {}, 'Jul 3, 2025'));
+      item('Sam Sender', 'Hello, nice to meet you.');
+    }
     if (q.get('thread') === 'replied') item(name, 'Thanks, tell me more.');
     // Other conversations: names, but no profile links.
     const others = el('ul', { 'aria-label': 'Conversations' });
-    for (const who of ['Old Friend', 'Former Colleague', name]) {
+    for (const who of ['Old Friend', 'Former Colleague', ...(none ? [] : [name])]) {
       const li = el('li');
       li.append(el('a', { href: '#' }, who));
       others.append(li);

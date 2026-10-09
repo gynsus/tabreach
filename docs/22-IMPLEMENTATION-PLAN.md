@@ -209,7 +209,7 @@ Exit criteria:
 
 Automated tests use fixture pages only; real LinkedIn is checked manually by the developer.
 
-Exit criteria status (2026-09-30): the adapter is off by default and when its setting cannot be read, and the switch is checked again at the checkpoint (core tests); an unrecognized page or a page about someone else is never clicked (browser tests on fixtures with the bundled pack); a follow-up is not sent when the thread has a new answer (browser and core tests); `auto` needs the per-class opt-in and every attempt is a `browser_tasks` row with its pack version, summarized per version on the status screen. Not yet done: checking the pack against real LinkedIn pages by hand (the states were built on representative fixtures), and a `manual` execution mode (only `auto` and `assisted` exist).
+Exit criteria status (2026-09-30): the adapter is off by default and when its setting cannot be read, and the switch is checked again at the checkpoint (core tests); an unrecognized page or a page about someone else is never clicked (browser tests on fixtures with the bundled pack); a follow-up is not sent when the thread has a new answer (browser and core tests); `auto` needs the per-class opt-in and every attempt is a `browser_tasks` row with its pack version, summarized per version on the status screen. Real pages (2026-10-09): profile recognition, identity, the conversation page and the thread reader were checked on real LinkedIn and the pack corrected (0.4.0, docs/14); still to check by hand: the message press on a person without a conversation and an invitation. Not yet done: a `manual` execution mode (only `auto` and `assisted` exist).
 
 ---
 

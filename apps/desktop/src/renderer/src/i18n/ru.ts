@@ -605,6 +605,7 @@ export const ru: Catalog = {
     },
     stopReasons: {
       not_connected: 'Не принял приглашение в LinkedIn вовремя',
+      unanswered_message: 'В LinkedIn вы не ответили на его последнее сообщение',
       no_contact_form: 'На сайте компании нет контактной формы',
       manual: 'Остановлено вами',
       campaign_archived: 'Кампания в архиве',

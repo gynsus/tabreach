@@ -1197,6 +1197,8 @@ export class CampaignEngine {
   /**
    * A LinkedIn action that did not happen, and what it means (Phase 7). Nothing was pressed:
    * - the person answered (FR-LIN-004): the enrollment stops as replied, and the reply is recorded;
+   *   before the campaign has done anything on LinkedIn, their message is no answer to it: the
+   *   enrollment stops as `unanswered_message`, for the person to answer it themselves;
    * - an invitation to someone already invited or connected: the step is done without sending;
    * - a message to someone not connected yet: it waits a day, up to two weeks (`not_connected`);
    * - a page about someone else: the target is wrong, the enrollment stops;
@@ -1214,6 +1216,12 @@ export class CampaignEngine {
       const freshE = this.enrollment(e.id);
       if (!fresh || TERMINAL.has(fresh.status) || !freshE) return null;
       if (errorClass === 'linkedin.replied') {
+        if (!this.actedOnLinkedin(e, run.step_position)) {
+          this.stopEnrollment(freshE, 'unanswered_message', run.correlation_id, 'system', {
+            channel: 'linkedin',
+          });
+          return 'done';
+        }
         this.d.audit.record({
           actorType: 'browser_worker',
           actionType: 'linkedin.reply_detected',
@@ -1269,6 +1277,18 @@ export class CampaignEngine {
       }
       return null;
     });
+  }
+
+  /** Whether an earlier step of the enrollment invited or wrote to the person on LinkedIn. */
+  private actedOnLinkedin(e: EnrollmentRow, beforeStep: number): boolean {
+    return (
+      this.d.db
+        .prepare(
+          `SELECT 1 FROM side_effects WHERE scope_id = ? AND channel = 'linkedin'
+             AND status = 'completed' AND step_position < ? LIMIT 1`,
+        )
+        .get(e.id, beforeStep) !== undefined
+    );
   }
 
   private runCreatedAt(runId: string): string {
