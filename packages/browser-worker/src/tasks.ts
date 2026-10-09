@@ -386,13 +386,25 @@ export async function runCommit(
   const confirmReader = action.confirm
     ? pack.readers.find((r) => r.id === action.confirm?.reader)
     : undefined;
-  const outgoing = async () =>
-    confirmReader && req.identity
-      ? ((await readMessages(page, confirmReader, req.identity.name))?.filter((m) => m.direction === 'out')
-          .length ?? null)
-      : null;
-  const outgoingBefore = await outgoing();
-  if (action.confirm && outgoingBefore === null) return notCommitted({ errorKey: 'task.confirmUnavailable' });
+  // The proof is our text as the last message, not a count: LinkedIn loads older messages into the
+  // thread while it is open, which once looked like one more of ours (live check, 2026-10-09).
+  const typed = normalizeText(
+    action.fill
+      .map((f) => req.params[f.param] ?? '')
+      .filter(Boolean)
+      .at(-1) ?? '',
+  ).slice(0, 80);
+  const lastIsOurs = async (): Promise<boolean | null> => {
+    if (!confirmReader || !req.identity || !typed) return null;
+    const items = await readThreadItems(page, confirmReader, req.identity.name);
+    if (!items) return null;
+    const last = items.at(-1);
+    return last?.direction === 'out' && last.text.includes(typed);
+  };
+  // Already the last message (the same text a moment ago): a new one could not be told apart.
+  if (action.confirm && (await lastIsOurs()) !== false) {
+    return notCommitted({ errorKey: 'task.confirmUnavailable' });
+  }
 
   signal.throwIfAborted();
   if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
@@ -411,12 +423,11 @@ export async function runCommit(
       await handle.focus().catch(() => {}); // only a pointer for the person
       waitMs = ASSISTED_WAIT_MS;
     }
-    if (action.confirm && outgoingBefore !== null) {
+    if (action.confirm) {
       const deadline = Date.now() + waitMs;
       for (;;) {
         signal.throwIfAborted();
-        const now = await outgoing();
-        if (now !== null && now > outgoingBefore) {
+        if ((await lastIsOurs()) === true) {
           return { ...committed, status: 'succeeded', stateId: null, stateKind: null, url: page.url() };
         }
         if (Date.now() > deadline) break;
@@ -667,6 +678,18 @@ export async function readMessages(
   reader: PackReader,
   contactName: string,
 ): Promise<{ direction: 'in' | 'out' }[] | null> {
+  return (await readThreadItems(page, reader, contactName))?.map(({ direction }) => ({ direction })) ?? null;
+}
+
+/**
+ * The conversation's items with their text, for the worker only: the text proves that our own
+ * message is the last one (a confirmation) and never leaves this process.
+ */
+async function readThreadItems(
+  page: Page,
+  reader: PackReader,
+  contactName: string,
+): Promise<{ direction: 'in' | 'out'; text: string }[] | null> {
   const container = await findControl(page, reader.within);
   if (!container) return null;
   // Each list's items: the labels of their links and their text, read in the page (the worker
@@ -698,15 +721,15 @@ export async function readMessages(
     const named = lists.some((items) => items.some((item) => normalizeName(item.text).includes(them)));
     return named ? null : [];
   }
-  const senders = (lists[withSender.indexOf(Math.max(...withSender))] ?? []).map((item) => item.links);
-  const messages: { direction: 'in' | 'out' }[] = [];
+  const items = lists[withSender.indexOf(Math.max(...withSender))] ?? [];
+  const messages: { direction: 'in' | 'out'; text: string }[] = [];
   let current: 'in' | 'out' | null = null;
-  for (const links of senders.slice(-500)) {
-    const names = links.map(normalizeName);
+  for (const item of items.slice(-500)) {
+    const names = item.links.map(normalizeName);
     if (names.some((n) => n.includes(them))) current = 'in';
     else if (names.some((n) => reader.profileLinkAny.some((p) => n.includes(p)))) current = 'out';
     // Items before the first sender (a date line) belong to no one.
-    if (current) messages.push({ direction: current });
+    if (current) messages.push({ direction: current, text: normalizeText(item.text) });
   }
   return messages;
 }

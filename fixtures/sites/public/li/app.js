@@ -7,7 +7,7 @@
 // a floating chat window outside main has a composer of its own. Every invitation and message sent is
 // counted in localStorage (`li_actions`) so tests can prove an action happened once.
 // ?thread=replied: the person answered after our last message; ?thread=none: no conversation yet;
-// ?thread=unreadable: messages without sender links. ?result=silent: nothing confirms.
+// ?thread=unreadable: messages without sender links; ?thread=older: older messages load later. ?result=silent: nothing confirms.
 (() => {
   const p = window.LI;
   const q = new URLSearchParams(location.search);
@@ -100,6 +100,15 @@
       item('Sam Sender', 'Hello, nice to meet you.');
     }
     if (q.get('thread') === 'replied') item(name, 'Thanks, tell me more.');
+    if (q.get('thread') === 'older') {
+      // Like the real thread: older messages of ours load in at the top a moment later.
+      setTimeout(() => {
+        const older = el('li');
+        older.append(el('a', { href: '#' }, 'View Sam’s profile'), el('a', { href: '#' }, 'Sam Sender'));
+        older.append(el('p', {}, 'An older message.'));
+        list.prepend(older);
+      }, 3_000);
+    }
     // Other conversations: names, but no profile links.
     const others = el('ul', { 'aria-label': 'Conversations' });
     for (const who of ['Old Friend', 'Former Colleague', ...(none ? [] : [name])]) {

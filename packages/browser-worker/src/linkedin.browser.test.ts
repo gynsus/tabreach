@@ -180,11 +180,21 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
       status: 'unknown',
       committed: true,
     });
+    // Older messages loading into the thread are not a new one of ours (live check, 2026-10-09).
+    expect(
+      await act(
+        'linkedin.message',
+        'bob-first',
+        'Bob First',
+        { body: 'Third' },
+        '?thread=older&result=silent',
+      ),
+    ).toMatchObject({ status: 'unknown', committed: true });
     // A first message, where there is no conversation yet.
     expect(
       await act('linkedin.message', 'bob-first', 'Bob First', { body: 'First' }, '?thread=none'),
     ).toMatchObject({ status: 'succeeded', committed: true });
-    expect((await actions()).map((a) => a.body)).toEqual(['Hello Bob', 'Second', 'First']);
+    expect((await actions()).map((a) => a.body)).toEqual(['Hello Bob', 'Second', 'Third', 'First']);
   }, 180_000);
 
   it('reads whether the person answered, without sending anything (FR-LIN-004)', async () => {
