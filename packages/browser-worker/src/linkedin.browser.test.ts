@@ -114,7 +114,7 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
     expect(await act('linkedin.connect', 'ann-lee', 'Ann Lee')).toMatchObject({
       status: 'succeeded',
       committed: true,
-      packVersion: '0.5.0',
+      packVersion: '0.5.1',
     });
     expect(
       await act('linkedin.connect.note', 'ann-lee', 'Ann Lee', { note: 'Hi Ann, glad to connect.' }),
@@ -213,7 +213,8 @@ describe('LinkedIn adapter in the worker (Phase 7)', () => {
     ).toMatchObject({
       status: 'unknown',
       errorKey: 'task.manual',
-      stateId: 'linkedin.invite.note', // the note's field open, for the person to paste into
+      // The profile: the person presses Connect (the invitation page has nothing under its dialog).
+      stateId: 'linkedin.profile.connectable',
     });
     // Someone else's page is still never handed over as theirs.
     expect(await act('linkedin.connect', 'ann-lee', 'Anna Leeds', {}, '', 'manual')).toMatchObject({

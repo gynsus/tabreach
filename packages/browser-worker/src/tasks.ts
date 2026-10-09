@@ -328,6 +328,25 @@ export async function runCommit(
       });
     }
   }
+  // Manual (ADR 015): the page is the person's from here — the text is shown in the overlay, not
+  // typed, and nothing is pressed. Core records the checkpoint first (the last checks and
+  // "executing"), so the person may send right away; what happened is theirs to say.
+  const handOver = async (at: PageState): Promise<TaskResult> => {
+    signal.throwIfAborted();
+    if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
+    await page.bringToFront();
+    return {
+      ...base,
+      status: 'unknown',
+      stateId: at.id,
+      stateKind: at.kind,
+      url: page.url(),
+      errorKey: 'task.manual',
+      committed: true,
+    };
+  };
+  if (req.mode === 'manual' && action.manualSkipsSteps) return handOver(start);
+
   // Non-critical clicks that lead to the action (open a dialog, "Add a note"), each landing in an
   // expected state, or nothing more happens.
   let at = start;
@@ -354,23 +373,7 @@ export async function runCommit(
     at = next;
   }
 
-  // Manual (ADR 015): the page is the person's from here — the text is shown in the overlay, not
-  // typed, and nothing is pressed. Core records the checkpoint first (the last checks and
-  // "executing"), so the person may send right away; what happened is theirs to say.
-  if (req.mode === 'manual') {
-    signal.throwIfAborted();
-    if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
-    await page.bringToFront();
-    return {
-      ...base,
-      status: 'unknown',
-      stateId: at.id,
-      stateKind: at.kind,
-      url: page.url(),
-      errorKey: 'task.manual',
-      committed: true,
-    };
-  }
+  if (req.mode === 'manual') return handOver(at);
 
   for (const field of action.fill) {
     const value = req.params[field.param];

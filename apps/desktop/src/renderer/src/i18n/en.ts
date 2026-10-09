@@ -523,7 +523,7 @@ export const en = {
         'TabReach opens the profile, checks it is the right person, fills in the text and waits; you press Send.',
       auto: 'TabReach presses Send after approval — only if allowed in Settings → LinkedIn.',
       manual:
-        'TabReach opens the profile (the conversation or the invitation), checks it is the right person and shows the text with a Copy button; you write and send it yourself, then tell TabReach whether it was sent.',
+        'TabReach opens the profile, checks it is the right person (for a message it then opens the conversation) and shows the text with a Copy button; you send it yourself — for an invitation, press Connect — then tell TabReach whether it was sent.',
     },
     inviteNote: 'Invitation note',
     inviteNoteHint: 'Optional, up to 300 characters.',

@@ -196,7 +196,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.ledger()).toMatchObject([{ status: 'completed' }]);
     expect(h.status(campaign)).toMatchObject({ status: 'completed' });
     const attempts = h.db.prepare(`SELECT adapter_pack_id, adapter_pack_version FROM browser_tasks`).all();
-    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.5.0' }]);
+    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.5.1' }]);
   });
 
   it('auto only where opted in, per action class (FR-LIN-002)', async () => {
@@ -276,7 +276,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.status(wrong)).toMatchObject({ status: 'stopped', stopReason: 'invalid_target' });
     // The attempt shows in the pack's health: one task, one unrecognized page (FR-LIN-006).
     expect(s().browser.packHealth()).toEqual([
-      expect.objectContaining({ packId: 'linkedin', version: '0.5.0', tasks: 1, unsupported: 1 }),
+      expect.objectContaining({ packId: 'linkedin', version: '0.5.1', tasks: 1, unsupported: 1 }),
     ]);
 
     const two = await start(

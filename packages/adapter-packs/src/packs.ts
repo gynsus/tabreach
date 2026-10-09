@@ -106,7 +106,7 @@ const connectLink = {
 };
 const linkedin = {
   id: 'linkedin',
-  version: '0.5.0',
+  version: '0.5.1',
   channel: 'linkedin',
   states: [
     {
@@ -176,6 +176,7 @@ const linkedin = {
       id: 'linkedin.connect',
       from: ['linkedin.profile.connectable'],
       identity: true,
+      manualSkipsSteps: true,
       steps: [{ follow: connectLink, expect: ['linkedin.invite.dialog'] }],
       commit: dialogButton('Send without a note', 'Отправить без заметки'),
       success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
@@ -184,6 +185,7 @@ const linkedin = {
       id: 'linkedin.connect.note',
       from: ['linkedin.profile.connectable'],
       identity: true,
+      manualSkipsSteps: true,
       steps: [
         { follow: connectLink, expect: ['linkedin.invite.dialog'] },
         { click: dialogButton('Add a note', 'Добавить заметку'), expect: ['linkedin.invite.note'] },

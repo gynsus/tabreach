@@ -124,6 +124,12 @@ export const packActionSchema = z
     steps: stepsSchema,
     /** The target is checked (profile URL and name, docs/14) on the start page before any click. */
     identity: z.boolean().default(false),
+    /**
+     * `manual` mode stops on the start page instead of after the steps: the person opens the
+     * dialog themselves (LinkedIn's invitation page reached by a link has nothing under its
+     * dialog once it is closed — live check, 2026-10-09).
+     */
+    manualSkipsSteps: z.boolean().default(false),
     fill: z
       .array(z.object({ control: controlSchema, param: z.string().regex(/^[a-z][a-zA-Z0-9]*$/) }).strict())
       .default([]),
