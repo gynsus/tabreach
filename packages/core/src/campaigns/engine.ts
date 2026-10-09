@@ -1155,7 +1155,8 @@ export class CampaignEngine {
         website,
         subject: draft.subject,
         body: draft.body,
-        stepMode: step.executionMode,
+        // A form step is never `manual` (refused at launch); were it, the person presses.
+        stepMode: step.executionMode === 'manual' ? 'assisted' : step.executionMode,
         // A form prepared three times already keeps changing (audit 6.5): the person sends it.
         forceAssisted: this.preparationCount(run.id) >= 3,
         signal: ctx.signal,

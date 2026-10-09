@@ -25,3 +25,11 @@ When outcome cannot be verified from the UI, the user's confirmation is a first-
 - LinkedIn usage is closer to a human-operated assistant; account risk and product positioning improve.
 - Throughput in `assisted` mode is bounded by the user's attention; the UI must make the queue of "waiting for your click" items efficient.
 - Workflows need `AWAIT_USER_CLICK` states and timeouts.
+
+## Implementation (`manual`, 2026-10-09)
+
+- Channels: email and test steps are `auto` only; a website form step is `auto` or `assisted` (`mode.manualUnsupported` for `manual`); a LinkedIn step may be `auto` (with the per-class opt-in), `assisted` or `manual`.
+- A `manual` LinkedIn step is approved like any other, then runs the same `commit` task up to the checkpoint without typing or pressing: the worker opens the profile, checks the person (FR-LIN-003), follows the navigation steps (the conversation page, or the invitation dialog with the note's field open) and stops at `about_to_commit`, where core runs the final checks (policy, limits, kill switch) and marks the ledger entry `executing`. The prepared text is shown in the in-page overlay with a Copy button (docs/09); nothing is typed into the page.
+- The task ends `unknown` (`task.manual`); the window is handed to the person (`human` control mode); the send is listed under Status → Needs attention → Unconfirmed sends, and "It was sent" / "It was not sent" is the reconciliation (`user_confirmation`). Nothing is pressed again until the person answers.
+- The conversation is read before a manual message as before (FR-LIN-004): an answer stops it before anything is opened for the person.
+- The overlay shows the text only on pages of the target's origin (`contentOrigin`); anywhere else in the window it is left out, and its titles name no one (docs/12, audit 5.5).

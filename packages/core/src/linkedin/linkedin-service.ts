@@ -4,11 +4,14 @@ import {
   linkedinSettingsSchema,
   RpcError,
   uuidv7,
+  type Language,
   type LinkedinSettings,
   type Logger,
   type RpcPeer,
+  type StepExecutionMode,
   type TaskResult,
 } from '@tabreach/protocol';
+import { coreText } from '../control/texts.js';
 import type { AuditLog } from '../audit/audit-log.js';
 import { BrowserActionChannel, type BrowserDispatch } from '../browser/browser-channel.js';
 import type { BrowserService } from '../browser/browser-service.js';
@@ -65,6 +68,7 @@ export class LinkedinService {
       checkpoints: BrowserCheckpoints;
       worker: () => Worker | null;
       logger: Logger;
+      language?: () => Language;
     },
   ) {}
 
@@ -134,10 +138,14 @@ export class LinkedinService {
     return null;
   }
 
-  /** `auto` only where the person opted in for that action class (FR-LIN-002); otherwise assisted. */
-  modeFor(action: 'connect' | 'message', stepMode: 'auto' | 'assisted'): 'auto' | 'assisted' {
+  /**
+   * `auto` only where the person opted in for that action class (FR-LIN-002); `manual` as the step
+   * says (the person does everything); otherwise assisted.
+   */
+  modeFor(action: 'connect' | 'message', stepMode: StepExecutionMode): StepExecutionMode {
     const s = this.settings();
     const allowed = action === 'connect' ? s.autoConnect : s.autoMessage;
+    if (stepMode === 'manual') return 'manual';
     return stepMode === 'auto' && allowed ? 'auto' : 'assisted';
   }
 
@@ -183,7 +191,7 @@ export class LinkedinService {
           .prepare('SELECT action_type, workflow_run_id FROM side_effects WHERE idempotency_key = ?')
           .get(key) as { action_type: string; workflow_run_id: string } | undefined
       )?.action_type;
-    const stepModeOf = (runId: string): 'auto' | 'assisted' => {
+    const stepModeOf = (runId: string): StepExecutionMode => {
       const row = this.d.db
         .prepare(
           `SELECT s.execution_mode FROM workflow_runs r JOIN campaign_enrollments e ON e.id = r.business_id
@@ -191,14 +199,16 @@ export class LinkedinService {
            WHERE r.id = ?`,
         )
         .get(runId) as { execution_mode: string } | undefined;
-      return row?.execution_mode === 'auto' ? 'auto' : 'assisted';
+      return row?.execution_mode === 'auto' || row?.execution_mode === 'manual'
+        ? row.execution_mode
+        : 'assisted';
     };
     const dispatch: BrowserDispatch = {
       packId: PACK,
       packVersion: pack?.version ?? 'none',
       assisted: (message, runId) => {
         const action = actionOf(message.idempotencyKey) === 'linkedin.connect' ? 'connect' : 'message';
-        return this.modeFor(action, stepModeOf(runId)) === 'assisted';
+        return this.modeFor(action, stepModeOf(runId)) !== 'auto';
       },
       run: async (worker, task, options) => {
         const actionType = actionOf(task.message.idempotencyKey);
@@ -229,6 +239,24 @@ export class LinkedinService {
           if (thread.replied) return refused('linkedin.replied');
         }
         const note = task.message.body.trim();
+        const mode = this.modeFor(action, stepModeOf(task.workflowRunId));
+        if (mode === 'manual') {
+          // The prepared text goes into the overlay with a copy button (docs/09); nothing is typed.
+          const lang = this.d.language?.() ?? 'en';
+          await worker
+            .request('session.setOverlay', {
+              sessionId: task.sessionId,
+              context: {
+                // No names in the overlay; the text only on LinkedIn's own pages (docs/12).
+                title: coreText(lang, `overlay.manual.${action}`),
+                detail: coreText(lang, 'overlay.manual.detail'),
+                lang,
+                content: action === 'message' ? task.message.body : note || null,
+                contentOrigin: new URL(task.message.target).origin,
+              },
+            })
+            .catch(() => {}); // the text is also in the app (the approval); the overlay explains
+        }
         return worker.request(
           'task.run',
           {
@@ -240,7 +268,7 @@ export class LinkedinService {
             actionId:
               action === 'message' ? 'linkedin.message' : note ? 'linkedin.connect.note' : 'linkedin.connect',
             params: action === 'message' ? { body: task.message.body } : { note },
-            mode: this.modeFor(action, stepModeOf(task.workflowRunId)),
+            mode,
             identity,
           },
           options,

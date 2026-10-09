@@ -194,6 +194,15 @@ export class BrowserActionChannel implements MessageChannel {
         await close();
         return { outcome: 'not_sent', errorClass: 'site_rejected', permanent: true };
       }
+      // Manual (ADR 015): the window is the person's to finish in; they say whether it was sent.
+      if (result.errorKey === 'task.manual') {
+        await this.quietly(
+          this.d.browser.setControlMode(sessionId, 'human'),
+          'browser.hand_over_failed',
+          correlationId,
+        );
+        return { outcome: 'unknown', errorClass: 'manual' };
+      }
       // Left open and paused so the person can see what the page shows before deciding; a window
       // the person already holds stays theirs (docs/11).
       if (this.d.browser.sessionById(sessionId)?.controlMode === 'automation') {

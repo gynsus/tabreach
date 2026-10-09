@@ -128,6 +128,13 @@ export const browserTaskTypeSchema = z.enum(['check_state', 'commit']);
  */
 export const browserExecutionModeSchema = z.enum(['auto', 'assisted']);
 export type BrowserExecutionMode = z.infer<typeof browserExecutionModeSchema>;
+/**
+ * A campaign step's execution mode (ADR 015): `manual` — TabReach opens the target and shows the
+ * prepared text; the person does everything and then says whether it was sent. Only the LinkedIn
+ * channel offers it; a website form presses with `auto` or `assisted` only.
+ */
+export const stepExecutionModeSchema = z.enum(['auto', 'assisted', 'manual']);
+export type StepExecutionMode = z.infer<typeof stepExecutionModeSchema>;
 
 /** The person a profile page must show: its profile URL and name. */
 export const targetIdentitySchema = z.object({
@@ -147,7 +154,7 @@ export const workerTaskRunSchema = z
     /** commit: the pack action, the values of its fields, and who presses the final control. */
     actionId: z.string().min(1).optional(),
     params: z.record(z.string(), z.string().max(20_000)).default({}),
-    mode: browserExecutionModeSchema.default('auto'),
+    mode: stepExecutionModeSchema.default('auto'),
     /** Who the page must be about (FR-LIN-003): checked before any click, and again at the checkpoint. */
     identity: targetIdentitySchema.optional(),
   })
@@ -446,6 +453,12 @@ export type SessionModeChanged = z.infer<typeof sessionModeChangedSchema>;
 export const overlayContextSchema = z.object({
   title: z.string().max(200),
   detail: z.string().max(300).nullable(),
+  /**
+   * `manual` mode: the prepared text, shown with a copy button — only on pages of `contentOrigin`,
+   * the site it is meant for (a page can read the overlay; docs/12).
+   */
+  content: z.string().max(20_000).nullable().default(null),
+  contentOrigin: z.url().nullable().default(null),
   /** The interface language, for the overlay's own labels. */
   lang: z.enum(['en', 'ru']),
 });

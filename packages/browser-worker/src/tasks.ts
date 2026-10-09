@@ -11,7 +11,7 @@ import {
   type PageState,
 } from '@tabreach/adapter-packs';
 import type {
-  BrowserExecutionMode,
+  StepExecutionMode,
   TargetIdentity,
   TaskDiagnostics,
   TaskResult,
@@ -259,7 +259,7 @@ export async function runCommit(
     url: string;
     actionId?: string | undefined;
     params: Record<string, string>;
-    mode: BrowserExecutionMode;
+    mode: StepExecutionMode;
     identity?: TargetIdentity | undefined;
   },
   env: TaskEnvironment,
@@ -352,6 +352,24 @@ export async function runCommit(
       });
     }
     at = next;
+  }
+
+  // Manual (ADR 015): the page is the person's from here — the text is shown in the overlay, not
+  // typed, and nothing is pressed. Core records the checkpoint first (the last checks and
+  // "executing"), so the person may send right away; what happened is theirs to say.
+  if (req.mode === 'manual') {
+    signal.throwIfAborted();
+    if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
+    await page.bringToFront();
+    return {
+      ...base,
+      status: 'unknown',
+      stateId: at.id,
+      stateKind: at.kind,
+      url: page.url(),
+      errorKey: 'task.manual',
+      committed: true,
+    };
   }
 
   for (const field of action.fill) {
