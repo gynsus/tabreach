@@ -858,10 +858,13 @@ export const en = {
     checking: 'TabReach is still checking the Sent folder; you can decide once it gives up.',
     wasSent: 'It was sent',
     wasNotSent: 'It was not sent',
-    confirmNotSent: 'Send it again?',
+    confirmNotSent: 'Yes, do the step again',
+    notSentHint:
+      'TabReach will do this step again: an email is sent now; in the browser the page is opened again (a step you do yourself is handed to you again).',
     browserHint:
-      'Done in the browser: look at the site in its window. It stays open, and other website forms wait until you close it. If you are not sure, leave it — nothing is repeated.',
-    resolveHint: 'Check the Sent folder of the account. If it was not sent, TabReach sends it now.',
+      'Done in the browser: look at the page in its window. It stays open, and other actions in this browser profile wait until you close it or answer here. If you are not sure, leave it — nothing is repeated.',
+    resolveHint:
+      'Check whether it reached the recipient — for an email, the Sent folder of the account; in the browser, the page. Only "It was not sent" makes TabReach do the step again, after you confirm.',
     attempts_one: '{{count}} attempt',
     attempts_other: '{{count}} attempts',
     types: {
