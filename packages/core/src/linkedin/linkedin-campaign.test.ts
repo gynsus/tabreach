@@ -315,10 +315,30 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
       { status: 'unknown', error_class: 'manual' },
     ]);
     expect(h.status(campaign)).toMatchObject({ status: 'active' });
-    // Nothing is pressed again while the person has not said what happened.
+    // Nothing is pressed again while the person has not said what happened, and nothing retries:
+    // the decision is theirs at once (not "still checking").
     h.clock.advance(60 * 60_000);
     await h.run();
     expect(runs()).toHaveLength(1);
+    expect(
+      h.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'message.send' AND status = 'unknown'`,
+        )
+        .get(),
+    ).toEqual({ n: 1 });
+    const [uncertain] = s().uncertainSends();
+    expect(uncertain).toMatchObject({ channel: 'linkedin', checking: false });
+
+    // "It was not sent": the step runs again, in the window handed over before — taken back first.
+    s().resolveSideEffect(uncertain!.id, 'not_sent', 'c');
+    await h.run();
+    expect(runs()).toHaveLength(2);
+    expect(
+      calls
+        .filter((c) => c.type === 'session.setMode')
+        .map((c) => (c.payload as { controlMode: string }).controlMode),
+    ).toEqual(['human', 'automation', 'human']);
   });
 
   it('a website form step cannot be manual', () => {

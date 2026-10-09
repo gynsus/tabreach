@@ -800,6 +800,12 @@ export class CampaignEngine {
         audit(outcome.outcome === 'unknown' ? 'unknown' : 'failed', { errorClass: outcome.errorClass });
       });
       this.d.changed(['activity']);
+      // A browser action cannot be looked up afterwards: retrying only re-reads "unknown" and keeps
+      // the person's "It was sent / not sent" busy meanwhile (live check, 2026-10-09). It waits
+      // for them under Unconfirmed sends; their answer requeues the run.
+      if (outcome.outcome === 'unknown' && channel.confirmedByPerson) {
+        throw new PermanentError('send_unknown', outcome.errorClass);
+      }
       // not_sent: safe to try again. unknown: possibly delivered — the retry reconciles with the
       // channel through the ledger, it never re-sends blindly.
       throw new RetryableError(
