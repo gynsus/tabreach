@@ -204,10 +204,13 @@ describe('research runs on the fixture site', () => {
     h.anthropic.answer(answer, answer);
     h.services.research.start({ companyId }, ctx());
     await h.run();
+    // Retention removed the page text meanwhile (docs/18): capturing the same page brings it back.
+    h.db.exec(`UPDATE evidence SET text = ''`);
     h.services.research.start({ companyId }, ctx());
     await h.run();
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM evidence').get()).toEqual({ n: 3 });
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM research_run_evidence').get()).toEqual({ n: 6 });
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM evidence WHERE text = ''`).get()).toEqual({ n: 0 });
   });
 
   it('needs a website and an AI key; an unreachable site fails with a reason', async () => {

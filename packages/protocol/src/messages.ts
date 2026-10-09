@@ -37,6 +37,7 @@ import {
   diagnosticsBundleRequestSchema,
   diagnosticsBundleSchema,
 } from './diagnostics.js';
+import { retentionSettingsSchema, retentionStateSchema } from './retention.js';
 import {
   conversationListRequestSchema,
   conversationSchema,
@@ -384,6 +385,18 @@ export const requests = {
     kind: 'command',
     request: policySettingsSchema,
     response: policySettingsSchema,
+  },
+  'retention.get': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: retentionStateSchema,
+  },
+  'retention.update': {
+    channel: 'app',
+    kind: 'command',
+    request: retentionSettingsSchema,
+    response: retentionStateSchema,
   },
   'jobs.needsAttention': {
     channel: 'app',

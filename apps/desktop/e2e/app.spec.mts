@@ -584,6 +584,17 @@ test('a saved settings screen is saved: no "Unsaved changes", leaving does not a
   await expect(page.getByRole('heading', { name: 'Contacts', level: 1 })).toBeVisible();
 });
 
+test('data retention: a shorter limit is saved and kept', async () => {
+  await go('#/settings/data');
+  await expect(page.getByTestId('retention-last-run')).toBeVisible();
+  await page.getByLabel('Screenshots').selectOption('7');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByLabel('Screenshots')).toHaveValue('7');
+  await expect(page.getByLabel('Message texts')).toHaveValue('keep');
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

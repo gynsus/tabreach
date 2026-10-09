@@ -73,6 +73,8 @@ query   suppressions.list
 command suppressions.add / suppressions.remove / suppressions.import   # add is idempotent
 query   policy.settings.get                                            # caps, active window, company stop
 command policy.settings.update
+query   retention.get                                                  # { settings, lastRun } — docs/18
+command retention.update                                               # days per kind, or null to keep
 ```
 
 ## AI settings

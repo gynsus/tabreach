@@ -53,6 +53,8 @@ export class CoreService {
     this.hostPeer = new RpcPeer(options.host, this.peerOptions('host'));
     this.services = new AppServices(db, {
       logger: options.logger,
+      diagnosticsDir: join(options.dataDir, 'diagnostics'),
+      ...(options.logDir ? { logDir: options.logDir } : {}),
       allowLocalSites: process.env.TABREACH_ALLOW_LOCAL_SITES === '1',
       worker: () => this.workerPeer,
       keepAwake: (on) => {
@@ -140,6 +142,7 @@ export class CoreService {
       ...core.services.classifier.jobTypes(),
       ...core.services.research.jobTypes(),
       ...core.services.signInChecks.jobTypes(),
+      ...core.services.retention.jobTypes(),
     ]) {
       core.dispatcher.register(type);
     }
@@ -148,6 +151,7 @@ export class CoreService {
     core.services.inbox.resync();
     core.services.research.resync();
     core.services.appControl.syncKeepAwake();
+    core.services.retention.schedule();
     return core;
   }
 

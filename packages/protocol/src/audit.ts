@@ -48,6 +48,8 @@ export const auditActionTypes = [
   'draft.revised',
   'message.send',
   'policy.updated',
+  'retention.updated',
+  'retention.pruned',
   'job.retried',
   'job.dismissed',
   'account.connected',

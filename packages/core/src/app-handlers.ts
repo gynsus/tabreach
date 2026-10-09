@@ -42,6 +42,7 @@ import { ExportService } from './prospects/export-service.js';
 import { ImportService } from './prospects/import-service.js';
 import { ProspectService } from './prospects/prospect-service.js';
 import { SecretStore, type SecretCipher } from './secrets/secrets.js';
+import { RetentionService } from './retention/retention-service.js';
 import { SettingsRepository } from './settings/settings.js';
 import { SuppressionService } from './suppressions/suppression-service.js';
 
@@ -85,6 +86,9 @@ export interface AppServicesOptions {
   keepAwake?: (on: boolean) => void;
   /** A native notification (a person is needed). */
   notify?: (title: string, body: string) => void;
+  /** Folders the retention job prunes (docs/18); none in tests that do not need them. */
+  diagnosticsDir?: string;
+  logDir?: string;
 }
 
 const noCipher: SecretCipher = {
@@ -130,6 +134,8 @@ export class AppServices {
   /** Renders JavaScript-only pages for research in the research profile (Phase 5d). */
   readonly researchRenderer: ResearchRenderer;
   readonly appControl: AppControlService;
+  /** How long sensitive data is kept, and the daily job that enforces it (docs/18, Phase 8a). */
+  readonly retention: RetentionService;
   private readonly changed: (entities: ChangedEntity[]) => void;
   private readonly now: () => Date;
 
@@ -216,6 +222,16 @@ export class AppServices {
       checkpoints: this.checkpoints,
       worker: options.worker ?? (() => null),
       logger: logger.child({ component: 'forms' }),
+    });
+    this.retention = new RetentionService({
+      db,
+      now,
+      settings: this.settings,
+      audit: this.audit,
+      jobs: this.jobs,
+      logger: logger.child({ component: 'retention' }),
+      diagnosticsDir: options.diagnosticsDir ?? null,
+      logDir: options.logDir ?? null,
     });
     this.linkedin = new LinkedinService({
       db,
@@ -480,6 +496,16 @@ export class AppServices {
         }),
       )
       .handle('forms.screenshot', ({ approvalId }) => ({ png: this.forms.screenshotOf(approvalId) }))
+      .handle('retention.get', () => ({
+        settings: this.retention.settings(),
+        lastRun: this.retention.lastRun(),
+      }))
+      .handle('retention.update', (p, c) =>
+        mutate(['settings'], () => {
+          const settings = this.retention.update(p, ctx(c));
+          return { settings, lastRun: this.retention.lastRun() };
+        }),
+      )
       .handle('policy.settings.get', () => this.policy.current())
       .handle('policy.settings.update', (p, c) =>
         mutate(['settings'], () => {

@@ -394,9 +394,15 @@ export class ResearchService {
     extractor: string,
   ): string {
     const hash = createHash('sha256').update(text).digest('hex');
-    const existing = this.d.db.prepare('SELECT id FROM evidence WHERE content_hash = ?').get(hash) as
-      { id: string } | undefined;
+    const existing = this.d.db.prepare('SELECT id, text FROM evidence WHERE content_hash = ?').get(hash) as
+      { id: string; text: string } | undefined;
     const id = existing?.id ?? uuidv7();
+    if (existing && existing.text === '' && text !== '') {
+      // Its text was removed by retention (docs/18); the same page, captured again, brings it back.
+      this.d.db
+        .prepare('UPDATE evidence SET text = ?, captured_at = ? WHERE id = ?')
+        .run(text, this.d.now().toISOString(), id);
+    }
     if (!existing) {
       this.d.db
         .prepare(
