@@ -12,7 +12,9 @@ import {
   type Logger,
   type MessageEndpoint,
 } from '@tabreach/protocol';
+import { bundledPacks } from '@tabreach/adapter-packs';
 import { AppServices } from './app-handlers.js';
+import { DiagnosticsService } from './diagnostics/bundle.js';
 import { openDatabase, sqliteVersion } from './db/database.js';
 import { currentSchemaVersion, migrate, type MigrationReport } from './db/migrate.js';
 import { migrations } from './db/migrations.js';
@@ -27,6 +29,8 @@ export interface CoreOptions {
   /** Channel to the main process for Electron-only capabilities (safeStorage). */
   host: MessageEndpoint;
   logger: Logger;
+  /** Where the processes write their logs, for the diagnostics bundle. */
+  logDir?: string;
 }
 
 const WORKER_HEALTH_TIMEOUT_MS = 5_000;
@@ -39,6 +43,7 @@ export class CoreService {
   private secretsStatus: { status: ComponentStatus; detail?: string } = { status: 'unknown' };
   readonly services: AppServices;
   readonly dispatcher: Dispatcher;
+  private readonly diagnostics: DiagnosticsService;
 
   private constructor(
     private readonly db: DatabaseSync,
@@ -77,6 +82,14 @@ export class CoreService {
             { timeoutMs: timeoutMs + 30_000 },
           ),
       },
+    });
+    this.diagnostics = new DiagnosticsService({
+      db,
+      now: () => new Date(),
+      logDir: options.logDir ?? null,
+      diagnosticsDir: join(options.dataDir, 'diagnostics'),
+      health: () => this.health(),
+      packs: () => bundledPacks.map((p) => ({ id: p.id, version: p.version })),
     });
     this.dispatcher = new Dispatcher({
       queue: this.services.jobs,
@@ -144,6 +157,15 @@ export class CoreService {
     this.services
       .register(peer)
       .handle('app.health', () => this.health())
+      .handle('diagnostics.screenshots', () => ({ items: this.diagnostics.screenshots() }))
+      .handle('diagnostics.createBundle', async (req, ctx) => {
+        const bundle = await this.diagnostics.createBundle(req);
+        this.options.logger.info(
+          { event: 'diagnostics.bundle_created', correlationId: ctx.correlationId, bytes: bundle.bytes },
+          'diagnostics bundle created',
+        );
+        return bundle;
+      })
       .handle('browser.launchCheck', (payload, ctx) => this.launchCheck(payload.url, ctx.correlationId));
     this.appPeers.add(peer);
     return () => {

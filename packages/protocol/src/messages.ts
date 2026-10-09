@@ -33,6 +33,11 @@ import {
 import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
 import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
 import {
+  diagnosticScreenshotSchema,
+  diagnosticsBundleRequestSchema,
+  diagnosticsBundleSchema,
+} from './diagnostics.js';
+import {
   conversationListRequestSchema,
   conversationSchema,
   conversationSummarySchema,
@@ -159,6 +164,18 @@ export const requests = {
     kind: 'query',
     request: z.object({}),
     response: healthReportSchema,
+  },
+  'diagnostics.screenshots': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: z.object({ items: z.array(diagnosticScreenshotSchema) }),
+  },
+  'diagnostics.createBundle': {
+    channel: 'app',
+    kind: 'command',
+    request: diagnosticsBundleRequestSchema,
+    response: diagnosticsBundleSchema,
   },
   'browser.launchCheck': {
     channel: 'app',

@@ -4,6 +4,7 @@ import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Alert, Badge, Button, PageHeader } from '../../components/ui';
 import { AppControlSection } from './AppControl';
+import { DiagnosticsSection } from './Diagnostics';
 import { Interventions } from './Interventions';
 import { NeedsAttention } from './NeedsAttention';
 import { PackHealthSection } from './PackHealth';
@@ -171,6 +172,8 @@ export function StatusPage() {
         <NeedsAttention />
 
         <PackHealthSection />
+
+        <DiagnosticsSection />
       </div>
     </>
   );

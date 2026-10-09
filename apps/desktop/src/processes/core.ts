@@ -39,6 +39,7 @@ CoreService.start({
   electronVersion: process.versions.electron ?? null,
   host,
   logger,
+  logDir: env.TABREACH_LOG_DIR,
 }).then(
   (started) => {
     core = started;

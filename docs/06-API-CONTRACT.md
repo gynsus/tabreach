@@ -198,7 +198,8 @@ command interventions.resolve          # { id, outcome: done | cancel } — done
 ```text
 query   jobs.needsAttention            # dead/failed jobs
 command jobs.retry / jobs.dismiss
-command diagnostics.createBundle       # planned, Phase 8 (not implemented)
+query   diagnostics.screenshots        # masked screenshots kept for browser tasks (30 days), codes only
+command diagnostics.createBundle       # { screenshots } -> { filename, base64, bytes, contents } (docs/20)
 query   app.health                     # implemented: versions, core/worker/Chrome health for the status screen
 ```
 

@@ -13,6 +13,7 @@
     "@mozilla/readability": "0.6.0",
     "@tabreach/adapter-packs": "workspace:*",
     "@tabreach/protocol": "workspace:*",
+    "fflate": "0.8.3",
     "imapflow": "2.1.2",
     "linkedom": "0.18.13",
     "mailparser": "3.9.31",

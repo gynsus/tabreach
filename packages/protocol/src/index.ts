@@ -15,3 +15,4 @@ export * from './ai.js';
 export * from './research.js';
 export * from './browser.js';
 export * from './net.js';
+export * from './diagnostics.js';
