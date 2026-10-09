@@ -48,13 +48,8 @@ export function probeOf(page: Page): PageProbe {
       return shown;
     },
     hasRole: async (role, { name, level, within }) =>
-      (await (within ? page.getByRole(within as Parameters<Page['getByRole']>[0]).first() : page)
-        // Roles come from validated pack data; Playwright checks them against ARIA.
-        .getByRole(role as Parameters<Page['getByRole']>[0], {
-          ...(name ? { name } : {}),
-          ...(level ? { level } : {}),
-        })
-        .count()) > 0,
+      (await byRole(page, within, role, { ...(name ? { name } : {}), ...(level ? { level } : {}) }).count()) >
+      0,
     hasText: async (text) => (await page.getByText(text).filter({ visible: true }).count()) > 0,
   };
 }
@@ -200,6 +195,28 @@ async function typedText(control: Locator): Promise<string | null> {
 
 const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim();
 
+type AriaRole = Parameters<Page['getByRole']>[0];
+
+/**
+ * Elements with a role (from validated pack data; Playwright checks it against ARIA), inside the
+ * first `within` landmark when one is named — but not inside a complementary landmark nested in it:
+ * LinkedIn's "More profiles for you", with other people's Connect and Message, is an `aside`
+ * inside `main` (live check, 2026-10-09).
+ */
+function byRole(
+  page: Page,
+  within: string | undefined,
+  role: string,
+  options: Parameters<Page['getByRole']>[1] = {},
+): Locator {
+  if (!within) return page.getByRole(role as AriaRole, options);
+  return page
+    .getByRole(within as AriaRole)
+    .first()
+    .getByRole(role as AriaRole, options)
+    .and(page.locator(':not(aside *, [role="complementary"] *)'));
+}
+
 /** The little of the DOM that in-page reads use (the worker is compiled without DOM types). */
 interface QueryRoot {
   querySelectorAll(selector: string): ArrayLike<QueryRoot> & Iterable<QueryRoot>;
@@ -212,16 +229,15 @@ interface QueryRoot {
  * role), inside its landmark when it names one; otherwise nothing (no guessing — docs/07).
  */
 async function findControl(page: Page, control: Control) {
-  const scope = control.within
-    ? page.getByRole(control.within as Parameters<Page['getByRole']>[0]).first()
-    : page;
-  const role = control.role as Parameters<Page['getByRole']>[0];
   if (!control.nameAny) {
-    const found = scope.getByRole(role).filter({ visible: true });
+    const found = byRole(page, control.within, control.role).filter({ visible: true });
     return (await found.count()) === 1 ? found : null;
   }
   for (const name of control.nameAny) {
-    const found = scope.getByRole(role, { name, exact: true }).filter({ visible: true });
+    const found = byRole(page, control.within, control.role, {
+      name,
+      exact: !control.nameContains,
+    }).filter({ visible: true });
     const count = await found.count();
     if (count === 1) return found;
     if (count > 1) return null;
@@ -561,10 +577,7 @@ export async function identityMatches(
 ): Promise<boolean> {
   const slug = profileSlug(page.url(), rule.profilePath);
   if (!slug || slug !== profileSlug(expected.profileUrl, rule.profilePath)) return false;
-  const scope = rule.name.within
-    ? page.getByRole(rule.name.within as Parameters<Page['getByRole']>[0]).first()
-    : page;
-  const headings = scope.getByRole(rule.name.role as Parameters<Page['getByRole']>[0], {
+  const headings = byRole(page, rule.name.within, rule.name.role, {
     ...(rule.name.level ? { level: rule.name.level } : {}),
   });
   if ((await headings.count()) < 1) return false;

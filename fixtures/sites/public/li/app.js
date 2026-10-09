@@ -1,10 +1,13 @@
 /* global window, document, location */
 // A minimal LinkedIn-like profile for adapter tests (Phase 7). Own markup — nothing copied —
-// with the roles and names the linkedin pack recognizes, shaped like the live check of
-// 2026-09-30: the name is a level-2 heading in main, a sidebar of other people outside main has
-// Connect buttons, "Message" is a link to the conversation's own page (messaging/compose/), where
-// the conversation is an unnamed list whose first item of a group names the sender by links and
-// a floating chat window outside main has a composer of its own. Every invitation and message sent is
+// with the roles and names the linkedin pack recognizes, shaped like the live checks of
+// 2026-09-30 and 2026-10-09: the name is a level-2 heading in main; a sidebar of other people
+// (an aside inside main) has Connect and Message of its own; "Connect" is a link named "Invite
+// <name> to connect" to the invitation's own page (preload/custom-invite/) and "Message" a link to
+// the conversation's own page (messaging/compose/) — clicks on either do nothing; the conversation
+// is an unnamed list whose first item of a group names the sender by links, the composer an
+// editable div, and a floating chat window outside main has a composer of its own. Every
+// invitation and message sent is
 // counted in localStorage (`li_actions`) so tests can prove an action happened once.
 // ?thread=replied: the person answered after our last message; ?thread=none: no conversation yet;
 // ?thread=unreadable: messages without sender links; ?thread=older: older messages load later. ?result=silent: nothing confirms.
@@ -23,7 +26,9 @@
     return e;
   };
   const main = el('main');
-  if (p.page === 'messaging') main.append(el('h1', {}, 'Messaging'));
+  if (p.page === 'invite') {
+    // The invitation's own page: a dialog, no main.
+  } else if (p.page === 'messaging') main.append(el('h1', {}, 'Messaging'));
   else main.append(el('h2', {}, p.name), el('p', {}, p.headline), el('h2', {}, 'About'));
   const actions = el('div', { role: 'group', 'aria-label': 'Profile actions' });
   main.append(actions);
@@ -35,37 +40,48 @@
     el('h2', {}, 'Notifications'),
     el('nav', { 'aria-label': 'Primary' }, 'Home Network Messaging'),
   );
-  document.body.append(header, main);
+  document.body.append(header);
+  if (p.page !== 'invite') document.body.append(main);
 
   const pending = () => {
     actions.replaceChildren(el('button', { type: 'button' }, 'Pending'));
   };
   if (p.degree === 'pending') pending();
   if (p.degree === '2nd') {
-    const connect = el('button', { type: 'button' }, 'Connect');
+    // Like the real link: "Invite <name> to connect", to the invitation's own page; a click on
+    // it does nothing (the pack follows it).
+    const to = new URLSearchParams(q);
+    to.set('vanityName', location.pathname.split('/').filter(Boolean).pop());
+    to.set('name', p.name);
+    const connect = el(
+      'a',
+      { href: `../../preload/custom-invite/?${to}`, 'aria-label': `Invite ${p.name} to connect` },
+      'Connect',
+    );
+    connect.onclick = (event) => event.preventDefault();
     actions.append(connect, el('button', { type: 'button' }, 'More'));
-    connect.onclick = () => {
-      const dlg = el('div', { role: 'dialog', 'aria-label': `Invite ${p.name} to connect` });
-      dlg.append(el('h2', {}, 'Add a note to your invitation?'));
-      const addNote = el('button', { type: 'button' }, 'Add a note');
-      const without = el('button', { type: 'button' }, 'Send without a note');
-      dlg.append(addNote, without);
-      const sent = (note) => {
-        record({ type: 'invite', profile: location.pathname, note });
-        dlg.remove();
-        pending();
-        if (q.get('result') !== 'silent') status.textContent = 'Invitation sent';
-      };
-      without.onclick = () => sent('');
-      addNote.onclick = () => {
-        dlg.replaceChildren(el('h2', {}, 'Add a note to your invitation'));
-        const note = el('textarea', { 'aria-label': 'Add a note' });
-        const send = el('button', { type: 'button' }, 'Send');
-        send.onclick = () => sent(note.value);
-        dlg.append(note, send);
-      };
-      document.body.append(dlg);
+  }
+  if (p.page === 'invite') {
+    const dlg = el('div', { role: 'dialog', 'aria-labelledby': 'invite-title' });
+    const title = el('h2', { id: 'invite-title' }, 'Add a note to your invitation?');
+    const addNote = el('button', { type: 'button' }, 'Add a note');
+    const without = el('button', { type: 'button' }, 'Send without a note');
+    dlg.append(el('button', { type: 'button', 'aria-label': 'Dismiss' }), title, addNote, without);
+    const sent = (note) => {
+      record({ type: 'invite', profile: `/li/in/${q.get('vanityName')}/`, note });
+      dlg.remove();
+      if (q.get('result') !== 'silent') document.body.append(el('div', { role: 'alert' }, 'Invitation sent'));
     };
+    without.onclick = () => sent('');
+    addNote.onclick = () => {
+      title.textContent = 'Add a note to your invitation';
+      const label = el('label', { for: 'note' }, 'Please limit personal note to 300 characters');
+      const note = el('textarea', { id: 'note', placeholder: 'Ex: We know each other from…' });
+      const send = el('button', { type: 'button', 'aria-label': 'Send invitation' }, 'Send');
+      send.onclick = () => sent(note.value);
+      dlg.replaceChildren(title, label, note, el('button', { type: 'button' }, 'Cancel'), send);
+    };
+    document.body.append(dlg);
   }
   if (p.degree === '1st') {
     // Like the real link: the conversation's own page, naming the recipient (here by slug and name).
@@ -139,12 +155,17 @@
       el('button', { type: 'button' }, 'Open send options'),
     );
   }
-  if (p.page !== 'messaging') {
-    // Outside main, like the real sidebar: other people, with buttons of their own.
+  if (p.page === undefined) {
+    // Inside main, like the real sidebar: other people, with links and buttons of their own.
     const aside = el('aside', { 'aria-label': 'More profiles for you' });
-    aside.append(el('a', { href: '#' }, 'Dana Other'), el('button', { type: 'button' }, 'Connect'));
-    document.body.append(aside);
-  } else {
+    aside.append(
+      el('a', { href: '#' }, 'Dana Other'),
+      el('a', { href: '#', 'aria-label': 'Invite Dana Other to connect' }, 'Connect'),
+      el('button', { type: 'button' }, 'Connect'),
+      el('a', { href: '#' }, 'Message'),
+    );
+    main.append(aside);
+  } else if (p.page === 'messaging') {
     // A floating chat window left open on another page: a composer of its own, outside main.
     const chat = el('aside', { 'aria-label': 'Chat' });
     chat.append(

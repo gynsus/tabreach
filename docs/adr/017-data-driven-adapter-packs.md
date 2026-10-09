@@ -47,10 +47,11 @@ Post-MVP: packs may be delivered independently as Ed25519-signed files verified 
 
 ## Implementation (Phase 7, checked against real LinkedIn, 2026-10-09)
 
-A hand check on real LinkedIn pages (pack 0.2.0 was built on fixtures only) changed the format and the `linkedin` pack, now 0.4.0:
+A hand check on real LinkedIn pages (pack 0.2.0 was built on fixtures only) changed the format and the `linkedin` pack, now 0.5.0:
 
-- Role conditions and controls may name a landmark (`within`, e.g. `main` or `dialog`): a sidebar of other people outside `main` has its own Connect buttons, a floating chat window its own composer. A control may omit `nameAny`: it is then the only visible element with its role (the `main` a reader reads).
+- Role conditions and controls may name a landmark (`within`, e.g. `main` or `dialog`); a complementary landmark (`aside`) nested in it is left out — LinkedIn's sidebar of other people, with their Connect and Message, is an `aside` inside `main`; a floating chat window has its own composer. A control may match names that contain one of `nameAny` (`nameContains`) for names that carry the person's name ("Invite Irina Kuznetsova to connect"); it must still be the only visible match. A control may omit `nameAny`: it is then the only visible element with its role (the `main` a reader reads).
 - A step either `click`s a control or `follow`s a link: the link's address is opened in the same tab, same origin only. LinkedIn's "Message" opens a floating window, a new page or nothing depending on what the site remembers; its address (`/messaging/compose/...`) always leads to the conversation's own page. A click step is pressed once; a click that changes nothing is `unsupported_state`, not repeated.
 - The identity is checked again at the checkpoint while the page is a profile; a page reached from a verified profile (the conversation) is held to its exact address instead.
+- A confirmation by a reader requires our typed text in the last message, not a higher count of ours (older messages load into an open thread).
 - A reader's message list is the list with the most items carrying a sender's profile link (a list of conversations has none). No such list means no conversation yet — unless a list names the person, which is a conversation the reader cannot read: `null`, and nothing is written (fails closed).
 - The pack's identity rule: the first level-2 heading inside `main`, plus the profile path. Only frames a person can see count for challenge conditions (an invisible reCAPTCHA widget is no challenge).

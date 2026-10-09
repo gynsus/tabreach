@@ -80,6 +80,11 @@ export const controlSchema = z
      * other people has the same controls (live check on LinkedIn, 2026-09-30).
      */
     within: nonEmpty.optional(),
+    /**
+     * The accessible name contains one of `nameAny` instead of being it: names that carry the
+     * person's name ("Invite Irina Kuznetsova to connect"). Still exactly one visible match.
+     */
+    nameContains: z.boolean().optional(),
   })
   .strict();
 export type Control = z.infer<typeof controlSchema>;

@@ -85,18 +85,28 @@ const generic = {
  */
 const IN = 'https://www.linkedin.com/in/*';
 const MESSAGING = 'https://www.linkedin.com/messaging/*';
-// Live check, 2026-09-30: on a profile the person's name is the first level-2 heading in `main`;
-// a sidebar of other people outside `main` has its own Connect buttons, a floating chat window
-// its own composer. Profile conditions and controls are therefore looked for in `main` only.
+const INVITE = 'https://www.linkedin.com/preload/custom-invite/*';
+// Live checks, 2026-09-30 and 2026-10-09: on a profile the person's name is the first level-2
+// heading in `main`; the "More profiles for you" sidebar (an `aside` inside `main`, which the
+// worker leaves out) has other people's Connect and Message, a floating chat window its own
+// composer. Profile conditions and controls are therefore looked for in `main` only.
 const heading = { role: 'heading', level: 2, within: 'main' };
 // Dialogs (an invitation) open over the page, outside `main`.
 const button = (...nameAny: string[]) => ({ role: 'button', nameAny });
 const mainButton = (...nameAny: string[]) => ({ ...button(...nameAny), within: 'main' });
 const dialogButton = (...nameAny: string[]) => ({ ...button(...nameAny), within: 'dialog' });
 const messageLink = { role: 'link', nameAny: ['Message', 'Сообщение'], within: 'main' };
+// "Connect" is a link named "Invite <name> to connect" to /preload/custom-invite/, where the
+// invitation dialog opens; a click on it does nothing. Followed, like "Message".
+const connectLink = {
+  role: 'link',
+  nameAny: ['to connect', 'установить контакт'],
+  nameContains: true,
+  within: 'main',
+};
 const linkedin = {
   id: 'linkedin',
-  version: '0.4.0',
+  version: '0.5.0',
   channel: 'linkedin',
   states: [
     {
@@ -129,12 +139,12 @@ const linkedin = {
     // Dialogs first: over a profile, the profile's own buttons are still there.
     {
       id: 'linkedin.invite.note',
-      url: [IN],
-      requires: [{ role: 'dialog' }, { role: 'textbox', nameAny: ['Add a note', 'Добавьте заметку'] }],
+      url: [IN, INVITE],
+      requires: [{ role: 'dialog' }, { role: 'textbox', within: 'dialog' }],
     },
     {
       id: 'linkedin.invite.dialog',
-      url: [IN],
+      url: [IN, INVITE],
       requires: [{ role: 'dialog' }, button('Send without a note', 'Отправить без заметки')],
     },
     // The full-page conversation a profile's "Message" link leads to (/messaging/compose/...).
@@ -148,14 +158,14 @@ const linkedin = {
     },
     {
       id: 'linkedin.invite.sent',
-      url: [IN],
-      requires: [heading, { textAny: ['Invitation sent', 'Приглашение отправлено'] }],
+      url: [IN, INVITE],
+      requires: [{ textAny: ['Invitation sent', 'Приглашение отправлено'] }],
     },
     { id: 'linkedin.profile.pending', url: [IN], requires: [heading, mainButton('Pending', 'Ожидание')] },
     {
       id: 'linkedin.profile.connectable',
       url: [IN],
-      requires: [heading, mainButton('Connect', 'Установить контакт')],
+      requires: [heading, { role: 'link', nameAny: ['to connect', 'установить контакт'], within: 'main' }],
     },
     // "Message" is a link to the conversation (/messaging/compose/...); followed, never clicked:
     // a click opens a floating window, a new page or nothing, depending on what LinkedIn remembers.
@@ -166,7 +176,7 @@ const linkedin = {
       id: 'linkedin.connect',
       from: ['linkedin.profile.connectable'],
       identity: true,
-      steps: [{ click: mainButton('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] }],
+      steps: [{ follow: connectLink, expect: ['linkedin.invite.dialog'] }],
       commit: dialogButton('Send without a note', 'Отправить без заметки'),
       success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
     },
@@ -175,11 +185,12 @@ const linkedin = {
       from: ['linkedin.profile.connectable'],
       identity: true,
       steps: [
-        { click: mainButton('Connect', 'Установить контакт'), expect: ['linkedin.invite.dialog'] },
+        { follow: connectLink, expect: ['linkedin.invite.dialog'] },
         { click: dialogButton('Add a note', 'Добавить заметку'), expect: ['linkedin.invite.note'] },
       ],
-      fill: [{ control: { role: 'textbox', nameAny: ['Add a note', 'Добавьте заметку'] }, param: 'note' }],
-      commit: dialogButton('Send', 'Отправить'),
+      // The note's field is the dialog's only one; its label is a hint, not a name to rely on.
+      fill: [{ control: { role: 'textbox', within: 'dialog' }, param: 'note' }],
+      commit: dialogButton('Send invitation', 'Отправить приглашение', 'Send', 'Отправить'),
       success: ['linkedin.invite.sent', 'linkedin.profile.pending'],
     },
     {
