@@ -16,6 +16,8 @@ export const roleConditionSchema = z
     /** Any of these accessible names; lists UI-language variants. */
     nameAny: z.array(nonEmpty).min(1).optional(),
     level: z.number().int().min(1).max(6).optional(),
+    /** Only inside this landmark (e.g. `main`): a sidebar of other people has the same buttons. */
+    within: nonEmpty.optional(),
   })
   .strict()
   .refine((c) => !(c.name && c.nameAny), { message: 'Use either name or nameAny, not both' });
@@ -71,10 +73,37 @@ const stateId = z
 export const controlSchema = z
   .object({
     role: nonEmpty,
-    nameAny: z.array(nonEmpty).min(1),
+    /** Any of these accessible names; none: the only visible element with this role. */
+    nameAny: z.array(nonEmpty).min(1).optional(),
+    /**
+     * Looked for inside this landmark only (e.g. `main`): a floating chat window or a sidebar of
+     * other people has the same controls (live check on LinkedIn, 2026-09-30).
+     */
+    within: nonEmpty.optional(),
+    /**
+     * The accessible name contains one of `nameAny` instead of being it: names that carry the
+     * person's name ("Invite Irina Kuznetsova to connect"). Still exactly one visible match.
+     */
+    nameContains: z.boolean().optional(),
   })
   .strict();
 export type Control = z.infer<typeof controlSchema>;
+
+/**
+ * A non-critical step towards an action: `click` a control, or `follow` a link — go to its address
+ * in the same site instead of clicking it (a click can open a floating window or a new page,
+ * depending on what the site remembers). Each lands in one of `expect`.
+ */
+const stepSchema = z
+  .object({
+    click: controlSchema.optional(),
+    follow: controlSchema.optional(),
+    expect: z.array(stateId).min(1),
+  })
+  .strict()
+  .refine((st) => (st.click ? 1 : 0) + (st.follow ? 1 : 0) === 1, { message: 'A step clicks or follows' });
+export type PackStep = z.infer<typeof stepSchema>;
+const stepsSchema = z.array(stepSchema).default([]);
 
 /**
  * A critical action (docs/07 "Checkpoint rule", Phase 5c): from a recognized state, fill the
@@ -92,7 +121,7 @@ export const packActionSchema = z
      * the message composer): each control must be unique and visible, and after it the page must
      * be in one of `expect`. Nothing here sends anything.
      */
-    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    steps: stepsSchema,
     /** The target is checked (profile URL and name, docs/14) on the start page before any click. */
     identity: z.boolean().default(false),
     fill: z
@@ -100,7 +129,13 @@ export const packActionSchema = z
       .default([]),
     /** The control whose press is irreversible. */
     commit: controlSchema,
-    success: z.array(stateId).min(1),
+    /** States that show the action happened (or `confirm`, when no page says so). */
+    success: z.array(stateId).default([]),
+    /**
+     * No page says "sent" (LinkedIn messages): the action happened when this reader shows one more
+     * message of ours than before the press.
+     */
+    confirm: z.object({ reader: stateId }).strict().optional(),
     /** The site refused before anything left (a validation error on the same form, say). */
     rejected: z.array(stateId).default([]),
   })
@@ -109,18 +144,19 @@ export type PackAction = z.infer<typeof packActionSchema>;
 
 /**
  * Reads a conversation (FR-LIN-004): from a recognized state, the listed steps open the thread;
- * the messages are the `item`s inside the `list` control, and an item whose accessible name or
- * text says one of `outgoingAny` is ours. Only directions are read, never message text.
+ * the messages are the direct items of the longest list inside `within`. An item names its sender
+ * with a link: one naming the contact is theirs; another profile link (its text has one of
+ * `profileLinkAny`) is ours; an item without one continues the sender before it. Only directions
+ * are read, never message text (live check on LinkedIn, 2026-09-30).
  */
 export const packReaderSchema = z
   .object({
     id: stateId,
     from: z.array(stateId).min(1),
-    steps: z.array(z.object({ click: controlSchema, expect: z.array(stateId).min(1) }).strict()).default([]),
+    steps: stepsSchema,
     identity: z.boolean().default(false),
-    list: controlSchema,
-    item: nonEmpty,
-    outgoingAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
+    within: controlSchema,
+    profileLinkAny: z.array(z.string().trim().toLowerCase().min(1)).min(1),
   })
   .strict();
 export type PackReader = z.infer<typeof packReaderSchema>;
@@ -129,7 +165,14 @@ export type PackReader = z.infer<typeof packReaderSchema>;
 export const identitySchema = z
   .object({
     /** The heading that names the person. */
-    name: z.object({ role: nonEmpty, level: z.number().int().min(1).max(6).optional() }).strict(),
+    name: z
+      .object({
+        role: nonEmpty,
+        level: z.number().int().min(1).max(6).optional(),
+        /** Looked for inside this landmark only (the site's header has headings too). */
+        within: nonEmpty.optional(),
+      })
+      .strict(),
     /** The profile path: `/in/<slug>` is compared, not the full URL. */
     profilePath: z.string().regex(/^\/[a-z]+\/$/),
   })
@@ -231,6 +274,20 @@ export const adapterPackSchema = z
           if (!seen.has(ref)) {
             ctx.addIssue({ code: 'custom', path: ['actions', i, key, j], message: `Unknown state ${ref}` });
           }
+        });
+      }
+      if (action.success.length === 0 && !action.confirm) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'success'],
+          message: 'An action needs success states or a confirm reader',
+        });
+      }
+      if (action.confirm && !pack.readers.some((r) => r.id === action.confirm?.reader)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['actions', i, 'confirm'],
+          message: `Unknown reader ${action.confirm.reader}`,
         });
       }
       action.steps.forEach((step, j) =>

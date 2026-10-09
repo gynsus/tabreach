@@ -5,6 +5,8 @@ import {
   matchState,
   type AdapterPack,
   type Control,
+  type PackReader,
+  type PackStep,
   type PageProbe,
   type PageState,
 } from '@tabreach/adapter-packs';
@@ -15,7 +17,7 @@ import type {
   TaskResult,
   ThreadReadResult,
 } from '@tabreach/protocol';
-import type { Page } from 'playwright-core';
+import type { Locator, Page } from 'playwright-core';
 import { safeUrl } from './profiles.js';
 
 const RECOGNIZE_TIMEOUT_MS = 15_000;
@@ -35,15 +37,19 @@ export const bundledPacks = (id: string) => bundledPack(id);
 export function probeOf(page: Page): PageProbe {
   return {
     url: page.url(),
-    frameUrls: page.frames().map((f) => f.url()),
-    hasRole: async (role, { name, level }) =>
-      (await page
-        // Roles come from validated pack data; Playwright checks them against ARIA.
-        .getByRole(role as Parameters<Page['getByRole']>[0], {
-          ...(name ? { name } : {}),
-          ...(level ? { level } : {}),
-        })
-        .count()) > 0,
+    frameUrls: async () => {
+      const shown: string[] = [];
+      for (const frame of page.frames()) {
+        if (frame === page.mainFrame() || /[?&]size=invisible\b/.test(frame.url())) continue;
+        const element = await frame.frameElement().catch(() => null);
+        const box = await element?.boundingBox().catch(() => null);
+        if (box && box.width >= 50 && box.height >= 50) shown.push(frame.url());
+      }
+      return shown;
+    },
+    hasRole: async (role, { name, level, within }) =>
+      (await byRole(page, within, role, { ...(name ? { name } : {}), ...(level ? { level } : {}) }).count()) >
+      0,
     hasText: async (text) => (await page.getByText(text).filter({ visible: true }).count()) > 0,
   };
 }
@@ -135,12 +141,103 @@ async function recognize(
 /** How long a page may take to become an expected state before a known other one counts. */
 const SETTLE_OTHERS_MS = 3_000;
 
-/** Exactly one visible control with one of the names; otherwise nothing (no guessing — docs/07). */
+/**
+ * A page can be recognized before its scripts are ready: a click then does nothing (LinkedIn's
+ * "Message" on a live profile, 2026-09-30). Steps wait for the load and a moment more.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('load', { timeout: 15_000 }).catch(() => {}); // a slow page is tried anyway
+  await page.waitForTimeout(SETTLE_MS);
+}
+
+/**
+ * A non-critical step towards one of `expect`: a click (once — a click that did nothing is not
+ * repeated), or `follow`: the link's address opened in this tab, same site only. A followed link
+ * does not depend on what the site does with a click (LinkedIn's "Message" opens a floating
+ * window, a new page or nothing — live check, 2026-09-30).
+ */
+async function performStep(
+  page: Page,
+  step: PackStep,
+  expect: PageState[],
+  signal: AbortSignal,
+): Promise<PageState | null | 'missing'> {
+  const target = step.click ?? step.follow;
+  const control = target ? await findControl(page, target) : null;
+  if (!control) return 'missing';
+  if (step.click) {
+    await control.click({ timeout: 10_000 });
+  } else {
+    const href = await control.getAttribute('href', { timeout: 5_000 }).catch(() => null);
+    const here = new URL(page.url());
+    const to = href ? new URL(href, here) : null;
+    if (!to || to.origin !== here.origin) return 'missing';
+    await page.goto(to.href, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+  }
+  return recognize(page, expect, RECOGNIZE_TIMEOUT_MS, signal);
+}
+
+const SETTLE_MS = 1_500;
+
+/**
+ * What a filled control holds: the value of a field, or the text of an editable element (LinkedIn's
+ * composer is a contenteditable `div`, live check 2026-10-09), compared without whitespace runs.
+ */
+async function typedText(control: Locator): Promise<string | null> {
+  const text = await control
+    .evaluate((el) => {
+      const e = el as unknown as { value?: unknown; innerText?: string };
+      return typeof e.value === 'string' ? e.value : (e.innerText ?? '');
+    })
+    .catch(() => null);
+  return text === null ? null : normalizeText(text);
+}
+
+const normalizeText = (s: string) => s.replace(/\s+/g, ' ').trim();
+
+type AriaRole = Parameters<Page['getByRole']>[0];
+
+/**
+ * Elements with a role (from validated pack data; Playwright checks it against ARIA), inside the
+ * first `within` landmark when one is named — but not inside a complementary landmark nested in it:
+ * LinkedIn's "More profiles for you", with other people's Connect and Message, is an `aside`
+ * inside `main` (live check, 2026-10-09).
+ */
+function byRole(
+  page: Page,
+  within: string | undefined,
+  role: string,
+  options: Parameters<Page['getByRole']>[1] = {},
+): Locator {
+  if (!within) return page.getByRole(role as AriaRole, options);
+  return page
+    .getByRole(within as AriaRole)
+    .first()
+    .getByRole(role as AriaRole, options)
+    .and(page.locator(':not(aside *, [role="complementary"] *)'));
+}
+
+/** The little of the DOM that in-page reads use (the worker is compiled without DOM types). */
+interface QueryRoot {
+  querySelectorAll(selector: string): ArrayLike<QueryRoot> & Iterable<QueryRoot>;
+  getAttribute(name: string): string | null;
+  textContent: string | null;
+}
+
+/**
+ * Exactly one visible control with one of the names (or, with no names, the only one with its
+ * role), inside its landmark when it names one; otherwise nothing (no guessing — docs/07).
+ */
 async function findControl(page: Page, control: Control) {
+  if (!control.nameAny) {
+    const found = byRole(page, control.within, control.role).filter({ visible: true });
+    return (await found.count()) === 1 ? found : null;
+  }
   for (const name of control.nameAny) {
-    const found = page
-      .getByRole(control.role as Parameters<Page['getByRole']>[0], { name, exact: true })
-      .filter({ visible: true });
+    const found = byRole(page, control.within, control.role, {
+      name,
+      exact: !control.nameContains,
+    }).filter({ visible: true });
     const count = await found.count();
     if (count === 1) return found;
     if (count > 1) return null;
@@ -234,18 +331,17 @@ export async function runCommit(
   // Non-critical clicks that lead to the action (open a dialog, "Add a note"), each landing in an
   // expected state, or nothing more happens.
   let at = start;
+  if (action.steps.length > 0) await settle(page);
   for (const step of action.steps) {
     signal.throwIfAborted();
-    const control = await findControl(page, step.click);
-    if (!control) {
+    const next = await performStep(page, step, [...challenges, ...byId(step.expect)], signal);
+    if (next === 'missing') {
       return notCommitted({
         status: 'unsupported_state',
         stateId: at.id,
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       });
     }
-    await control.click({ timeout: 10_000 });
-    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
     if (!next || next.kind === 'challenge') {
       if (next) await page.bringToFront();
       return notCommitted({
@@ -269,7 +365,8 @@ export async function runCommit(
       });
     }
     await control.fill(value);
-    if ((await control.inputValue()) !== value) return notCommitted({ errorKey: 'task.fillFailed' });
+    if ((await typedText(control)) !== normalizeText(value))
+      return notCommitted({ errorKey: 'task.fillFailed' });
   }
   const commit = await findControl(page, action.commit);
   if (!commit) {
@@ -286,15 +383,44 @@ export async function runCommit(
   const handle = await commit.elementHandle({ timeout: 5_000 }).catch(() => null);
   if (!handle) return notCommitted({ errorKey: 'task.stateChanged' });
   const where = action.steps.at(-1)?.expect ?? action.from;
+  // On a profile the person is checked again; a page reached from it (the conversation a verified
+  // profile's "Message" link leads to) is held to its exact address instead.
+  const stillTheirs = async () =>
+    !action.identity ||
+    !pack.identity ||
+    !req.identity ||
+    !profileSlug(page.url(), pack.identity.profilePath) ||
+    (await identityMatches(page, pack.identity, req.identity));
   const stillThere = async () =>
     page.url() === startUrl &&
     (await handle.evaluate((el) => el.isConnected).catch(() => false)) &&
     (await matchState(byId(where), probeOf(page)).catch(() => null))?.id === at.id &&
-    (!action.identity ||
-      !pack.identity ||
-      !req.identity ||
-      (await identityMatches(page, pack.identity, req.identity)));
+    (await stillTheirs());
   if (!(await stillThere())) return notCommitted({ errorKey: 'task.stateChanged' });
+
+  // Actions no page confirms (a LinkedIn message) are proven by the reader: one more of ours.
+  const confirmReader = action.confirm
+    ? pack.readers.find((r) => r.id === action.confirm?.reader)
+    : undefined;
+  // The proof is our text as the last message, not a count: LinkedIn loads older messages into the
+  // thread while it is open, which once looked like one more of ours (live check, 2026-10-09).
+  const typed = normalizeText(
+    action.fill
+      .map((f) => req.params[f.param] ?? '')
+      .filter(Boolean)
+      .at(-1) ?? '',
+  ).slice(0, 80);
+  const lastIsOurs = async (): Promise<boolean | null> => {
+    if (!confirmReader || !req.identity || !typed) return null;
+    const items = await readThreadItems(page, confirmReader, req.identity.name);
+    if (!items) return null;
+    const last = items.at(-1);
+    return last?.direction === 'out' && last.text.includes(typed);
+  };
+  // Already the last message (the same text a moment ago): a new one could not be told apart.
+  if (action.confirm && (await lastIsOurs()) !== false) {
+    return notCommitted({ errorKey: 'task.confirmUnavailable' });
+  }
 
   signal.throwIfAborted();
   if (!(await checkpoint())) return notCommitted({ errorKey: 'task.checkpointRefused' });
@@ -312,6 +438,18 @@ export async function runCommit(
       await page.bringToFront();
       await handle.focus().catch(() => {}); // only a pointer for the person
       waitMs = ASSISTED_WAIT_MS;
+    }
+    if (action.confirm) {
+      const deadline = Date.now() + waitMs;
+      for (;;) {
+        signal.throwIfAborted();
+        if ((await lastIsOurs()) === true) {
+          return { ...committed, status: 'succeeded', stateId: null, stateKind: null, url: page.url() };
+        }
+        if (Date.now() > deadline) break;
+        await page.waitForTimeout(POLL_MS);
+      }
+      return { ...committed, status: 'unknown', url: page.url() };
     }
     const after = await recognize(page, [...byId(action.success), ...byId(action.rejected)], waitMs, signal);
     if (after && action.success.includes(after.id)) {
@@ -439,7 +577,7 @@ export async function identityMatches(
 ): Promise<boolean> {
   const slug = profileSlug(page.url(), rule.profilePath);
   if (!slug || slug !== profileSlug(expected.profileUrl, rule.profilePath)) return false;
-  const headings = page.getByRole(rule.name.role as Parameters<Page['getByRole']>[0], {
+  const headings = byRole(page, rule.name.within, rule.name.role, {
     ...(rule.name.level ? { level: rule.name.level } : {}),
   });
   if ((await headings.count()) < 1) return false;
@@ -506,10 +644,11 @@ export async function readThread(
   if (reader.identity && (!pack.identity || !(await identityMatches(page, pack.identity, req.identity)))) {
     return { ...base, status: 'unsupported_state', stateId: at.id, errorKey: 'task.identityMismatch' };
   }
+  if (reader.steps.length > 0) await settle(page);
   for (const step of reader.steps) {
     signal.throwIfAborted();
-    const control = await findControl(page, step.click);
-    if (!control) {
+    const next = await performStep(page, step, [...challenges, ...byId(step.expect)], signal);
+    if (next === 'missing') {
       return {
         ...base,
         status: 'unsupported_state',
@@ -517,8 +656,6 @@ export async function readThread(
         diagnostics: await diagnose(page, req.taskId, step.expect, env),
       };
     }
-    await control.click({ timeout: 10_000 });
-    const next = await recognize(page, [...challenges, ...byId(step.expect)], RECOGNIZE_TIMEOUT_MS, signal);
     if (!next || next.kind === 'challenge') {
       return {
         ...base,
@@ -529,10 +666,9 @@ export async function readThread(
     }
     at = next;
   }
-  const list = await findControl(page, reader.list);
-  if (!list) {
-    // No conversation yet is an empty thread only when the page says so by having no list; the
-    // reader does not guess: an unrecognized page is unsupported.
+  const messages = await readMessages(page, reader, req.identity.name);
+  if (!messages) {
+    // No recognizable conversation where one should be: the reader does not guess.
     return {
       ...base,
       status: 'unsupported_state',
@@ -540,19 +676,73 @@ export async function readThread(
       diagnostics: await diagnose(page, req.taskId, [reader.id], env),
     };
   }
-  const items = list.getByRole(reader.item as Parameters<Page['getByRole']>[0]);
-  const count = Math.min(await items.count(), 500);
-  const messages: { direction: 'in' | 'out' }[] = [];
-  for (let i = 0; i < count; i++) {
-    const item = items.nth(i);
-    const label = (
-      (await item.getAttribute('aria-label').catch(() => null)) ??
-      (await item.textContent({ timeout: 5_000 }).catch(() => '')) ??
-      ''
-    ).toLowerCase();
-    messages.push({ direction: reader.outgoingAny.some((p) => label.includes(p)) ? 'out' : 'in' });
-  }
   const lastOut = messages.map((m) => m.direction).lastIndexOf('out');
   const replied = messages.some((m, i) => m.direction === 'in' && i > lastOut);
   return { ...base, status: 'ok', stateId: at.id, messages, replied };
+}
+
+/**
+ * The directions of a conversation's messages (a pack reader): the list inside the reader's
+ * container with the most items carrying a profile link (a list of conversations has none); an item's sender is a link naming the contact (theirs) or another profile
+ * link (ours); an item without one continues the sender before it. null: no conversation found.
+ */
+export async function readMessages(
+  page: Page,
+  reader: PackReader,
+  contactName: string,
+): Promise<{ direction: 'in' | 'out' }[] | null> {
+  return (await readThreadItems(page, reader, contactName))?.map(({ direction }) => ({ direction })) ?? null;
+}
+
+/**
+ * The conversation's items with their text, for the worker only: the text proves that our own
+ * message is the last one (a confirmation) and never leaves this process.
+ */
+async function readThreadItems(
+  page: Page,
+  reader: PackReader,
+  contactName: string,
+): Promise<{ direction: 'in' | 'out'; text: string }[] | null> {
+  const container = await findControl(page, reader.within);
+  if (!container) return null;
+  // Each list's items: the labels of their links and their text, read in the page (the worker
+  // has no DOM types).
+  const lists = await container
+    .getByRole('list')
+    .evaluateAll((els) =>
+      els.map((e) =>
+        Array.from((e as unknown as QueryRoot).querySelectorAll(':scope > li')).map((li) => ({
+          links: Array.from(li.querySelectorAll('a')).map((a) =>
+            `${a.getAttribute('aria-label') ?? ''} ${a.textContent ?? ''}`.replace(/\s+/g, ' ').trim(),
+          ),
+          text: li.textContent ?? '',
+        })),
+      ),
+    )
+    .catch(() => null);
+  if (!lists) return null;
+  const words = reader.profileLinkAny;
+  const them = normalizeName(contactName);
+  const withSender = lists.map(
+    (items) =>
+      items.filter((item) => item.links.some((l) => words.some((w) => normalizeName(l).includes(w)))).length,
+  );
+  if (withSender.length === 0 || Math.max(...withSender) === 0) {
+    // No list with a sender in it: a conversation not started yet — unless a list names the person
+    // (their conversation among the others): then it is one this reader cannot read, and nothing
+    // is written without knowing (fails closed).
+    const named = lists.some((items) => items.some((item) => normalizeName(item.text).includes(them)));
+    return named ? null : [];
+  }
+  const items = lists[withSender.indexOf(Math.max(...withSender))] ?? [];
+  const messages: { direction: 'in' | 'out'; text: string }[] = [];
+  let current: 'in' | 'out' | null = null;
+  for (const item of items.slice(-500)) {
+    const names = item.links.map(normalizeName);
+    if (names.some((n) => n.includes(them))) current = 'in';
+    else if (names.some((n) => reader.profileLinkAny.some((p) => n.includes(p)))) current = 'out';
+    // Items before the first sender (a date line) belong to no one.
+    if (current) messages.push({ direction: current, text: normalizeText(item.text) });
+  }
+  return messages;
 }

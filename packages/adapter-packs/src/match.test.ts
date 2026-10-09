@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { matchState, urlMatches, type PageProbe } from './match.js';
 import { bundledPack, bundledPacks } from './packs.js';
 
-const probe = (over: Partial<PageProbe> & { roles?: string[]; texts?: string[] }): PageProbe => ({
+const probe = (
+  over: Partial<Omit<PageProbe, 'frameUrls'>> & { roles?: string[]; texts?: string[]; frameUrls?: string[] },
+): PageProbe => ({
   url: over.url ?? 'https://example.com/',
-  frameUrls: over.frameUrls ?? [],
+  frameUrls: () => Promise.resolve(over.frameUrls ?? []),
   hasRole: async (role, { name }) =>
     (over.roles ?? []).some(
       (r) =>

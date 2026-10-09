@@ -580,6 +580,7 @@ export const en = {
     },
     stopReasons: {
       not_connected: 'Did not accept the LinkedIn invitation in time',
+      unanswered_message: 'Their last LinkedIn message to you is unanswered',
       no_contact_form: 'No contact form on the company’s website',
       manual: 'Stopped by you',
       campaign_archived: 'Campaign archived',

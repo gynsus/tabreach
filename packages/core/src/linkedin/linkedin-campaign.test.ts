@@ -189,7 +189,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.ledger()).toMatchObject([{ status: 'completed' }]);
     expect(h.status(campaign)).toMatchObject({ status: 'completed' });
     const attempts = h.db.prepare(`SELECT adapter_pack_id, adapter_pack_version FROM browser_tasks`).all();
-    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.2.0' }]);
+    expect(attempts).toEqual([{ adapter_pack_id: 'linkedin', adapter_pack_version: '0.5.0' }]);
   });
 
   it('auto only where opted in, per action class (FR-LIN-002)', async () => {
@@ -211,16 +211,32 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
 
   it('before a follow-up the conversation is read: an answer stops it, nothing is sent (FR-LIN-004)', async () => {
     account();
+    const campaign = await start([{}, { linkedinAction: 'message', body: 'Following up.' }]);
+    await approveAll();
     pages.push('replied');
-    const campaign = await start([{ linkedinAction: 'message', body: 'Following up.' }]);
+    h.clock.advance(3 * 24 * 60 * 60_000); // past the contact policy's gap between messages
+    await h.run();
     await approveAll();
     expect(calls.map((c) => c.type)).toContain('thread.read');
-    expect(runs()).toEqual([]);
+    expect(runs()).toHaveLength(1); // the invitation only
     expect(h.status(campaign)).toMatchObject({ status: 'stopped', stopReason: 'replied' });
     const reply = h.db
       .prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'linkedin.reply_detected'`)
       .get();
     expect(reply).toEqual({ n: 1 });
+  });
+
+  it('their unanswered message from before the campaign is no reply, and is not written over', async () => {
+    account();
+    pages.push('replied');
+    const campaign = await start([{ linkedinAction: 'message', body: 'Hello.' }]);
+    await approveAll();
+    expect(runs()).toEqual([]);
+    expect(h.status(campaign)).toMatchObject({ status: 'stopped', stopReason: 'unanswered_message' });
+    const reply = h.db
+      .prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'linkedin.reply_detected'`)
+      .get();
+    expect(reply).toEqual({ n: 0 });
   });
 
   it('a message waits for the invitation to be accepted, then gives up; an existing invitation is not sent again', async () => {
@@ -253,7 +269,7 @@ describe('LinkedIn as a campaign channel (Phase 7b)', () => {
     expect(h.status(wrong)).toMatchObject({ status: 'stopped', stopReason: 'invalid_target' });
     // The attempt shows in the pack's health: one task, one unrecognized page (FR-LIN-006).
     expect(s().browser.packHealth()).toEqual([
-      expect.objectContaining({ packId: 'linkedin', version: '0.2.0', tasks: 1, unsupported: 1 }),
+      expect.objectContaining({ packId: 'linkedin', version: '0.5.0', tasks: 1, unsupported: 1 }),
     ]);
 
     const two = await start(

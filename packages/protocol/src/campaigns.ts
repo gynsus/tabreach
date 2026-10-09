@@ -221,6 +221,11 @@ export const stopReasonSchema = z.enum([
   'no_contact_form',
   /** LinkedIn: the invitation was not accepted in time, so the message could not be sent (Phase 7). */
   'not_connected',
+  /**
+   * LinkedIn: before the campaign wrote to them, the person's message was the last in the thread.
+   * Not a reply to the campaign; it does not write over an unanswered message (Phase 7).
+   */
+  'unanswered_message',
 ]);
 export type StopReason = z.infer<typeof stopReasonSchema>;
 
