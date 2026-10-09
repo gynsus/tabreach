@@ -131,3 +131,20 @@ Tests must simulate:
 - user manually completes the intended action during takeover;
 - assisted-mode timeout;
 - suspend/resume with overdue scheduled actions.
+
+Coverage (Phase 8a-1, 2026-10-09), each with an automated test:
+
+| Scenario | Test |
+|---|---|
+| worker crash before a critical action | `browser-channel.test.ts` — not sent, safe to run again |
+| worker crash after the click, before verification | `browser-channel.test.ts`, `commit.browser.test.ts` — `unknown`, never pressed again |
+| core crash between `executing` and the result | `side-effects.test.ts`, `engine.test.ts` (new core on the same database) — reconciled, sent once |
+| network failure during an email send | `email-campaign.test.ts`, `gmail.test.ts`, `smtp*.test.ts` — reconciled by Message-ID or left `unknown` |
+| duplicate job execution | `queue.test.ts`, `dispatcher.test.ts` (dedupe, leases); `browser-channel.test.ts` — two attempts at one browser send at once press it once |
+| expired browser login | `linkedin-campaign.test.ts` — nothing pressed, the step waits an hour, then goes on; `sign-in-check.test.ts` |
+| challenge page | `sign-in-check.test.ts`, `form-campaign.test.ts`, `tasks.browser.test.ts` |
+| the person completes the action during takeover | `browser-channel.test.ts` — taken after the checkpoint: `unknown`, confirmed sent, never pressed again; `commit.browser.test.ts` |
+| assisted-mode timeout | `browser-channel.test.ts` — before the checkpoint not sent; after it `unknown`, never pressed again |
+| suspend/resume with overdue scheduled actions | `engine.test.ts` — a follow-up due during sleep after the window closed waits for the next window, then goes out one at a time; `core.test.ts` (no jobs while asleep) |
+
+Found while writing them: a browser send keeps its ledger row `reserved` until the worker's checkpoint (minutes in assisted mode), so a second attempt at the same intent meanwhile would have read it as never sent. `executeSideEffect` now keeps the intents a checkpoint channel is executing in memory, per ledger; a second attempt returns `pending` and comes back later. Core is the only ledger writer and a restart ends every attempt, so nothing is lost by keeping this in memory.

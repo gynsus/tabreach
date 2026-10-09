@@ -299,6 +299,41 @@ describe('campaign engine', () => {
     expect(h.pending()).toHaveLength(1);
   });
 
+  it('after a sleep through a due step and the window, it waits for the next window and does not burst (docs/19)', async () => {
+    h.dispatcher.stop();
+    h.boot(60_000); // a minute between sends through the account
+    const campaign = h.launch([message(), message({ subject: 'Follow-up', delaySeconds: (3 * DAY) / 1000 })]);
+    h.services.campaigns.enroll(
+      campaign,
+      [h.contact('Ann', 'ann@a.test'), h.contact('Bob', 'bob@b.test')],
+      ctx(),
+    );
+    await h.run();
+    await h.approveAll();
+    await h.advance(60_000);
+    expect(h.channel.deliveries()).toHaveLength(2); // Monday: the first step to both
+
+    // The Mac sleeps from Monday until Thursday 20:00: the follow-ups fell due on Thursday
+    // morning, and the window has closed meanwhile. Nothing ran while it slept.
+    h.clock.set('2026-10-01T20:00:00.000Z');
+    h.services.engine.resync(); // what power.resume does
+    await h.run();
+    await h.approveAll();
+    expect(h.channel.deliveries()).toHaveLength(2);
+    // Friday 09:00: one follow-up, the next a minute later — not both at once.
+    h.clock.set('2026-10-02T09:00:00.000Z');
+    await h.run();
+    await h.approveAll();
+    expect(h.channel.deliveries()).toHaveLength(3);
+    await h.advance(60_000);
+    expect(h.channel.deliveries().map((d) => d.subject)).toEqual([
+      'Hello Ann',
+      'Hello Bob',
+      'Follow-up',
+      'Follow-up',
+    ]);
+  });
+
   it('caps touches per contact across campaigns', async () => {
     const ann = h.contact('Ann', 'ann@acme.test');
     const one = h.launch([message()]);

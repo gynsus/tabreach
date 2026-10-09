@@ -1,4 +1,5 @@
 import {
+  RpcError,
   silentLogger,
   uuidv7,
   type RequestOf,
@@ -19,7 +20,11 @@ type Script =
   | 'crash_before_checkpoint'
   | 'crash_after_checkpoint'
   | 'unsupported'
-  | 'control_taken';
+  | 'control_taken'
+  | 'timeout_before_checkpoint'
+  | 'timeout_after_checkpoint'
+  | 'taken_after_checkpoint'
+  | 'slow';
 
 const result = (over: Partial<TaskResult>): TaskResult => ({
   status: 'succeeded',
@@ -48,6 +53,9 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
         return result({ status: 'unsupported_state', stateId: null, committed: false }) as ResponseOf<T>;
       }
       if (script === 'crash_before_checkpoint') throw new Error('worker exited');
+      // What the port answers when the assisted wait outlives the request (docs/19 "assisted-mode timeout").
+      if (script === 'timeout_before_checkpoint')
+        throw new RpcError('TIMEOUT', 'Request timed out', 'task.run');
       if (script === 'control_taken') {
         return result({ status: 'failed', errorKey: 'task.controlTaken', committed: false }) as ResponseOf<T>;
       }
@@ -61,6 +69,12 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
         }) as ResponseOf<T>;
       }
       if (script === 'crash_after_checkpoint') throw new Error('worker exited');
+      if (script === 'timeout_after_checkpoint')
+        throw new RpcError('TIMEOUT', 'Request timed out', 'task.run');
+      // The person took the window while it waited, and may have pressed it themselves.
+      if (script === 'taken_after_checkpoint')
+        return result({ status: 'unknown', stateId: null, errorKey: 'task.controlTaken' }) as ResponseOf<T>;
+      if (script === 'slow') await new Promise((r) => setTimeout(r, 50));
       if (script === 'reject')
         return result({
           status: 'failed',
@@ -199,5 +213,36 @@ describe('browser action channel: the about_to_commit checkpoint in core (Phase 
     scripts.push('control_taken');
     expect(await send()).toMatchObject({ outcome: 'not_sent', errorClass: 'user_control' });
     expect(env.services.browser.list(false)[0]?.session).not.toBeNull();
+  });
+
+  // docs/19 "Recovery testing" (Phase 8a-1).
+  it('an assisted wait that times out before the checkpoint is not sent; after it, unknown and never pressed again', async () => {
+    scripts.push('timeout_before_checkpoint');
+    expect(await send()).toMatchObject({ outcome: 'not_sent', errorClass: 'failed_before_commit' });
+    scripts.push('timeout_after_checkpoint');
+    const late = await send();
+    expect(late).toMatchObject({ outcome: 'unknown', errorClass: 'worker_lost_after_checkpoint' });
+    expect(await send()).toMatchObject({ outcome: 'unknown' });
+    expect(commits).toHaveLength(2); // one before the checkpoint, one past it; no third
+  });
+
+  it('a person who takes the window after the checkpoint and sends it: confirmed, never pressed again', async () => {
+    scripts.push('taken_after_checkpoint');
+    const first = await send();
+    expect(first).toMatchObject({ outcome: 'unknown', errorClass: 'browser_unverified' });
+    env.services.resolveSideEffect(first.sideEffectId, 'completed', uuidv7());
+    expect(await send()).toMatchObject({ outcome: 'completed', alreadyDone: true });
+    expect(commits).toHaveLength(1);
+    expect(env.services.ledger.get(first.sideEffectId)).toMatchObject({ reconciled_by: 'user_confirmation' });
+  });
+
+  it('two attempts at the same send at once press it once (duplicate job execution)', async () => {
+    scripts.push('slow');
+    const [a, b] = await Promise.all([send(), send()]);
+    expect(commits).toHaveLength(1);
+    // The second waits for the first (its row stays `reserved` until the checkpoint).
+    expect([a.outcome, b.outcome]).toEqual(['completed', 'pending']);
+    expect(await send()).toMatchObject({ outcome: 'completed', alreadyDone: true });
+    expect(commits).toHaveLength(1);
   });
 });

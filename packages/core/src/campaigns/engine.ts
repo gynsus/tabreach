@@ -710,6 +710,7 @@ export class CampaignEngine {
     try {
       outcome = await executeSideEffect({
         ledger: this.d.ledger,
+        now: this.d.now,
         channel,
         intent,
         workflowRunId: run.id,
