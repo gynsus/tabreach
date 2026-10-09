@@ -897,6 +897,16 @@ export const en = {
     },
   },
   status: {
+    diagnostics: {
+      heading: 'Diagnostics bundle',
+      body: 'A zip to send with a bug report: versions, the last part of the logs, recent events and the state of sends, jobs and browser tasks. It holds no passwords, keys, tokens or cookies, nothing from browser profiles, and no message texts, names, addresses or page links. Nothing is uploaded: you choose where to save it and whom to send it to.',
+      screenshots: 'Screenshots of unrecognized pages to include',
+      screenshotsHint:
+        'Fields are masked, but a screenshot shows the page as it was — include only what you are happy to share.',
+      create: 'Create diagnostics bundle',
+      creating: 'Creating…',
+      saved: 'Diagnostics bundle saved ({{count}} files).',
+    },
     packs: {
       title: 'Adapter packs',
       hint: 'How each version of the page knowledge fared over 30 days. Unrecognized pages mean the site changed: nothing is clicked there, and the pack needs an update.',

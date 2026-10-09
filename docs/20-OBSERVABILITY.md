@@ -72,6 +72,16 @@ Must exclude:
 
 Nothing is uploaded automatically; the user decides where to send it.
 
+Implementation (Phase 8a, 2026-10-09): Status → Diagnostics bundle. Core (`DiagnosticsService`) builds a zip (`fflate`, pure JavaScript) and the renderer hands it to main's save dialog (`saveTextFile` with `encoding: 'base64'`):
+
+- `manifest.json` — app, Electron, Node, worker, Playwright and Chrome versions, database health, OS, adapter-pack versions, and what is excluded;
+- `state.json` — the last 14 days and everything still open: workflow runs, jobs (with their redacted last error), sends (channel, action, status, error class, reconciliation — no target, no content), browser tasks (state, error key, pack version, expected states — no URL, page title or snapshot), requests to the person;
+- `events.json` — action events of the last 14 days (ids, codes, redacted payloads; ADR 022);
+- `logs/` — the last 2 MB of `main.log`, `core.log` and `worker.log`, every line redacted again on the way out;
+- `screenshots/` — only the masked screenshots the person ticks, chosen among those the worker kept for its own tasks, by exact name.
+
+The `secrets` table is never read; nothing comes from browser profile directories. A unit test checks that a stored secret, an API key in a log, a profile URL and a page title never reach the zip, and that no file outside the diagnostics folder can be added.
+
 ## Telemetry
 
 None by default. Any future crash/usage reporting must be opt-in and use the same redaction.

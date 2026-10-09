@@ -7,6 +7,8 @@ import { MAX_SAVE_FILE_CHARS, type Logger, type SaveFileResult } from '@tabreach
 const requestSchema = z.object({
   suggestedName: z.string().min(1).max(200),
   content: z.string().max(MAX_SAVE_FILE_CHARS),
+  /** `base64`: binary content (a diagnostics zip), decoded before writing. */
+  encoding: z.enum(['utf8', 'base64']).default('utf8'),
 });
 
 /** Keeps a plain file name: no directories, no control or path characters. */
@@ -44,8 +46,12 @@ export function registerSaveFile(isAllowedSender: (url: string) => boolean, logg
       : await dialog.showSaveDialog(options);
     if (result.canceled || !result.filePath) return { saved: false };
 
-    await writeFile(result.filePath, request.data.content, 'utf8');
-    logger.info({ event: 'file.saved', bytes: Buffer.byteLength(request.data.content) }, 'file saved');
+    const data =
+      request.data.encoding === 'base64'
+        ? Buffer.from(request.data.content, 'base64')
+        : Buffer.from(request.data.content, 'utf8');
+    await writeFile(result.filePath, data);
+    logger.info({ event: 'file.saved', bytes: data.byteLength }, 'file saved');
     return { saved: true, path: result.filePath };
   });
 }

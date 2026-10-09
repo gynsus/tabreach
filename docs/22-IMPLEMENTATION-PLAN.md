@@ -215,6 +215,8 @@ Exit criteria status (2026-09-30): the adapter is off by default and when its se
 
 ## Phase 8 — Hardening and release
 
+Progress: 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20).
+
 Deliver:
 
 - all recovery scenarios from `19-ERROR-RECOVERY.md` tested;

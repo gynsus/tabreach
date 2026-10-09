@@ -9,6 +9,8 @@ export type BridgeResult<T> = { ok: true; data: T } | { ok: false; error: Proble
 export interface SaveFileRequest {
   suggestedName: string;
   content: string;
+  /** `base64`: binary content (a diagnostics zip); text otherwise. */
+  encoding?: 'utf8' | 'base64';
 }
 export type SaveFileResult = { saved: true; path: string } | { saved: false };
 
@@ -43,6 +45,7 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   'imports.prospects.commit': 300_000,
   'imports.prospects.preview': 60_000,
   'exports.prospects': 120_000,
+  'diagnostics.createBundle': 120_000,
   'suppressions.import': 120_000,
   // SMTP and IMAP checks take up to 30 s each.
   'accounts.connectImap': 90_000,
