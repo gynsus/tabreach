@@ -16,6 +16,7 @@ import { bundledPacks } from '@tabreach/adapter-packs';
 import { AppServices } from './app-handlers.js';
 import { applyPendingRestore, BackupService, pruneAutomaticBackups } from './backup/backup-service.js';
 import { DiagnosticsService } from './diagnostics/bundle.js';
+import { SetupService } from './setup/setup-service.js';
 import { openDatabase, sqliteVersion } from './db/database.js';
 import { currentSchemaVersion, migrate, type MigrationReport } from './db/migrate.js';
 import { migrations } from './db/migrations.js';
@@ -48,6 +49,7 @@ export class CoreService {
   readonly dispatcher: Dispatcher;
   private readonly diagnostics: DiagnosticsService;
   private readonly backups: BackupService;
+  private readonly setup: SetupService;
 
   private constructor(
     private readonly db: DatabaseSync,
@@ -113,6 +115,17 @@ export class CoreService {
         else options.logger.warn({ event: 'core.restart_unavailable' }, 'no restart hook; restore waits');
       },
       logger: options.logger.child({ component: 'backup' }),
+    });
+    this.setup = new SetupService({
+      db,
+      settings: this.services.settings,
+      audit: this.services.audit,
+      now: () => new Date(),
+      aiKeySet: () => this.services.ai.settings().keySet,
+      chrome: async () => {
+        const worker = await this.workerHealth();
+        return 'chrome' in worker ? worker.chrome : null;
+      },
     });
     this.dispatcher = new Dispatcher({
       queue: this.services.jobs,
@@ -199,6 +212,8 @@ export class CoreService {
         );
         return bundle;
       })
+      .handle('setup.get', () => this.setup.state())
+      .handle('setup.complete', (_req, c) => this.setup.complete({ correlationId: c.correlationId }))
       .handle('backup.list', () => ({
         items: this.backups.list(),
         lastRestore: this.backups.lastRestore(),

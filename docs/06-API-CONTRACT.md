@@ -207,7 +207,16 @@ query   app.health                     # implemented: versions, core/worker/Chro
 
 ## App-wide commands
 
-Implemented (Phase 5c) under **Browser profiles**: `app.control.get`, `app.pauseAll`, `app.resumeAll`, `app.emergencyStop`, `app.setKeepAwake`. Implemented in Phase 8b (ADR 029):
+Implemented (Phase 5c) under **Browser profiles**: `app.control.get`, `app.pauseAll`, `app.resumeAll`, `app.emergencyStop`, `app.setKeepAwake`. First-run setup (Phase 8c, FR-APP-002):
+
+```text
+query   setup.get                      # -> { chrome, aiKeySet, emailAccounts, profiles, completedAt }
+command setup.complete                 # finished or skipped: the start page no longer opens the setup
+```
+
+The start page (`#/`) opens the setup while it is not finished and nothing is configured; Settings → General opens it again. The steps use the ordinary settings commands.
+
+Implemented in Phase 8b (ADR 029):
 
 ```text
 query   backup.list                    # -> { items: [{ name, kind, createdAt, bytes, schemaVersion }], lastRestore, schemaVersion }

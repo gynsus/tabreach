@@ -141,6 +141,22 @@ export const healthReportSchema = z.object({
 });
 export type HealthReport = z.infer<typeof healthReportSchema>;
 
+/**
+ * The first-run setup (FR-APP-002): what is configured so far. The wizard opens on a fresh install
+ * until it is finished or skipped; every step can also be done later in Settings.
+ */
+export const setupStateSchema = z.object({
+  /** Google Chrome as the browser worker found it; null while the worker is not running. */
+  chrome: chromeInfoSchema.nullable(),
+  aiKeySet: z.boolean(),
+  emailAccounts: z.number().int().nonnegative(),
+  /** Browser profiles that are not archived. */
+  profiles: z.number().int().nonnegative(),
+  /** When the person finished or skipped the wizard; null on a fresh install. */
+  completedAt: z.iso.datetime().nullable(),
+});
+export type SetupState = z.infer<typeof setupStateSchema>;
+
 export const launchCheckRequestSchema = z.object({
   url: z.url({ protocol: /^https?$/ }),
 });
@@ -404,6 +420,20 @@ export const requests = {
     kind: 'command',
     request: retentionSettingsSchema,
     response: retentionStateSchema,
+  },
+  /** First-run setup (FR-APP-002). */
+  'setup.get': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: setupStateSchema,
+  },
+  /** Finished or skipped: the wizard no longer opens by itself. */
+  'setup.complete': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({}),
+    response: setupStateSchema,
   },
   /** Local recovery backups in `data/backups/` (FR-APP-005). */
   'backup.list': {

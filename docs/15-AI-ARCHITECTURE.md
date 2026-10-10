@@ -37,7 +37,7 @@ Model selection is configuration per use case (e.g. a smaller/cheaper model for 
 
 ## Keys: bring your own
 
-The user enters their own provider API key in Settings → AI (a first-run wizard may come with packaging). It is stored encrypted via `safeStorage` (`18-SECURITY-PRIVACY-COMPLIANCE.md`). The product operates no proxy and resells no tokens.
+The user enters their own provider API key in Settings → AI (or in the first-run setup, which shows the same provider and key fields). It is stored encrypted via `safeStorage` (`18-SECURITY-PRIVACY-COMPLIANCE.md`). The product operates no proxy and resells no tokens.
 
 ## Structured output
 
