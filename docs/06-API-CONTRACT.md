@@ -106,6 +106,7 @@ command campaigns.enroll               # { campaignId, contactIds[] } — idempo
 query   enrollments.list               # { campaignId } — step, next action, what it waits for
 command enrollments.pause / enrollments.resume / enrollments.stop
 command campaigns.clone               # { id, name } -> a new draft with the source's draft config; no versions, no people
+command campaigns.delete              # { id } -> ok; only a never-launched campaign, else CONFLICT campaign.launched
 query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run)
 ```
 

@@ -343,6 +343,8 @@ export const requests = {
   'campaigns.pause': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.resume': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.archive': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
+  /** Only a campaign that was never launched: it has no versions, people or history. */
+  'campaigns.delete': { channel: 'app', kind: 'command', request: byId, response: ok },
   'campaigns.enroll': {
     channel: 'app',
     kind: 'command',

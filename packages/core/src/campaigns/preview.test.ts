@@ -31,8 +31,8 @@ const TRACES = [
   'form_preparations',
 ];
 
-/** Campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008, docs/17 "Launch validation"). */
-describe('campaign clone and dry run', () => {
+/** Campaign clone, delete and dry-run preview (FR-CAM-001, FR-CAM-008, docs/17). */
+describe('campaign clone, delete and dry run', () => {
   let fixtures: FixtureServer;
   let h: Harness;
   beforeAll(async () => {
@@ -301,5 +301,41 @@ describe('campaign clone and dry run', () => {
     expect(() =>
       h.services.campaigns.clone({ id: '00000000-0000-7000-8000-000000000000', name: 'x' }, ctx()),
     ).toThrow(expect.objectContaining({ problem: expect.objectContaining({ code: 'NOT_FOUND' }) }));
+  });
+
+  it('only a campaign that was never launched can be deleted; a launched one stays, archived or not', () => {
+    const ann = contact('Ann', 'ann@acme.test');
+    const fresh = draft([message()]);
+    const archivedDraft = draft([message()]);
+    h.services.campaigns.archive(archivedDraft, ctx());
+    const launched = draft([message()]);
+    h.services.campaigns.launch(launched, ctx());
+    h.services.campaigns.enroll(launched, [ann], ctx());
+    h.services.campaigns.archive(launched, ctx());
+
+    h.services.campaigns.delete(fresh, ctx());
+    h.services.campaigns.delete(archivedDraft, ctx());
+    expect(h.services.campaigns.list(true).map((c) => c.id)).toEqual([launched]);
+    expect(
+      h.db
+        .prepare(
+          `SELECT object_id, payload_redacted FROM action_events WHERE action_type = 'campaign.deleted'`,
+        )
+        .all()
+        .map((r) => ({ ...r })),
+    ).toEqual([
+      { object_id: fresh, payload_redacted: JSON.stringify({ name: 'Spring' }) },
+      { object_id: archivedDraft, payload_redacted: JSON.stringify({ name: 'Spring' }) },
+    ]);
+
+    expect(() => h.services.campaigns.delete(launched, ctx())).toThrow(
+      expect.objectContaining({
+        problem: expect.objectContaining({ code: 'CONFLICT', detail: 'campaign.launched' }),
+      }),
+    );
+    expect(() => h.services.campaigns.delete(fresh, ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ code: 'NOT_FOUND' }) }),
+    );
+    expect(h.services.campaigns.list(false)).toEqual([]);
   });
 });
