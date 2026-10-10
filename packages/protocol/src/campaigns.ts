@@ -244,8 +244,10 @@ export const enrollmentSchema = z.object({
   stepCount: z.number().int(),
   nextActionAt: z.iso.datetime().nullable(),
   stopReason: stopReasonSchema.nullable(),
-  /** What the current step is waiting for, if anything. */
-  waiting: z.enum(['approval', 'schedule', 'retry', 'draft']).nullable(),
+  /** What the current step is waiting for, if anything; `window` — the recipient's sending hours. */
+  waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft']).nullable(),
+  /** The sending hours and zone that hold it, when `waiting` is `window`. */
+  sendingHours: z.object({ timeZone: z.string(), window: activeWindowSchema }).nullable(),
   updatedAt: z.iso.datetime(),
 });
 export type Enrollment = z.infer<typeof enrollmentSchema>;
@@ -343,6 +345,10 @@ export const campaignPreviewSchema = z.object({
       /** The earliest moment it may go: delays, the recipient's active window and frequency caps. */
       plannedAt: z.iso.datetime(),
       timeZone: z.string(),
+      /** The sending hours used, in `timeZone`. */
+      window: activeWindowSchema,
+      /** True when the sending hours, not the delay or a cap, set `plannedAt`. */
+      heldByWindow: z.boolean(),
       /** A frequency cap that moves it later, if any (`cap.contact`, `cap.company`). */
       deferredBy: z.string().nullable(),
       content: previewContentSchema,

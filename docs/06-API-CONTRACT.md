@@ -104,11 +104,11 @@ command campaigns.create / campaigns.update / campaigns.archive
 command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
-query   enrollments.list               # { campaignId } — step, next action, what it waits for
+query   enrollments.list               # { campaignId } — step, next action, what it waits for (approval, schedule, window + sendingHours, retry, draft)
 command enrollments.pause / enrollments.resume / enrollments.stop
 command campaigns.clone               # { id, name } -> a new draft with the source's draft config; no versions, no people
 command campaigns.delete              # { id } -> ok; only a never-launched campaign, else CONFLICT campaign.launched
-query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run)
+query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run): target, plannedAt, timeZone, window, heldByWindow, deferredBy, content
 ```
 
 Launch validation fails with `VALIDATION_FAILED` and field keys such as `steps.0.body: template.unknownField`;

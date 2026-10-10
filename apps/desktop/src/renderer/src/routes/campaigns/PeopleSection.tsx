@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
+import { formatWindow } from '../../components/WindowEditor';
 import { Alert, Badge, Button, Input, Modal } from '../../components/ui';
 import { ExportButton } from '../imports/ExportButton';
 import { call, errorMessage, PAGE_SIZE } from '../../lib/api';
@@ -98,8 +99,16 @@ function EnrollmentRow({ enrollment: e }: { enrollment: Enrollment }) {
   });
   const live = e.status === 'active' || e.status === 'paused';
   let next: string | null = null;
+  let detail: string | null = null;
+  const at = e.nextActionAt ? formatDateTime(e.nextActionAt, i18n.language) : null;
   if (e.status === 'stopped' && e.stopReason) next = t(`campaigns.stopReasons.${e.stopReason}`);
-  else if (e.waiting === 'schedule' && e.nextActionAt) next = formatDateTime(e.nextActionAt, i18n.language);
+  else if (e.waiting === 'window' && at && e.sendingHours) {
+    next = t('campaigns.waitingWindow', { at });
+    detail = t('campaigns.sendingHours', {
+      hours: formatWindow(e.sendingHours.window, i18n.language),
+      zone: e.sendingHours.timeZone,
+    });
+  } else if (e.waiting === 'schedule' && at) next = at;
   else if (e.waiting) next = t(`campaigns.waiting.${e.waiting}`);
   return (
     <li
@@ -119,7 +128,12 @@ function EnrollmentRow({ enrollment: e }: { enrollment: Enrollment }) {
       <span className="text-soft">
         {t('campaigns.step', { position: Math.min(e.stepPosition, e.stepCount), count: e.stepCount })}
       </span>
-      <span className="truncate text-soft">{next ?? t('common.none')}</span>
+      <span className="grid min-w-0 gap-0.5 text-soft">
+        <span className="truncate" title={detail ?? undefined}>
+          {next ?? t('common.none')}
+        </span>
+        {detail ? <span className="truncate text-xs text-faint">{detail}</span> : null}
+      </span>
       <span className="flex gap-1">
         {e.status === 'active' ? (
           <Button

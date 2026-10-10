@@ -36,7 +36,7 @@ import { websiteTarget, type FormPreparationRow, type PrepareOutcome } from '../
 import { executeSideEffect } from '../ledger/execute.js';
 import { intentKey, type IntentParts, type SideEffectLedger } from '../ledger/side-effects.js';
 import type { ContactPolicy, PolicyVerdict } from './policy.js';
-import { nextAllowedAt, recipientTimeZone } from './schedule.js';
+import { isInsideWindow, nextAllowedAt, recipientTimeZone } from './schedule.js';
 import { renderTemplate } from './template.js';
 
 export const JOB_ADVANCE = 'enrollment.advance';
@@ -1602,6 +1602,8 @@ export class CampaignEngine {
         target,
         plannedAt: plannedAt.toISOString(),
         timeZone,
+        window,
+        heldByWindow: plannedAt.getTime() > at,
         deferredBy,
         content,
         conditions,
@@ -1736,6 +1738,21 @@ export class CampaignEngine {
 
   windowFor(versionId: string): ActiveWindow {
     return this.versionConfig(versionId).window ?? activeWindowSchema.parse(this.d.policy.current().window);
+  }
+
+  /**
+   * The sending hours, when they are what holds the current step until `at`: `at` opens a window
+   * that was closed just before it. Null when `at` is simply the step's delay or a cap.
+   */
+  heldByWindow(e: EnrollmentRow, at: Date): { timeZone: string; window: ActiveWindow } | null {
+    const step = this.step(e.campaign_version_id, e.current_step_position);
+    const facts = this.contact(e.contact_id);
+    if (step?.type !== 'send_message' || !facts) return null;
+    const timeZone = this.timeZoneFor(e, facts);
+    const window = this.windowFor(e.campaign_version_id);
+    const before = new Date(at.getTime() - 60_000);
+    if (!isInsideWindow(at, timeZone, window) || isInsideWindow(before, timeZone, window)) return null;
+    return { timeZone, window };
   }
 
   timeZoneFor(e: EnrollmentRow, facts: ContactFacts): string {
