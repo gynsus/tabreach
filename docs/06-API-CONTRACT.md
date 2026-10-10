@@ -234,7 +234,7 @@ command backup.exportPortable          # main's save dialog (host `file.chooseSa
 
 Versions are part of `app.health`.
 
-These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel. The host channel is bidirectional: main sends core `power.suspend` / `power.resume` from `powerMonitor` (implemented): core stops claiming jobs while the Mac sleeps and, on wake, resumes and re-plans overdue work into the active windows.
+These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel. The host channel is bidirectional: main sends core `power.suspend` / `power.resume` from `powerMonitor` (implemented): core stops claiming jobs while the Mac sleeps and, on wake, resumes and re-plans overdue work into the active windows. Core asks main for `secret.encrypt` / `secret.decrypt` (the secret broker, `safeStorage`, CLAUDE.md §3.10): only main holds the key, and core never logs the values.
 
 ## Events
 

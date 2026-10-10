@@ -16,19 +16,19 @@ A campaign contains a mutable draft configuration and immutable launched version
 
 Launching produces a `CampaignVersion`. Running enrollments always point to an immutable version. Editing a running campaign and re-launching creates a new version; existing enrollments stay on their version unless the user explicitly migrates them. See "Moving people to the current version".
 
-## Required campaign settings
+## Campaign settings
+
+Implemented (`campaignConfigSchema`, packages/protocol/src/campaigns.ts):
 
 - name;
-- goal;
-- target/ICP rules;
-- selected sender/channel accounts;
-- sequence steps with execution modes;
-- research instructions;
-- message instructions;
-- approval mode;
-- stop-on-reply (contact-level; company-level default from policy settings);
-- per-day/per-period limits;
-- active windows and campaign timezone.
+- the email account (when a step sends email);
+- sequence steps with channel, execution mode, delay and template or AI instructions;
+- approval mode (`approve_each`, `approve_campaign` with `sampleSize`), maximum length, forbidden phrases, allowed link domains;
+- sending hours (or the default from Settings) and the campaign time zone.
+
+Stop-on-reply and per-day/per-period limits come from the contact policy (Settings → Policy), not from the campaign.
+
+Planned (Phase 8d, open): goal, target/ICP rules and research instructions per campaign, with research freshness.
 
 A per-campaign webhook is deferred to after the MVP (ADR 030).
 
@@ -68,20 +68,24 @@ Execution mode is independent: `approve_campaign` + `assisted` means drafts are 
 
 ## Sequence step config
 
-Example:
+Two step types exist: `send_message` and `condition`. A pause between steps is the step's `delaySeconds`; research and writing happen inside a `send_message` step with `mode: "ai"`. Example — an AI-written email three days after the previous step:
 
 ```json
 {
-  "type": "send_email",
+  "type": "send_message",
+  "channel": "email",
   "executionMode": "auto",
   "delaySeconds": 259200,
-  "config": {
-    "templateMode": "ai_personalized",
-    "stopIfReplied": true,
-    "replyAsThread": true
-  }
+  "mode": "ai",
+  "subject": "",
+  "body": "",
+  "instructions": "Mention one verified fact about their company and ask for a 15-minute call.",
+  "signature": "Ann Sender\nAcme",
+  "linkedinAction": "message"
 }
 ```
+
+`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`. A reply always stops the sequence (contact policy). Planned: `replyAsThread` for later email steps (sent in the first message's thread) and a `human_task` step.
 
 ## Contact policy at runtime
 

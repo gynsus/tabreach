@@ -1,6 +1,6 @@
 # ADR 009 — No bot-evasion subsystem
 
-**Status:** Accepted
+**Status:** Accepted — amended 2026-09-28 (see Amendment)
 
 ## Context
 

@@ -83,26 +83,27 @@ The revision rationale of 2026-09-28 is in `docs/REVISION-NOTES-2026-09-28.md`.
 12. The app exposes no persistent network listeners; the only exception is a short-lived single-use OAuth loopback listener on `127.0.0.1`.
 13. No exactly-once promises: uncertain side effects are never automatically repeated.
 
-## Development command goal
+## Using TabReach
 
-By the end of Phase 0, a clean macOS checkout should be bootstrappable with:
+See the [user guide](docs/USER-GUIDE.md). The signed Mac app arrives with Phase 8e; until then, build it from source as below. Website: [tabreach.com](https://tabreach.com).
+
+## Development
+
+Prerequisites: macOS, Node.js ≥ 24.21, pnpm 12 via Corepack (`corepack enable`), Google Chrome.
 
 ```bash
 pnpm install
-pnpm dev
+pnpm dev          # run the app in development
+pnpm check        # typecheck, lint, format check, unit/integration and browser tests
+pnpm test:e2e     # Electron end-to-end tests
+pnpm package      # local unsigned .app in apps/desktop/release/
 ```
 
-and a local unsigned `.app` build with:
-
-```bash
-pnpm package
-```
-
-Exact commands may evolve, but onboarding must remain near-one-command and fully documented in `docs/DEVELOPMENT.md`.
+Details, layout and conventions: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Status
 
-Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-10-10, Phases 0–7, the 1.5, 3.5, 4.5, 5.5 and 6.5 audits and Phase 8a–8b (recovery tests, diagnostics bundle, data retention, backups with restore and an export without secrets, first-run setup) are done:
+Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-10-10, Phases 0–7, the 1.5, 3.5, 4.5, 5.5 and 6.5 audits and Phases 8a–8c (recovery tests, diagnostics bundle, data retention, backups with restore and an export without secrets, first-run setup) are done, and Phase 8d (remaining MVP items) is in progress:
 
 - prospects, CSV import/export and the do-not-contact list;
 - campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
@@ -113,7 +114,10 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list;
 - a LinkedIn adapter behind a switch that is off by default: invitations and messages from a signed-in browser profile, the person pressing Send unless auto is allowed per action class, the profile's identity checked before any click, the conversation read before every message, conservative per-account limits, a `manual` mode where the person writes and sends with the text at hand, and the share of unrecognized pages per pack version on the status screen. The pack (0.5.1) was checked against real LinkedIn pages up to the send button.
 
-Next: the rest of Phase 8 — remaining MVP items, signed release.
+- campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, and moving people to a newly launched version;
+- replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
+
+Next: the rest of Phase 8d (XOAUTH2 for IMAP/SMTP, threaded campaign follow-ups, campaign goal/ICP/research instructions, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 

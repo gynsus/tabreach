@@ -154,10 +154,15 @@ To add a migration, append `{ version: n + 1, name, sql }` to the list and cover
 
 ## User interface
 
-Screens: Contacts, Companies (with research), Do not contact, Campaigns (editor with template or AI steps,
-schedule, approval and checks, people, history), Inbox, Approvals (keyboard queue: A / E / S / R, J / K; checks,
-facts and versions), Activity (by category), Status (with "Needs attention"), Settings (tabs: general, email
-accounts, AI, contact policy).
+Screens: first-run Setup (`#/setup`), Contacts, Companies (with research), Do not contact, Campaigns (editor
+with template or AI steps, schedule, approval and checks, dry run, people with version moves, status CSV,
+history), Inbox (replies and writing back), Approvals (keyboard queue: A / E / S / R, J / K; checks, facts and
+versions), Browser (profiles, sessions, take/return control), Activity (by category), Status (with "Needs
+attention" and the diagnostics bundle), Settings (tabs: general, email accounts, AI, contact policy, website
+forms, LinkedIn, data — retention and backups).
+
+The landing page for tabreach.com lives in `site/` (static HTML/CSS, English and Russian, no build step; see
+`site/README.md`).
 
 React + Tailwind CSS 4 + TanStack Query/Table/Virtual + React Router (hash) + i18next (ADR 019).
 

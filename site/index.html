@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TabReach — the outreach browser that runs on your Mac</title>
+    <meta
+      name="description"
+      content="Research companies with evidence, write personalised messages, and send them by email, website forms or LinkedIn — with your approval, and with your data staying on your Mac. Open source."
+    />
+    <link rel="canonical" href="https://tabreach.com/" />
+    <link rel="alternate" hreflang="en" href="https://tabreach.com/" />
+    <link rel="alternate" hreflang="ru" href="https://tabreach.com/ru/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TabReach — the outreach browser that runs on your Mac" />
+    <meta
+      property="og:description"
+      content="Research, personalise and send — with your approval, and with your data on your machine. Open source, AGPL-3.0."
+    />
+    <meta property="og:url" content="https://tabreach.com/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="/" aria-label="TabReach home">
+        <img src="/favicon.svg" width="28" height="28" alt="" />
+        TabReach
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a class="hide-sm" href="#how">How it works</a>
+        <a class="hide-sm" href="#features">Features</a>
+        <a href="https://github.com/gynsus/tabreach">GitHub</a>
+        <a class="lang" href="/ru/" hreflang="ru" lang="ru">RU</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap hero">
+        <div>
+          <span class="eyebrow"
+            ><span class="dot" aria-hidden="true"></span> Local-only · Open source · macOS</span
+          >
+          <h1>The outreach browser that <em>runs on your Mac</em>.</h1>
+          <p class="lead">
+            TabReach researches a company, writes a message grounded in what it found, and sends it by email,
+            the company's contact form or LinkedIn — after you approve it. Your prospects, mailbox and browser
+            sessions never leave your computer.
+          </p>
+          <div class="ctas">
+            <a class="btn primary" href="https://github.com/gynsus/tabreach">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+                />
+              </svg>
+              View on GitHub
+            </a>
+            <a class="btn" href="#status">Get the Mac app</a>
+          </div>
+          <p class="note">
+            Bring your own AI key — Anthropic, OpenAI or OpenRouter. No account, no subscription, no server.
+          </p>
+        </div>
+
+        <figure class="mock" aria-label="An approval in TabReach">
+          <div class="mock-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="mock-body">
+            <div class="mock-head">
+              <b>Waiting for your approval</b>
+              <span class="pill">Email · step 1 of 3</span>
+            </div>
+            <div class="muted">To: anna@northwind.example · Mon 09:00 (Europe/Berlin)</div>
+            <div class="mail">
+              <b>Your new Leipzig warehouse</b>
+              <p>
+                Hi Anna, congratulations on <mark>opening the Leipzig site in March</mark>. Teams that add a
+                second warehouse usually hit stock sync issues first…
+              </p>
+            </div>
+            <div class="source">
+              “We opened our second warehouse in Leipzig in March.” — northwind.example/news
+            </div>
+            <div class="checks">
+              <span>Grounded in research</span><span>Length</span><span>Links</span><span>Signature</span
+              ><span>Not on do-not-contact</span>
+            </div>
+            <div class="mock-actions" aria-hidden="true">
+              <span class="go">Approve</span><span>Edit</span><span>Skip</span>
+            </div>
+          </div>
+        </figure>
+      </div>
+
+      <section id="how">
+        <div class="wrap">
+          <h2>From a list to a reply, step by step</h2>
+          <p class="sub">
+            A campaign is a sequence you design once. TabReach walks every person through it, and stops
+            wherever a person should decide.
+          </p>
+          <ol class="steps">
+            <li>
+              <h3>Import</h3>
+              <p>Contacts and companies from a CSV or your CRM export. Duplicates are merged, not doubled.</p>
+            </li>
+            <li>
+              <h3>Research</h3>
+              <p>
+                It reads the company's website in a real browser and keeps every fact with a verbatim quote
+                and its source.
+              </p>
+            </li>
+            <li>
+              <h3>Write</h3>
+              <p>
+                From your template, or by AI from the verified facts — then checked for length, links, tone
+                and signature.
+              </p>
+            </li>
+            <li>
+              <h3>Approve</h3>
+              <p>
+                You see exactly what will go out, to whom and when. Edit, approve, skip — one keypress each.
+              </p>
+            </li>
+            <li>
+              <h3>Send &amp; listen</h3>
+              <p>
+                Sent within your sending hours and limits. A reply stops the sequence and lands in the inbox.
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="wrap">
+          <h2>Built to be trusted with your name</h2>
+          <p class="sub">
+            Outreach goes out under your name and from your accounts. Every part of TabReach is designed
+            around that.
+          </p>
+          <div class="grid">
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              <h3>Everything stays on your Mac</h3>
+              <p>
+                One app, one local database. No cloud account, no sync, no server holding your prospects or
+                your mailbox.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              <h3>Nothing goes out unapproved</h3>
+              <p>
+                Every message waits for you by default. Once a campaign has earned it, you can let messages
+                that pass every check go on their own.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M4 12h10M4 17h6" />
+                <path d="M17 15l2 2 3-3" />
+              </svg>
+              <h3>Never a duplicate</h3>
+              <p>
+                Every send is recorded before it happens. If the outcome is uncertain, TabReach asks you
+                instead of trying again.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M7 8h10M7 12h6" />
+                <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+              </svg>
+              <h3>Research with receipts</h3>
+              <p>
+                A fact without a quote that really appears on the page is thrown away. You can always see
+                where a sentence came from.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <h3>Polite by design</h3>
+              <p>
+                Sending hours in each recipient's time zone, per-person and per-company limits, a
+                do-not-contact list checked right before every send.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7l9 6 9-6" />
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+              </svg>
+              <h3>An inbox that understands replies</h3>
+              <p>
+                Replies are matched to the person and the campaign, sorted into interested, not interested,
+                out of office or unsubscribe — and answered in the same thread.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Channels</h2>
+          <p class="sub">
+            APIs where they exist, your own browser where they don't — and you in control of both.
+          </p>
+          <div class="channels">
+            <span class="chip"><b>Gmail</b> <small>with your own Google OAuth client</small></span>
+            <span class="chip"><b>Any mailbox</b> <small>IMAP / SMTP</small></span>
+            <span class="chip"
+              ><b>Website contact forms</b> <small>filled, photographed, approved</small></span
+            >
+            <span class="chip"><b>LinkedIn</b> <small>assisted — you press Send</small></span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap split">
+          <ul class="list yes">
+            <li style="padding: 0"><h3>What TabReach does</h3></li>
+            <li>Drives your installed Google Chrome with dedicated profiles you sign in to yourself</li>
+            <li>Stops and hands you the window at any CAPTCHA, 2FA or unexpected page</li>
+            <li>Keeps a complete, searchable history of every action and message</li>
+            <li>Backs up its data locally and restores it in one step</li>
+            <li>Speaks English and Russian</li>
+          </ul>
+          <ul class="list no">
+            <li style="padding: 0"><h3>What it will never do</h3></li>
+            <li>Solve CAPTCHAs or bypass security checks</li>
+            <li>Disguise itself with fingerprint spoofing or proxy rotation</li>
+            <li>Sell or scrape a lead database</li>
+            <li>Send your data to a server of ours — there isn't one</li>
+            <li>Send something you didn't approve, unless you told it to</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="status">
+        <div class="wrap oss">
+          <div>
+            <h2>Open source, AGPL-3.0</h2>
+            <p>
+              The source is public. The signed and notarized Mac app (Apple Silicon and Intel) is being
+              prepared for its first release — watch the repository to hear when it ships, or build it from
+              source today.
+            </p>
+          </div>
+          <a class="btn primary" href="https://github.com/gynsus/tabreach">Watch on GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span
+          >© 2026 TabReach · <a href="https://github.com/gynsus/tabreach/blob/main/LICENSE">AGPL-3.0</a> ·
+          <a href="https://github.com/gynsus/tabreach/blob/main/docs/USER-GUIDE.md">User guide</a></span
+        >
+        <span>Made by <a href="https://grigoryfrolov.com/">Grigory Frolov</a></span>
+      </div>
+    </footer>
+  </body>
+</html>
