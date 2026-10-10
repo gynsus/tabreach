@@ -117,6 +117,8 @@ Requirements:
 - deterministic delay calculation;
 - no busy polling per enrollment.
 
+An enrollment whose next moment was moved to the opening of the recipient's sending hours reports `waiting: window` with the hours and zone used (`sendingHours`), so the People section says "Waiting for sending hours: Mon 12 Oct, 09:00 · Sending hours Mon–Fri 09:00–18:00 (Europe/Moscow)" instead of a bare date; a step delay or a cap stays `schedule`. The time is computed when the step is scheduled: changing the hours later does not move it.
+
 ## Sleep, downtime and catch-up
 
 The app only runs while the Mac is awake and the app is open.
@@ -171,7 +173,7 @@ Show a dry-run preview for one target.
 
 - condition steps are evaluated (`stop` ends the preview, `skip` leaves out the step after it);
 - the first message step's target is resolved (email, company website, LinkedIn profile); no target, a LinkedIn contact without a name, missing template data, a suppression, a bounce or a reply hold is reported as the stop reason a run would record;
-- the earliest moment is the step delays from now, moved by a frequency cap if one applies, then into the recipient's active window;
+- the earliest moment is the step delays from now, moved by a frequency cap if one applies, then into the recipient's active window; the preview returns the window and zone used and `heldByWindow` when the window moved it, and says so;
 - a template step shows the rendered subject and body; an AI step is written only when asked (`generate`: one AI call, with the company's research started first if it has none — the preview then says to ask again).
 
 Nothing is stored for the campaign: no enrollment, run, draft, approval or ledger entry, and no audit event of its own (an AI example is logged as an AI call with its cost, and a research run it starts is an ordinary research run). A website form is not opened (it is prepared after enrollment, before approval). Unsaved edits are saved first by the UI, so the preview matches what would be launched.

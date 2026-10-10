@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
 import { Alert, Badge, Button, Field, Input, Modal } from '../../components/ui';
+import { formatWindow } from '../../components/WindowEditor';
 import { translateKey } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
 import { usePagedList } from '../../lib/lists';
@@ -147,6 +148,14 @@ function PreviewResult({ preview, onGenerate }: { preview: CampaignPreview; onGe
                 at: formatDateTime(o.plannedAt, i18n.language),
                 zone: o.timeZone,
               })}
+              {o.heldByWindow ? (
+                <span className="block text-xs text-soft">
+                  {t('campaigns.dryRun.heldByWindow', {
+                    hours: formatWindow(o.window, i18n.language),
+                    zone: o.timeZone,
+                  })}
+                </span>
+              ) : null}
               {o.deferredBy ? (
                 <span className="block text-xs text-soft">
                   {translateKey(

@@ -12,6 +12,25 @@ function weekdayName(day: number, language: string): string {
   );
 }
 
+/** "Mon–Fri 09:00–18:00": consecutive days as a range, others listed. */
+export function formatWindow(window: ActiveWindow, language: string): string {
+  const days = [...window.days].sort((a, b) => a - b);
+  const groups: number[][] = [];
+  for (const day of days) {
+    const last = groups.at(-1);
+    if (last && last.at(-1) === day - 1) last.push(day);
+    else groups.push([day]);
+  }
+  const names = groups
+    .map((g) =>
+      g.length > 2
+        ? `${weekdayName(g[0]!, language)}–${weekdayName(g.at(-1)!, language)}`
+        : g.map((d) => weekdayName(d, language)).join(', '),
+    )
+    .join(', ');
+  return `${names} ${window.start}–${window.end}`;
+}
+
 /** Days and hours of an active window; times are wall-clock in each recipient's zone. */
 export function WindowEditor(props: {
   value: ActiveWindow;

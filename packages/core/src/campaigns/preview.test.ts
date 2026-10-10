@@ -97,12 +97,37 @@ describe('campaign clone, delete and dry run', () => {
         target: 'ann@acme.test',
         plannedAt: '2026-09-29T09:00:00.000Z',
         timeZone: 'UTC',
+        window: { days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00' },
+        heldByWindow: true,
         deferredBy: null,
         content: { kind: 'template', subject: 'Hello Ann', body: 'Hi Ann, a note for Acme.' },
       },
     });
     expect(counts()).toEqual(before);
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM action_events').get()).toEqual(audit);
+  });
+
+  it('a person held by the sending hours says so, with the hours and zone; a delay is just scheduled', () => {
+    const ann = contact('Ann', 'ann@acme.test');
+    const bob = contact('Bob', 'bob@beta.test');
+    const late = draft([message({ delaySeconds: 9 * 60 * 60 })]); // 19:00 Monday → Tuesday 09:00
+    const soon = draft([message({ delaySeconds: 60 * 60 })]); // 11:00 Monday, inside the hours
+    for (const [campaign, person] of [
+      [late, ann],
+      [soon, bob],
+    ] as const) {
+      h.services.campaigns.launch(campaign, ctx());
+      h.services.campaigns.enroll(campaign, [person], ctx());
+    }
+    expect(h.services.campaigns.listEnrollments(late, { limit: 1, offset: 0 }).items[0]).toMatchObject({
+      nextActionAt: '2026-09-29T09:00:00.000Z',
+      waiting: 'window',
+      sendingHours: { timeZone: 'UTC', window: { days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00' } },
+    });
+    expect(h.services.campaigns.listEnrollments(soon, { limit: 1, offset: 0 }).items[0]).toMatchObject({
+      waiting: 'schedule',
+      sendingHours: null,
+    });
   });
 
   it('says why a contact would be stopped before anything goes out', async () => {
@@ -182,7 +207,7 @@ describe('campaign clone, delete and dry run', () => {
     });
     const result = await preview(next, bob);
     // The default contact cap is one touch in three days.
-    expect(result.outcome).toMatchObject({ kind: 'action', deferredBy: 'cap.contact' });
+    expect(result.outcome).toMatchObject({ kind: 'action', deferredBy: 'cap.contact', heldByWindow: false });
     expect(
       new Date((result.outcome as { plannedAt: string }).plannedAt).getTime() - h.clock.now().getTime(),
     ).toBeGreaterThanOrEqual(3 * DAY - 60_000);

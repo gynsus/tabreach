@@ -292,7 +292,8 @@ describe('campaign engine', () => {
     expect(h.pending()).toHaveLength(0);
     expect(h.enrollments(campaign)[0]).toMatchObject({
       nextActionAt: '2026-10-05T09:00:00.000Z',
-      waiting: 'schedule',
+      waiting: 'window',
+      sendingHours: { timeZone: 'UTC' },
     });
     h.clock.set('2026-10-05T09:00:00.000Z');
     await h.run();

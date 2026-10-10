@@ -470,24 +470,32 @@ export class CampaignService {
       stepCount: this.engine.stepCount(r.campaign_version_id),
       nextActionAt: r.status === 'active' ? r.next_action_at : null,
       stopReason: r.stop_reason,
-      waiting: this.waiting(r),
+      ...this.waiting(r),
       updatedAt: r.updated_at,
     };
   }
 
-  private waiting(e: EnrollmentRow): Enrollment['waiting'] {
-    if (e.status !== 'active') return null;
+  private waiting(e: EnrollmentRow): Pick<Enrollment, 'waiting' | 'sendingHours'> {
+    const none = { waiting: null, sendingHours: null };
+    if (e.status !== 'active') return none;
+    // Scheduled for later: by the sending hours, or by a delay or a cap.
+    const later = (at: Date): Pick<Enrollment, 'waiting' | 'sendingHours'> => {
+      const hours = this.engine.heldByWindow(e, at);
+      return hours ? { waiting: 'window', sendingHours: hours } : { waiting: 'schedule', sendingHours: null };
+    };
     const run = this.engine.openRun(e.id);
-    if (run?.status === 'waiting_approval') return 'approval';
+    if (run?.status === 'waiting_approval') return { waiting: 'approval', sendingHours: null };
     if (run) {
       const job = this.jobs.byDedupeKey(`run:${run.id}`);
       if (job?.type === JOB_RUN && job.status === 'pending') {
-        if (job.last_error_class) return 'retry';
-        if (new Date(job.run_at) > this.now()) return 'schedule';
+        if (job.last_error_class) return { waiting: 'retry', sendingHours: null };
+        if (new Date(job.run_at) > this.now()) return later(new Date(job.run_at));
       }
-      return null;
+      return none;
     }
-    return e.next_action_at && new Date(e.next_action_at) > this.now() ? 'schedule' : null;
+    return e.next_action_at && new Date(e.next_action_at) > this.now()
+      ? later(new Date(e.next_action_at))
+      : none;
   }
 
   private toDto(r: CampaignRow): Campaign {

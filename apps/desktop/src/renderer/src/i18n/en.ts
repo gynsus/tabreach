@@ -600,9 +600,12 @@ export const en = {
       stopped: 'Stopped',
     },
     step: 'Step {{position}} of {{count}}',
+    waitingWindow: 'Waiting for sending hours: {{at}}',
+    sendingHours: 'Sending hours {{hours}} ({{zone}})',
     waiting: {
       approval: 'Waiting for your approval',
       schedule: 'Scheduled',
+      window: 'Waiting for sending hours',
       retry: 'Retrying after an error',
       draft: 'AI is writing the message',
     },
@@ -652,6 +655,7 @@ export const en = {
       to: 'To',
       when: 'Earliest',
       whenValue: '{{at}} ({{zone}})',
+      heldByWindow: 'Moved to the sending hours: {{hours}} ({{zone}}).',
       formNote:
         'The contact form is found and filled on the website after the contact is added, before you approve it.',
       approvalNote: 'Every message still waits for approval as the campaign is set up.',

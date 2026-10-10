@@ -625,9 +625,12 @@ export const ru: Catalog = {
       stopped: 'Остановлено',
     },
     step: 'Шаг {{position}} из {{count}}',
+    waitingWindow: 'Ждёт часов отправки: {{at}}',
+    sendingHours: 'Часы отправки {{hours}} ({{zone}})',
     waiting: {
       approval: 'Ждёт вашего одобрения',
       schedule: 'Запланировано',
+      window: 'Ждёт часов отправки',
       retry: 'Повтор после ошибки',
       draft: 'AI пишет сообщение',
     },
@@ -678,6 +681,7 @@ export const ru: Catalog = {
       to: 'Кому',
       when: 'Не раньше',
       whenValue: '{{at}} ({{zone}})',
+      heldByWindow: 'Перенесено в часы отправки: {{hours}} ({{zone}}).',
       formNote:
         'Контактная форма находится и заполняется на сайте после добавления контакта, до вашего одобрения.',
       approvalNote: 'Каждое сообщение всё равно ждёт одобрения так, как настроено в кампании.',
