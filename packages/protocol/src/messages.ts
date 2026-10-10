@@ -283,6 +283,13 @@ export const requests = {
     request: z.object({}),
     response: exportResultSchema,
   },
+  /** Campaign status for a CRM: one row per person in the campaign (FR-PROS-007). */
+  'exports.campaign': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ campaignId: z.uuid() }),
+    response: exportResultSchema,
+  },
   'suppressions.list': {
     channel: 'app',
     kind: 'query',
