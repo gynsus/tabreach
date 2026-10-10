@@ -2,7 +2,7 @@ import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright-core';
-import type { LaunchCheckResult, Logger } from '@tabreach/protocol';
+import { errorSummary, type LaunchCheckResult, type Logger } from '@tabreach/protocol';
 
 const PROFILE_PREFIX = 'tabreach-launch-check-';
 
@@ -62,7 +62,7 @@ export async function launchCheck(url: string, opts: LaunchCheckOptions): Promis
         : String(error);
     // Host only: later these URLs are people's profiles, which do not belong in logs.
     opts.logger.warn(
-      { event: 'browser.launch_check_failed', host: hostOf(url), err: error },
+      { event: 'browser.launch_check_failed', host: hostOf(url), err: errorSummary(error) },
       'launch check failed',
     );
     return { ...base, ok: false, durationMs: Date.now() - started, error: message.slice(0, 300) };

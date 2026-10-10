@@ -63,3 +63,25 @@ export function redactDeep(value: unknown, maxDepth = 8, depth = 0): unknown {
   }
   return out;
 }
+
+/**
+ * An error for a log line about a browser or a fetch: its name and the first line of its message,
+ * with URLs cut to their origin and file paths removed. Playwright errors carry the Chrome command
+ * line (`--user-data-dir=<profile>`) and the page URL; neither belongs in logs (CLAUDE.md §3.10).
+ */
+export function errorSummary(error: unknown): { name: string; message: string } {
+  const name = error instanceof Error ? error.name : typeof error;
+  const raw = error instanceof Error ? error.message : String(error);
+  const message = scrubString((raw.split('\n')[0] ?? '').slice(0, 500))
+    // A profile path may contain spaces ("Application Support"): everything up to the next flag.
+    .replace(/--user-data-dir=.*?(?=\s--|$)/g, '--user-data-dir=<profile>')
+    .replace(/\bhttps?:\/\/[^\s"'<>)]+/gi, (url) => {
+      try {
+        return new URL(url).origin;
+      } catch {
+        return '<url>';
+      }
+    })
+    .replace(/(?:~|\.{0,2})?\/(?:[^\s"'<>/:]+\/)+[^\s"'<>:,)]*/g, '<path>');
+  return { name, message };
+}

@@ -1026,6 +1026,19 @@ export const en = {
       inbox_unavailable:
         'The inbox could not be read, so a reply might be missed. Sending waits until it can be read.',
       unexpected: 'Unexpected error.',
+      network: 'The network or the server did not answer, even after several tries.',
+      account_unavailable: 'The email account of this campaign is disconnected or unavailable.',
+      lock_conflict: 'The same item kept changing while this ran. Retry.',
+      spacing: 'Sending was held back by the pacing between messages for too long. Retry.',
+      state_loop: 'The step did not move forward. Retry; if it happens again, send a diagnostics bundle.',
+      step_loop: 'The step did not move forward. Retry; if it happens again, send a diagnostics bundle.',
+      suppressed: 'The recipient is on the do-not-contact list.',
+      approval_state: 'The approval changed while this ran. Check the approvals queue.',
+      run_state: 'The step changed while this ran. Retry.',
+      step_missing: 'The campaign step no longer exists.',
+      invalid: 'The task could not be read. Send a diagnostics bundle.',
+      invalid_payload: 'The task could not be read. Send a diagnostics bundle.',
+      unknown_job_type: 'This kind of task is not known to this version of TabReach.',
     },
   },
   status: {
@@ -1037,7 +1050,8 @@ export const en = {
         'Fields are masked, but a screenshot shows the page as it was — include only what you are happy to share.',
       create: 'Create diagnostics bundle',
       creating: 'Creating…',
-      saved: 'Diagnostics bundle saved ({{count}} files).',
+      saved_one: 'Diagnostics bundle saved ({{count}} file).',
+      saved_other: 'Diagnostics bundle saved ({{count}} files).',
     },
     packs: {
       title: 'Adapter packs',
@@ -1262,6 +1276,7 @@ export const en = {
       senderRequired: 'Choose a browser profile for website forms in Settings → Website forms.',
       profileUnsuitable: 'Use a general browser profile for forms.',
       notPrepared: 'The form is not prepared yet.',
+      prepareFailed: 'The contact form could not be prepared. Check that Chrome works, then retry.',
     },
     mode: {
       autoOnly: 'Only a website form or LinkedIn can be sent by you pressing its button.',
