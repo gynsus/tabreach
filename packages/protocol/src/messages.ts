@@ -39,6 +39,13 @@ import {
 } from './diagnostics.js';
 import { retentionSettingsSchema, retentionStateSchema } from './retention.js';
 import {
+  backupListSchema,
+  backupNameSchema,
+  backupRestoreResultSchema,
+  backupSchema,
+  portableExportResultSchema,
+} from './backup.js';
+import {
   conversationListRequestSchema,
   conversationSchema,
   conversationSummarySchema,
@@ -398,6 +405,39 @@ export const requests = {
     request: retentionSettingsSchema,
     response: retentionStateSchema,
   },
+  /** Local recovery backups in `data/backups/` (FR-APP-005). */
+  'backup.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({}),
+    response: backupListSchema,
+  },
+  'backup.create': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({}),
+    response: backupSchema,
+  },
+  'backup.delete': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ name: backupNameSchema }),
+    response: ok,
+  },
+  /** Checks the backup, then core restarts onto it; the app starts paused. */
+  'backup.restore': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({ name: backupNameSchema }),
+    response: backupRestoreResultSchema,
+  },
+  /** A copy without secrets, written where the person chooses in the save dialog. */
+  'backup.exportPortable': {
+    channel: 'app',
+    kind: 'command',
+    request: z.object({}),
+    response: portableExportResultSchema,
+  },
   'jobs.needsAttention': {
     channel: 'app',
     kind: 'query',
@@ -713,6 +753,13 @@ export const requests = {
     kind: 'command',
     request: z.object({ action: z.enum(['pause', 'resume', 'emergency_stop']) }),
     response: ok,
+  },
+  /** Core → main: the native save dialog; the path the person chose, or null. Core writes the file. */
+  'file.chooseSavePath': {
+    channel: 'host',
+    kind: 'command',
+    request: z.object({ suggestedName: z.string().min(1).max(200) }),
+    response: z.object({ path: z.string().nullable() }),
   },
   /** Core → main: a native notification (a person is needed). */
   'app.notify': {

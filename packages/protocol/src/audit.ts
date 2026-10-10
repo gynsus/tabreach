@@ -17,6 +17,7 @@ export const auditObjectTypeSchema = z.enum([
   'conversation',
   'research',
   'browser_profile',
+  'backup',
 ]);
 export type AuditObjectType = z.infer<typeof auditObjectTypeSchema>;
 
@@ -50,6 +51,10 @@ export const auditActionTypes = [
   'policy.updated',
   'retention.updated',
   'retention.pruned',
+  'backup.created',
+  'backup.deleted',
+  'backup.restored',
+  'backup.exported',
   'job.retried',
   'job.dismissed',
   'account.connected',

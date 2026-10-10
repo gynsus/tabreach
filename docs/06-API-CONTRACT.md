@@ -207,12 +207,17 @@ query   app.health                     # implemented: versions, core/worker/Chro
 
 ## App-wide commands
 
-Implemented (Phase 5c) under **Browser profiles**: `app.control.get`, `app.pauseAll`, `app.resumeAll`, `app.emergencyStop`, `app.setKeepAwake`. Planned for Phase 8:
+Implemented (Phase 5c) under **Browser profiles**: `app.control.get`, `app.pauseAll`, `app.resumeAll`, `app.emergencyStop`, `app.setKeepAwake`. Implemented in Phase 8b (ADR 029):
 
 ```text
-query   app.versions                   # app, Electron, Chrome, adapter packs
-command app.backupDatabase
+query   backup.list                    # -> { items: [{ name, kind, createdAt, bytes, schemaVersion }], lastRestore, schemaVersion }
+command backup.create                  # manual backup in data/backups/
+command backup.delete { name }         # a backup file by name (never a path)
+command backup.restore { name }        # checked now, applied by a core restart; the app starts paused
+command backup.exportPortable          # main's save dialog (host `file.chooseSavePath`), then core writes a copy without secrets
 ```
+
+Versions are part of `app.health`.
 
 These are app-channel requests handled by **core**, like all renderer requests. Where an Electron capability is needed (keep-awake via `powerSaveBlocker`, file dialogs), core asks main over the host channel. The host channel is bidirectional: main sends core `power.suspend` / `power.resume` from `powerMonitor` (implemented): core stops claiming jobs while the Mac sleeps and, on wake, resumes and re-plans overdue work into the active windows.
 

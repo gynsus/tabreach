@@ -1,6 +1,6 @@
 import { utilityProcess, type UtilityProcess } from 'electron';
 import type { CoreState, Logger } from '@tabreach/protocol';
-import type { ChildEnv } from '../shared/ipc';
+import { RESTART_EXIT_CODE, type ChildEnv } from '../shared/ipc';
 import { RestartPolicy } from './restart-policy';
 
 const STOP_TIMEOUT_MS = 3_000;
@@ -42,6 +42,13 @@ export class Supervised {
       if (this.process === proc) this.process = null;
       this.onExit();
       if (this.stopping) return;
+      if (code === RESTART_EXIT_CODE) {
+        // Asked for (a restore): start again at once, not counted as a crash.
+        this.logger.info({ event: 'process.restart_requested', name: this.name }, 'process restarting');
+        this.setState('restarting');
+        this.start();
+        return;
+      }
       const decision = this.policy.onCrash();
       this.logger.error({ event: 'process.exited', name: this.name, code, ...decision }, 'process exited');
       if (decision.restart) {

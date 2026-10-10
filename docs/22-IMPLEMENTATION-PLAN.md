@@ -215,7 +215,7 @@ Exit criteria status (2026-09-30): the adapter is off by default and when its se
 
 ## Phase 8 — Hardening and release
 
-Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18).
+Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18); 8b local recovery backups with restore and the portable export without secrets (done 2026-10-10, ADR 029).
 
 Deliver:
 

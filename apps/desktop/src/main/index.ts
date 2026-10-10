@@ -2,6 +2,7 @@ import { join } from 'node:path';
 import {
   app,
   BrowserWindow,
+  dialog,
   Menu,
   MessageChannelMain,
   nativeImage,
@@ -19,7 +20,7 @@ import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
 import { installMenu } from './menu';
 import { runLoopback } from './oauth-loopback';
-import { registerSaveFile } from './save-file';
+import { registerSaveFile, safeFileName } from './save-file';
 import { parseSelfCheck, runSelfCheck } from './self-check';
 import { killOrphanChrome } from './orphan-chrome';
 import { Supervised } from './supervisor';
@@ -314,6 +315,18 @@ function serveHost(proc: UtilityProcess, logger: Logger): RpcPeer {
     .handle('power.keepAwake', ({ on }) => {
       setKeepAwake(on, log);
       return { ok: true as const };
+    })
+    .handle('file.chooseSavePath', async ({ suggestedName }) => {
+      const name = safeFileName(suggestedName);
+      const options = {
+        defaultPath: join(app.getPath('documents'), name),
+        filters: [{ name: 'SQLite', extensions: ['db'] }],
+      };
+      const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const result = window
+        ? await dialog.showSaveDialog(window, options)
+        : await dialog.showSaveDialog(options);
+      return { path: result.canceled || !result.filePath ? null : result.filePath };
     })
     .handle('app.notify', ({ title, body }) => {
       if (Notification.isSupported()) new Notification({ title, body }).show();

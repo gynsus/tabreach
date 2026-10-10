@@ -14,6 +14,7 @@ import {
 } from '@tabreach/protocol';
 import { bundledPacks } from '@tabreach/adapter-packs';
 import { AppServices } from './app-handlers.js';
+import { applyPendingRestore, BackupService, pruneAutomaticBackups } from './backup/backup-service.js';
 import { DiagnosticsService } from './diagnostics/bundle.js';
 import { openDatabase, sqliteVersion } from './db/database.js';
 import { currentSchemaVersion, migrate, type MigrationReport } from './db/migrate.js';
@@ -31,6 +32,8 @@ export interface CoreOptions {
   logger: Logger;
   /** Where the processes write their logs, for the diagnostics bundle. */
   logDir?: string;
+  /** Closes core and starts it again (a restore is applied on start); absent in tests. */
+  restart?: () => void;
 }
 
 const WORKER_HEALTH_TIMEOUT_MS = 5_000;
@@ -44,6 +47,7 @@ export class CoreService {
   readonly services: AppServices;
   readonly dispatcher: Dispatcher;
   private readonly diagnostics: DiagnosticsService;
+  private readonly backups: BackupService;
 
   private constructor(
     private readonly db: DatabaseSync,
@@ -93,6 +97,23 @@ export class CoreService {
       health: () => this.health(),
       packs: () => bundledPacks.map((p) => ({ id: p.id, version: p.version })),
     });
+    this.backups = new BackupService({
+      db,
+      now: () => new Date(),
+      dataDir: join(options.dataDir, 'data'),
+      migrations,
+      audit: this.services.audit,
+      settings: this.services.settings,
+      pauseAll: (ctx) => this.services.appControl.pauseAll(ctx),
+      chooseSavePath: async (suggestedName) =>
+        (await this.hostPeer.request('file.chooseSavePath', { suggestedName }, { timeoutMs: 10 * 60_000 }))
+          .path,
+      restart: () => {
+        if (options.restart) options.restart();
+        else options.logger.warn({ event: 'core.restart_unavailable' }, 'no restart hook; restore waits');
+      },
+      logger: options.logger.child({ component: 'backup' }),
+    });
     this.dispatcher = new Dispatcher({
       queue: this.services.jobs,
       now: () => new Date(),
@@ -127,9 +148,17 @@ export class CoreService {
   static async start(options: CoreOptions): Promise<CoreService> {
     const dataDir = join(options.dataDir, 'data');
     mkdirSync(dataDir, { recursive: true });
+    const restored = await applyPendingRestore({
+      dataDir,
+      migrations,
+      now: () => new Date(),
+      logger: options.logger,
+    });
+    if (restored) options.logger.info({ event: 'db.restore_applied', ok: restored.ok }, 'restore handled');
     const db = openDatabase(join(dataDir, 'app.db'));
     const report = await migrate(db, migrations, { backupDir: join(dataDir, 'backups') });
     options.logger.info({ event: 'db.migrated', ...report }, 'database ready');
+    pruneAutomaticBackups(join(dataDir, 'backups'));
 
     const core = new CoreService(db, options, report);
     const pruned = core.services.commands.prune();
@@ -170,6 +199,22 @@ export class CoreService {
         );
         return bundle;
       })
+      .handle('backup.list', () => ({
+        items: this.backups.list(),
+        lastRestore: this.backups.lastRestore(),
+        schemaVersion: this.backups.schemaVersion(),
+      }))
+      .handle('backup.create', (_req, c) => this.backups.create({ correlationId: c.correlationId }))
+      .handle('backup.delete', ({ name }, c) => {
+        this.backups.delete(name, { correlationId: c.correlationId });
+        return { ok: true as const };
+      })
+      .handle('backup.restore', ({ name }, c) =>
+        this.backups.restore(name, { correlationId: c.correlationId }),
+      )
+      .handle('backup.exportPortable', (_req, c) =>
+        this.backups.exportPortable({ correlationId: c.correlationId }),
+      )
       .handle('browser.launchCheck', (payload, ctx) => this.launchCheck(payload.url, ctx.correlationId));
     this.appPeers.add(peer);
     return () => {

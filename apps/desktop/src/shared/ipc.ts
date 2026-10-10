@@ -71,6 +71,9 @@ export function parentPortEndpoint(
 }
 
 /** Paths and version that main passes to child processes through the environment. */
+/** Exit code core uses to ask for an immediate restart (a restore is applied on start), not a crash. */
+export const RESTART_EXIT_CODE = 75;
+
 export interface ChildEnv {
   TABREACH_DATA_DIR: string;
   TABREACH_LOG_DIR: string;

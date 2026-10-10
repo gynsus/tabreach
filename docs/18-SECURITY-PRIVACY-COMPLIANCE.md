@@ -37,7 +37,7 @@ Chrome is controlled over a pipe, not a remote-debugging port.
 - Storage: ciphertext from Electron `safeStorage` (Keychain-backed key on macOS) in the `secrets` table.
 - Only main encrypts/decrypts. Core requests a secret for a specific purpose over its port and keeps plaintext in memory only as long as needed.
 - The browser worker never receives provider keys or OAuth tokens.
-- Plaintext secrets never appear in any backup, export or bundle. Local recovery backups contain `safeStorage` ciphertext (bound to this Mac user); portable exports and diagnostics bundles exclude the `secrets` table entirely.
+- Plaintext secrets never appear in any backup, export or bundle. Local recovery backups contain `safeStorage` ciphertext (bound to this Mac user); portable exports and diagnostics bundles exclude the `secrets` table entirely. The export also drops the command log and is vacuumed with `secure_delete`, so no freed page keeps ciphertext; backups and exports are written with mode 0600 (ADR 029).
 - Development: `.env` may hold development-only keys, must be gitignored, and is ignored in release builds.
 
 ## Browser profile sensitivity

@@ -146,5 +146,6 @@ Coverage (Phase 8a-1, 2026-10-09), each with an automated test:
 | the person completes the action during takeover | `browser-channel.test.ts` — taken after the checkpoint: `unknown`, confirmed sent, never pressed again; `commit.browser.test.ts` |
 | assisted-mode timeout | `browser-channel.test.ts` — before the checkpoint not sent; after it `unknown`, never pressed again |
 | suspend/resume with overdue scheduled actions | `engine.test.ts` — a follow-up due during sleep after the window closed waits for the next window, then goes out one at a time; `core.test.ts` (no jobs while asleep) |
+| restore of an older backup (ADR 029) | `backup-service.test.ts` — sends and opt-outs since the backup are kept, the app starts paused, a failing restore leaves the data as it was and is not retried; E2E `backup: restoring …` |
 
 Found while writing them: a browser send keeps its ledger row `reserved` until the worker's checkpoint (minutes in assisted mode), so a second attempt at the same intent meanwhile would have read it as never sent. `executeSideEffect` now keeps the intents a checkpoint channel is executing in memory, per ledger; a second attempt returns `pending` and comes back later. Core is the only ledger writer and a restart ends every attempt, so nothing is lost by keeping this in memory.
