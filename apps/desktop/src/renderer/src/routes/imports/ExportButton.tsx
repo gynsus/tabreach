@@ -5,13 +5,18 @@ import { useToast } from '../../components/toast';
 import { Button } from '../../components/ui';
 import { call, errorMessage } from '../../lib/api';
 
-/** Exports all prospects to CSV; main shows the save dialog (the renderer cannot write files). */
-export function ExportButton() {
+/**
+ * Exports all prospects to CSV, or one campaign's status when `campaignId` is given (FR-PROS-007).
+ * Main shows the save dialog (the renderer cannot write files).
+ */
+export function ExportButton({ campaignId }: { campaignId?: string }) {
   const { t } = useTranslation();
   const toast = useToast();
   const run = useMutation({
     mutationFn: async () => {
-      const result = await call('exports.prospects', {});
+      const result = campaignId
+        ? await call('exports.campaign', { campaignId })
+        : await call('exports.prospects', {});
       const saved = await window.tabreach.saveTextFile({
         suggestedName: result.filename,
         content: result.csv,

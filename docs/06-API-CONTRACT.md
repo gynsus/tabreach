@@ -52,6 +52,7 @@ command contacts.create / contacts.update
 command imports.prospects.preview      # { csv } -> headers, sample rows, row count, suggested mapping
 command imports.prospects.commit       # { csv, mapping[], onMatch: skip | fill_empty | overwrite }
 command exports.prospects              # -> { filename, csv }; the renderer then calls saveTextFile
+command exports.campaign               # { campaignId } -> { filename, csv, rows }; campaign status, one row per person
 ```
 
 The renderer reads a user-chosen file with the File API (`<input type="file">`) and sends its text

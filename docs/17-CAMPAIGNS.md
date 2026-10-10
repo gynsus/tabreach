@@ -180,6 +180,10 @@ Nothing is stored for the campaign: no enrollment, run, draft, approval or ledge
 
 `campaigns.clone` creates a new draft campaign with the source's current draft settings and steps (email account included). Versions, enrollments, approvals and history stay with the source; an archived campaign can be cloned.
 
+### Status export (FR-PROS-007)
+
+"Export CSV" in a campaign's People section saves one row per person in the campaign, for hand-off to a CRM (the webhook is post-MVP, ADR 030). Columns: `campaign`, `campaign_version`, `first_name`, `last_name`, `full_name`, `email`, `job_title`, `linkedin_url`, `company_name`, `company_website`, `status` (`active | paused | completed | stopped`), `stop_reason` (the stop reason code), `step`, `steps_total`, `messages_sent` (completed sends), `outcome_unknown` (sends whose outcome is `unknown`), `last_sent_at`, `last_sent_channel`, `last_reply_at`, `next_action_at` (active only), `enrolled_at`, `updated_at`. Codes stay untranslated so a CRM import maps them once; times are ISO 8601 UTC. The file starts with a UTF-8 BOM for Excel, cells that look like formulas are neutralised as in the prospect export, and an `export.created` audit event records the row count and campaign. Message text is not exported.
+
 ### Archive and delete
 
 A launched campaign is never deleted, only archived: its versions, enrollments and send history are what duplicate checks, caps and the activity log rely on. Archiving stops every live enrollment and takes the campaign off the default list; the list's "Show archived" switch brings archived campaigns back into view, where they can be opened and copied.

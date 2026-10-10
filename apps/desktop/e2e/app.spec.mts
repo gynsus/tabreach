@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -339,6 +339,23 @@ test('a dry run shows the first message for one contact without sending; a copy 
   await expect(result.getByRole('alert')).toContainText('already in the campaign');
   await dryRun.getByRole('button', { name: 'Close' }).click();
   await expect(page.getByTestId('enrollment')).toHaveCount(1);
+
+  // The status export for a CRM: the save dialog is answered with a temporary path.
+  const csvPath = join(userData, 'campaign-status.csv');
+  await app.evaluate(({ dialog }, filePath) => {
+    dialog.showSaveDialog = (() =>
+      Promise.resolve({ canceled: false, filePath })) as typeof dialog.showSaveDialog;
+  }, csvPath);
+  await page.getByRole('button', { name: 'Export CSV' }).click();
+  await expect(page.getByText('Exported 1 row')).toBeVisible();
+  const lines = readFileSync(csvPath, 'utf8')
+    .replace(/^\uFEFF/, '')
+    .trim()
+    .split(/\r?\n/);
+  expect(lines[0]).toMatch(/^campaign,campaign_version,first_name,/);
+  expect(lines).toHaveLength(2);
+  expect(lines[1]).toContain('E2E campaign');
+  expect(lines[1]).toContain('jane.again@');
 
   await page.getByRole('button', { name: 'Copy', exact: true }).click();
   const copy = page.getByRole('dialog', { name: 'Copy campaign' });

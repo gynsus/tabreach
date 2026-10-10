@@ -7,6 +7,7 @@ import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
 import { useToast } from '../../components/toast';
 import { Alert, Badge, Button, Input, Modal } from '../../components/ui';
+import { ExportButton } from '../imports/ExportButton';
 import { call, errorMessage, PAGE_SIZE } from '../../lib/api';
 import { usePagedList } from '../../lib/lists';
 import { invalidateEntities } from '../../lib/live';
@@ -41,14 +42,17 @@ export function PeopleSection({ campaign }: { campaign: Campaign }) {
         <h2 id="people-heading" className="text-[15px] font-semibold">
           {t('campaigns.people')}
         </h2>
-        <Button
-          onClick={() => setAdding(true)}
-          disabled={!canEnroll}
-          title={canEnroll ? undefined : t('campaigns.launchFirst')}
-        >
-          <UserPlus size={14} aria-hidden />
-          {t('campaigns.addPeople')}
-        </Button>
+        <div className="flex items-center gap-2">
+          {rows.length > 0 ? <ExportButton campaignId={campaign.id} /> : null}
+          <Button
+            onClick={() => setAdding(true)}
+            disabled={!canEnroll}
+            title={canEnroll ? undefined : t('campaigns.launchFirst')}
+          >
+            <UserPlus size={14} aria-hidden />
+            {t('campaigns.addPeople')}
+          </Button>
+        </div>
       </div>
       {list.isError ? <Alert>{errorMessage(t, list.error)}</Alert> : null}
       {list.isSuccess && rows.length === 0 ? (

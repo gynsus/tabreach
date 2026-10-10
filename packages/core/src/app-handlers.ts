@@ -408,6 +408,9 @@ export class AppServices {
         ),
       )
       .handle('exports.prospects', (_p, c) => mutate([], () => this.exports.exportProspects(ctx(c))))
+      .handle('exports.campaign', (p, c) =>
+        mutate([], () => this.exports.exportCampaign(p.campaignId, ctx(c))),
+      )
       .handle('suppressions.list', (p) => this.suppressions.list(p))
       .handle('suppressions.add', (p, c) =>
         mutate(['suppression'], () => this.suppressions.add(p.kind, p.value, ctx(c))),
