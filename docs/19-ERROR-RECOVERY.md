@@ -139,7 +139,7 @@ Coverage (Phase 8a-1, 2026-10-09), each with an automated test:
 | worker crash before a critical action | `browser-channel.test.ts` — not sent, safe to run again |
 | worker crash after the click, before verification | `browser-channel.test.ts`, `commit.browser.test.ts` — `unknown`, never pressed again |
 | core crash between `executing` and the result | `side-effects.test.ts`, `engine.test.ts` (new core on the same database) — reconciled, sent once |
-| network failure during an email send | `email-campaign.test.ts`, `gmail.test.ts`, `smtp*.test.ts` — reconciled by Message-ID or left `unknown` |
+| network failure during an email send | `email-campaign.test.ts`, `gmail.test.ts`, `smtp*.test.ts`, `replies.test.ts` (inbox replies) — reconciled by Message-ID or left `unknown` |
 | duplicate job execution | `queue.test.ts`, `dispatcher.test.ts` (dedupe, leases); `browser-channel.test.ts` — two attempts at one browser send at once press it once |
 | expired browser login | `linkedin-campaign.test.ts` — nothing pressed, the step waits an hour, then goes on; `sign-in-check.test.ts` |
 | challenge page | `sign-in-check.test.ts`, `form-campaign.test.ts`, `tasks.browser.test.ts` |

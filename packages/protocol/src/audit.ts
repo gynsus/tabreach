@@ -50,6 +50,7 @@ export const auditActionTypes = [
   'approval.skipped',
   'draft.revised',
   'message.send',
+  'message.reply',
   'policy.updated',
   'retention.updated',
   'retention.pruned',

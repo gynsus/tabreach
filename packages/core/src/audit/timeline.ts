@@ -153,6 +153,10 @@ export class TimelineService {
       row = this.db
         .prepare('SELECT subject, body FROM message_drafts WHERE id = ?')
         .get(str(p.draftId)) as typeof row;
+    } else if (actionType === 'message.reply' && status === 'completed' && str(p.replyId)) {
+      row = this.db
+        .prepare('SELECT subject, body FROM manual_replies WHERE id = ?')
+        .get(str(p.replyId)) as typeof row;
     } else if (actionType === 'message.received' && str(p.messageId)) {
       row = this.db
         .prepare('SELECT subject, body FROM messages WHERE id = ?')

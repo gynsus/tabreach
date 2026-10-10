@@ -122,7 +122,7 @@ function UncertainRow({ item }: { item: UncertainSend }) {
   const [confirmNotSent, setConfirmNotSent] = useState(false);
   const resolve = useMutation({
     mutationFn: (outcome: 'completed' | 'not_sent') => call('sideEffects.resolve', { id: item.id, outcome }),
-    onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'activity']),
+    onSuccess: () => invalidateEntities(qc, ['job', 'enrollment', 'conversation', 'activity']),
     onError: (error) => toast(errorMessage(t, error), 'bad'),
   });
   return (
@@ -135,7 +135,10 @@ function UncertainRow({ item }: { item: UncertainSend }) {
           {item.contactName} &lt;{item.target}&gt;
         </span>
         <span className="text-soft">
-          {[item.campaignName, translateKey(t, `campaigns.channels.${item.channel}`, item.channel)]
+          {[
+            item.source === 'reply' ? t('attention.replySource') : item.campaignName,
+            translateKey(t, `campaigns.channels.${item.channel}`, item.channel),
+          ]
             .filter(Boolean)
             .join(' · ')}
         </span>
@@ -146,7 +149,11 @@ function UncertainRow({ item }: { item: UncertainSend }) {
         {BROWSER_CHANNELS.has(item.channel) ? (
           <span className="text-xs text-soft">{t('attention.browserHint')}</span>
         ) : null}
-        {confirmNotSent ? <span className="text-xs text-warn">{t('attention.notSentHint')}</span> : null}
+        {confirmNotSent ? (
+          <span className="text-xs text-warn">
+            {t(item.source === 'reply' ? 'attention.replyNotSentHint' : 'attention.notSentHint')}
+          </span>
+        ) : null}
       </span>
       <span className="flex gap-1">
         <Button
@@ -164,7 +171,7 @@ function UncertainRow({ item }: { item: UncertainSend }) {
               onClick={() => resolve.mutate('not_sent')}
               disabled={resolve.isPending || item.checking}
             >
-              {t('attention.confirmNotSent')}
+              {t(item.source === 'reply' ? 'attention.confirmReplyNotSent' : 'attention.confirmNotSent')}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirmNotSent(false)}>
               {t('common.cancel')}

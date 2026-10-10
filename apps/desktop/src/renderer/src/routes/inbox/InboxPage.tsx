@@ -9,6 +9,7 @@ import { Alert, Badge, Button, EmptyState, PageHeader } from '../../components/u
 import { call, errorMessage } from '../../lib/api';
 import { cn } from '../../lib/cn';
 import { invalidateEntities } from '../../lib/live';
+import { PendingReply, ReplyComposer } from './Reply';
 
 type Filter = 'all' | 'unread' | 'review';
 
@@ -174,6 +175,10 @@ function Thread({ summary }: { summary: ConversationSummary }) {
       {data.messages.map((m, i) => (
         <Message key={m.id} message={m} latest={i === data.messages.length - 1} />
       ))}
+      {data.replies.map((r) => (
+        <PendingReply key={r.id} reply={r} />
+      ))}
+      <ReplyComposer conversation={data} />
     </article>
   );
 }

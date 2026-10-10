@@ -727,4 +727,30 @@ export const migrations: readonly Migration[] = [
       ALTER TABLE form_preparations ADD COLUMN action TEXT;
     `,
   },
+  {
+    version: 20,
+    name: 'manual_replies',
+    sql: `
+      -- A reply the user writes and sends from the inbox (ADR 031). Its own id is the ledger scope:
+      -- one reply, one intent. The row and the ledger entry together are the whole workflow state.
+      CREATE TABLE manual_replies (
+        id                  TEXT PRIMARY KEY,
+        conversation_id     TEXT NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
+        reply_to_message_id TEXT REFERENCES messages (id) ON DELETE SET NULL,
+        channel_account_id  TEXT NOT NULL REFERENCES channel_accounts (id),
+        to_address          TEXT NOT NULL,
+        subject             TEXT NOT NULL,
+        body                TEXT NOT NULL,
+        -- Threading headers of the answered message, so the reply lands in the same thread.
+        in_reply_to         TEXT,
+        references_header   TEXT,
+        content_hash        TEXT NOT NULL,
+        status              TEXT NOT NULL CHECK (status IN ('sending', 'sent', 'failed', 'unknown')),
+        error_class         TEXT,
+        created_at          TEXT NOT NULL,
+        updated_at          TEXT NOT NULL
+      ) STRICT;
+      CREATE INDEX manual_replies_conversation ON manual_replies (conversation_id, created_at);
+    `,
+  },
 ];

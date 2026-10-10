@@ -6,6 +6,7 @@ import {
   type PolicySettings,
   type StopReason,
 } from '@tabreach/protocol';
+import { normalizeEmail } from '../prospects/normalize.js';
 import type { SettingsRepository } from '../settings/settings.js';
 import { nextAllowedAt } from './schedule.js';
 
@@ -179,8 +180,36 @@ export class ContactPolicy {
     return colleague ? 'company_replied' : null;
   }
 
+  /**
+   * Before a reply sent from the inbox (ADR 031): only the do-not-contact list applies — to the
+   * address written to, its domain, and the conversation's contact and company. Caps, the window
+   * and the reply hold do not: the person wrote, and the user answers them by hand.
+   */
+  replySuppression(address: string, contactId: string | null, companyId: string | null): string | null {
+    const domain = companyId
+      ? ((
+          this.db.prepare('SELECT domain_normalized FROM companies WHERE id = ?').get(companyId) as
+            { domain_normalized: string | null } | undefined
+        )?.domain_normalized ?? null)
+      : null;
+    const contactEmail = contactId
+      ? ((
+          this.db.prepare('SELECT email_normalized FROM contacts WHERE id = ?').get(contactId) as
+            { email_normalized: string | null } | undefined
+        )?.email_normalized ?? null)
+      : null;
+    const rule = this.suppressionRule(
+      { contactId: contactId ?? '', companyId, websiteHost: null },
+      normalizeEmail(address) ?? address.trim().toLowerCase(),
+      domain,
+    );
+    if (rule || !contactEmail) return rule;
+    // The contact's own address too: they may write from another one.
+    return this.suppressionRule({ contactId: '', companyId: null, websiteHost: null }, contactEmail, null);
+  }
+
   private suppressionRule(
-    target: PolicyTarget,
+    target: Pick<PolicyTarget, 'contactId' | 'companyId' | 'websiteHost'>,
     email: string | null,
     companyDomain: string | null,
   ): string | null {

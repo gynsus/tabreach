@@ -470,6 +470,27 @@ created_at
 
 Unique `(conversation_id, provider_message_id)`; index `rfc_message_id`. Only prospect mail is stored (ADR 024).
 
+### `manual_replies` (migration 20, ADR 031)
+
+```text
+id pk                       -- also the side-effect ledger scope of the send
+conversation_id fk (cascade)
+reply_to_message_id fk null -- the incoming message answered
+channel_account_id fk
+to_address
+subject
+body                        -- blanked by retention once sent or failed
+in_reply_to null            -- threading headers of the answered message
+references_header null
+content_hash
+status check in ('sending','sent','failed','unknown')
+error_class null            -- why not sent: suppression.*, account_unavailable, an SMTP/Gmail class, user_confirmed_not_sent
+created_at
+updated_at
+```
+
+Index `(conversation_id, created_at)`. A sent reply is also stored in `messages` as outgoing, with its `Message-ID`.
+
 ### Research (implemented, migration 13)
 
 `research_runs (id, company_id, status, error, criteria, summary, qualification, qualification_reason, reason_to_contact, missing_information json, template, model, pages_fetched, pages_skipped, correlation_id, started_at, finished_at)`; `evidence (id, url, title, content_hash unique, text, extractor, captured_at)`; `research_run_evidence (research_run_id, evidence_id)`; `research_facts (id, research_run_id, position, kind fact|inference, claim, evidence_id, quote, verified 0/1, based_on json, created_at)`. The earlier `research_runs` / `evidence` / `research_facts` sections above describe the target shape; these are what exists.

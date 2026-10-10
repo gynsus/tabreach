@@ -12,7 +12,9 @@ export function describeEvent(t: TFunction, event: ActionEvent): { title: string
   const title =
     event.actionType === 'message.send'
       ? translateKey(t, `activity.messageSend.${event.status}`, event.actionType)
-      : translateKey(t, `activity.actions.${event.actionType}`, event.actionType);
+      : event.actionType === 'message.reply'
+        ? translateKey(t, `activity.messageReply.${event.status}`, event.actionType)
+        : translateKey(t, `activity.actions.${event.actionType}`, event.actionType);
   const p = event.payload;
   if (event.actionType === 'import.committed') {
     return { title, detail: t('activity.importSummary', p as Record<string, number>) };
