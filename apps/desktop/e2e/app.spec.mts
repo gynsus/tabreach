@@ -595,6 +595,33 @@ test('data retention: a shorter limit is saved and kept', async () => {
   await expect(page.getByLabel('Message texts')).toHaveValue('keep');
 });
 
+test('backup: restoring brings the data back, restarts core and starts paused', async () => {
+  await go('#/settings/data');
+  await page.getByLabel('Screenshots').selectOption('90');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
+  const backups = page.getByTestId('backups');
+  await backups.getByRole('button', { name: 'Back up now' }).click();
+  const manual = page.getByTestId('backup-row').filter({ hasText: 'Manual' });
+  await expect(manual).toHaveCount(1);
+
+  // Changed after the backup: the restore takes it back.
+  await page.getByLabel('Screenshots').selectOption('7');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Unsaved changes')).toHaveCount(0);
+
+  await manual.getByRole('button', { name: 'Restore…' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Restore and restart' }).click();
+  await expect(backups.getByText(/Data restored from a backup/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByLabel('Screenshots')).toHaveValue('90');
+  // What was replaced is kept as its own backup.
+  await expect(page.getByTestId('backup-row').filter({ hasText: 'Before restore' })).toHaveCount(1);
+  const banner = page.getByTestId('paused-banner');
+  await expect(banner).toBeVisible();
+  await banner.getByRole('button', { name: 'Resume' }).click();
+  await expect(banner).toHaveCount(0);
+});
+
 test('switches the interface to Russian and keeps it after a reload', async () => {
   await go('#/settings');
   await page.getByLabel('Language').selectOption('ru');

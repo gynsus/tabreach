@@ -336,6 +336,12 @@ export const en = {
         updated: 'Data retention changed',
         pruned: 'Old data removed (retention)',
       },
+      backup: {
+        created: 'Backup created',
+        deleted: 'Backup deleted',
+        restored: 'Restored from a backup',
+        exported: 'Data exported without secrets',
+      },
       profile: {
         created: 'Browser profile created',
         updated: 'Browser profile renamed',
@@ -993,6 +999,34 @@ export const en = {
       notYet: 'No cleanup has run yet.',
       saved: 'Data retention saved.',
     },
+    backups: {
+      title: 'Backups',
+      subtitle:
+        'A backup is a full copy of TabReach’s data on this Mac, with saved passwords and keys still encrypted for this Mac user. One is also made before every app update and before every restore.',
+      create: 'Back up now',
+      creating: 'Backing up…',
+      created: 'Backup created.',
+      export: 'Export without secrets…',
+      exportHint:
+        'The export is a copy of your data (contacts, campaigns, messages, history) without any passwords, keys or tokens, as an SQLite file you can open elsewhere. It cannot be restored into TabReach. Browser profiles are in neither.',
+      exported: 'Export saved.',
+      none: 'No backups yet.',
+      when: 'Made',
+      kind: 'Kind',
+      size: 'Size',
+      kinds: { manual: 'Manual', pre_migration: 'Before update', pre_restore: 'Before restore' },
+      restore: 'Restore…',
+      delete: 'Delete',
+      confirmTitle: 'Restore this backup?',
+      confirmBody: 'TabReach goes back to its data as of {{at}} and restarts.',
+      confirmKept:
+        'What was sent since then stays recorded as sent, and the do-not-contact list is kept, so nothing goes out twice.',
+      confirmPaused: 'Everything starts paused: check the campaigns, then press Resume.',
+      confirmUndo: 'The data as it is now is backed up first, so you can go back.',
+      confirm: 'Restore and restart',
+      restoredOk: 'Data restored from a backup on {{at}}. Everything is paused until you press Resume.',
+      restoreFailed: 'A restore on {{at}} could not be done; the data was left as it was.',
+    },
     tabs: {
       general: 'General',
       email: 'Email accounts',
@@ -1062,6 +1096,12 @@ export const en = {
     },
   },
   errors: {
+    backup: {
+      notFound: 'That backup is no longer there.',
+      unreadable: 'This file cannot be read as a TabReach backup.',
+      newerApp: 'This backup was made by a newer TabReach. Update the app first.',
+      isExport: 'An export without secrets cannot be restored; choose a backup.',
+    },
     forms: {
       senderRequired: 'Choose a browser profile for website forms in Settings → Website forms.',
       profileUnsuitable: 'Use a general browser profile for forms.',

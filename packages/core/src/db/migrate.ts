@@ -43,7 +43,12 @@ export function currentSchemaVersion(db: DatabaseSync): number {
 export async function migrate(
   db: DatabaseSync,
   all: readonly Migration[],
-  opts: { backupDir: string; now?: () => Date },
+  opts: {
+    backupDir: string;
+    now?: () => Date;
+    /** For a copy that is itself a backup being restored: nothing to roll back to. */
+    skipBackup?: boolean;
+  },
 ): Promise<MigrationReport> {
   assertOrdered(all);
   ensureMigrationsTable(db);
@@ -74,7 +79,7 @@ export async function migrate(
 
   const now = opts.now ?? (() => new Date());
   let backupPath: string | null = null;
-  if (fromVersion > 0) {
+  if (fromVersion > 0 && !opts.skipBackup) {
     mkdirSync(opts.backupDir, { recursive: true });
     const stamp = now().toISOString().replace(/[:.]/g, '-');
     backupPath = join(opts.backupDir, `pre-migration-v${fromVersion}-${stamp}.db`);

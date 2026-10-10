@@ -17,3 +17,4 @@ export * from './browser.js';
 export * from './net.js';
 export * from './diagnostics.js';
 export * from './retention.js';
+export * from './backup.js';

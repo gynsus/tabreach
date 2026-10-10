@@ -544,7 +544,7 @@ Forced outcomes for recovery tests (`completed`, `not_sent`, `unknown`, hangs) a
 
 ### `settings`
 
-Key/value (`key text pk`, `value json`, `updated_at`) for application settings: UI language, contact policy, AI settings and references to encrypted AI keys (`ai.key.<provider>`), later adapter kill switches.
+Key/value (`key text pk`, `value json`, `updated_at`) for application settings: UI language, contact policy, AI settings and references to encrypted AI keys (`ai.key.<provider>`), later adapter kill switches, the outcome of the last restore (`backup.lastRestore`, ADR 029); a portable export carries `export.portable` instead of the `secrets` and `command_log` tables.
 
 ## Migration discipline
 

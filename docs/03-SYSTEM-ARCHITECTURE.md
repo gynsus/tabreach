@@ -162,6 +162,8 @@ Because all processes ship in the same app bundle, protocol versions always matc
 
 Excluding `secrets` from the pre-migration backup would lose OAuth/AI credentials on rollback; including ciphertext is safe because it is bound to this Mac user's Keychain.
 
+Restoring (ADR 029) restarts core: the backup is checked, everything paused, and core exits with the restart code; on start, before opening the database, it backs up the current one (`pre-restore-…`), migrates a copy of the backup, carries forward the send ledger and the do-not-contact list (the outside world does not roll back, so nothing is sent twice), and the app starts paused. The ten newest automatic backups are kept; manual ones until deleted.
+
 ## Filesystem layout
 
 ```text

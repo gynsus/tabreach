@@ -2,7 +2,13 @@
 import type { MessagePortMain } from 'electron';
 import { CoreService } from '@tabreach/core';
 import { createLogger } from '../shared/logger';
-import { parentPortEndpoint, portEndpoint, readChildEnv, type PortHandoff } from '../shared/ipc';
+import {
+  RESTART_EXIT_CODE,
+  parentPortEndpoint,
+  portEndpoint,
+  readChildEnv,
+  type PortHandoff,
+} from '../shared/ipc';
 
 const env = readChildEnv(process.env);
 const logger = createLogger({
@@ -40,6 +46,11 @@ CoreService.start({
   host,
   logger,
   logDir: env.TABREACH_LOG_DIR,
+  restart: () => {
+    logger.info({ event: 'core.restarting' }, 'core restarting');
+    core?.close();
+    process.exit(RESTART_EXIT_CODE);
+  },
 }).then(
   (started) => {
     core = started;

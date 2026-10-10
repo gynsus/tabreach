@@ -7,18 +7,24 @@ import { Alert, Field, Loading, SaveBar, Select, UnsavedChangesPrompt } from '..
 import { call, errorMessage } from '../../lib/api';
 import { useDraft } from '../../lib/draft';
 import { invalidateEntities } from '../../lib/live';
+import { BackupsSection } from './Backups';
 
 const KINDS = ['screenshots', 'browserDiagnostics', 'messageBodies', 'researchEvidence', 'logs'] as const;
 /** The choices offered; `keep` is null in the settings. */
 const CHOICES = ['7', '30', '90', '180', '365', 'keep'] as const;
 
-/** Data retention (docs/18): how long each kind of sensitive data is kept on this Mac. */
+/** Data retention (docs/18) and backups (FR-APP-005): what is kept on this Mac, and copies of it. */
 export function DataSettings() {
   const { t } = useTranslation();
   const state = useQuery({ queryKey: ['settings', 'retention'], queryFn: () => call('retention.get', {}) });
   if (state.isError) return <Alert>{errorMessage(t, state.error)}</Alert>;
   if (!state.data) return <Loading />;
-  return <RetentionForm initial={state.data.settings} lastRun={state.data.lastRun} />;
+  return (
+    <div className="grid gap-8">
+      <RetentionForm initial={state.data.settings} lastRun={state.data.lastRun} />
+      <BackupsSection />
+    </div>
+  );
 }
 
 function RetentionForm({
