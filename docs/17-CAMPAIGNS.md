@@ -28,8 +28,9 @@ Launching produces a `CampaignVersion`. Running enrollments always point to an i
 - approval mode;
 - stop-on-reply (contact-level; company-level default from policy settings);
 - per-day/per-period limits;
-- active windows and campaign timezone;
-- optional webhook.
+- active windows and campaign timezone.
+
+A per-campaign webhook is deferred to after the MVP (ADR 030).
 
 ## Approval modes
 

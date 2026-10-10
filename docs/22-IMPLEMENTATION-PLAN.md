@@ -224,7 +224,7 @@ Deliver:
 - retention settings and job;
 - local recovery backup/restore and portable export (without secrets);
 - first-run setup wizard (Chrome check, AI key, email account, first profile);
-- MVP items found unassigned by the 4.5 audit (docs/01): campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008); campaign status CSV export (FR-PROS-007); manual reply drafting from the inbox; XOAUTH2 for IMAP/SMTP; threaded email follow-ups (`In-Reply-To`/`References`, docs/17 `replyAsThread`); campaign goal, ICP and research instructions, campaign batch and contact-level research, research freshness per campaign (FR-RES-001, docs/16); evidence text with the quote highlighted (FR-RES-005); per-campaign AI budget and cost; the remaining step types (`wait`, `human_task`, `webhook` — the last needs a decision against CLAUDE.md §1's outbound-traffic rule);
+- MVP items found unassigned by the 4.5 audit (docs/01): campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008); campaign status CSV export (FR-PROS-007); manual reply drafting from the inbox; XOAUTH2 for IMAP/SMTP; threaded email follow-ups (`In-Reply-To`/`References`, docs/17 `replyAsThread`); campaign goal, ICP and research instructions, campaign batch and contact-level research, research freshness per campaign (FR-RES-001, docs/16); evidence text with the quote highlighted (FR-RES-005); per-campaign AI budget and cost; the remaining step types (`wait`, `human_task`; `webhook` is deferred to after the MVP, ADR 030);
 - signing, notarization, DMG;
 - optional: auto-update feed;
 - user docs.

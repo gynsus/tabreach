@@ -67,7 +67,8 @@ MVP step types:
 - `wait`
 - `condition`
 - `human_task`
-- `webhook`
+
+The `webhook` step type is deferred to after the MVP (ADR 030); the campaign status CSV export covers handing data to a CRM meanwhile.
 
 The capabilities of a channel adapter restrict which actions and execution modes are available.
 

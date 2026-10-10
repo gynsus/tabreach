@@ -42,7 +42,8 @@ The following must not be implemented merely because they seem adjacent.
 - Reddit;
 - every job board/marketplace;
 - Microsoft Graph email adapter (post-MVP; IMAP/SMTP covers Microsoft mailboxes meanwhile where permitted);
-- full LinkedIn inbox sync (MVP only checks threads before follow-ups).
+- full LinkedIn inbox sync (MVP only checks threads before follow-ups);
+- outbound webhooks to CRMs and automation tools (post-MVP, ADR 030; the CSV export covers it meanwhile).
 
 Additional adapters require a separate decision after MVP.
 
