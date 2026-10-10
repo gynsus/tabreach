@@ -20,6 +20,7 @@ import { invalidateEntities } from '../../lib/live';
 import { statusTone } from './CampaignsPage';
 import { Timeline } from '../../components/Timeline';
 import { ApprovalSection } from './ApprovalSection';
+import { CloneModal, DryRunModal } from './DryRun';
 import { PeopleSection } from './PeopleSection';
 import { SequenceEditor } from './SequenceEditor';
 
@@ -45,6 +46,7 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
   const [config, setConfig] = useState<CampaignConfig>(campaign.config);
   const [dirty, setDirty] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [dialog, setDialog] = useState<'dryRun' | 'clone' | null>(null);
   const archived = campaign.status === 'archived';
 
   // Take the server's copy when it changes and nothing local is pending.
@@ -83,6 +85,13 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
     onError: (error) => toast(errorMessage(t, error), 'bad'),
     onSettled: () => setConfirmArchive(false),
   });
+  // A dry run or a copy works from the saved draft: unsaved edits are saved first.
+  const prepare = async () => {
+    if (!dirty || archived) return;
+    await call('campaigns.update', { id: campaign.id, config });
+    setDirty(false);
+    await refresh();
+  };
   const errors = fieldErrors(launch.error);
   const busy = save.isPending || launch.isPending || status.isPending;
   const windowOverride = config.window !== null;
@@ -106,8 +115,16 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
           </span>
         }
         actions={
-          archived ? null : (
+          archived ? (
+            <Button onClick={() => setDialog('clone')}>{t('campaigns.clone.action')}</Button>
+          ) : (
             <>
+              <Button onClick={() => setDialog('dryRun')} disabled={busy}>
+                {t('campaigns.dryRun.action')}
+              </Button>
+              <Button onClick={() => setDialog('clone')} disabled={busy}>
+                {t('campaigns.clone.action')}
+              </Button>
               <Button onClick={() => save.mutate()} disabled={busy || !dirty}>
                 {t('campaigns.saveDraft')}
               </Button>
@@ -221,6 +238,12 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
           <Timeline scope={{ campaignId: campaign.id }} refs={['contact']} />
         </div>
       </div>
+      {dialog === 'dryRun' ? (
+        <DryRunModal campaign={campaign} prepare={prepare} onClose={() => setDialog(null)} />
+      ) : null}
+      {dialog === 'clone' ? (
+        <CloneModal campaign={campaign} prepare={prepare} onClose={() => setDialog(null)} />
+      ) : null}
     </>
   );
 }

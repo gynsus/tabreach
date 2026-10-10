@@ -189,6 +189,9 @@ export const campaignUpdateSchema = z.object({
   config: campaignConfigSchema.optional(),
 });
 
+/** A copy of the campaign's current draft, as a new draft: no versions, no people (FR-CAM-001). */
+export const campaignCloneSchema = z.object({ id, name: text(200).min(1) });
+
 export const enrollRequestSchema = z.object({
   campaignId: id,
   contactIds: z.array(id).min(1).max(5_000),
@@ -284,6 +287,69 @@ export const draftFactSchema = z.object({
   url: z.string().nullable(),
 });
 export type DraftFact = z.infer<typeof draftFactSchema>;
+
+// Dry run (FR-CAM-008, docs/17 "Launch validation") ------------------------------------------
+
+export const campaignPreviewRequestSchema = z.object({
+  campaignId: id,
+  contactId: id,
+  /** AI steps: write the message now (one AI call, research first if the company has none). */
+  generate: z.boolean().default(false),
+});
+
+/** The message of the first action. AI content is written only when asked for. */
+export const previewContentSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('template'), subject: z.string().nullable(), body: z.string() }),
+  z.object({ kind: z.literal('ai_not_generated') }),
+  z.object({
+    kind: z.literal('ai'),
+    subject: z.string().nullable(),
+    body: z.string(),
+    facts: z.array(draftFactSchema.omit({ id: true })),
+  }),
+  /** The company's research is running; asked again, the message is written from it. */
+  z.object({ kind: z.literal('ai_research_running') }),
+  z.object({ kind: z.literal('ai_failed'), reason: z.string() }),
+]);
+export type PreviewContent = z.infer<typeof previewContentSchema>;
+
+export const campaignPreviewSchema = z.object({
+  contactName: z.string(),
+  /** Condition steps walked through before the first action. */
+  conditions: z.array(
+    z.object({ position: z.number().int(), holds: z.boolean(), onFalse: z.enum(['stop', 'skip']) }),
+  ),
+  /** The contact is already in this campaign: enrolling again does nothing. */
+  alreadyEnrolled: z.boolean(),
+  outcome: z.discriminatedUnion('kind', [
+    /** No message step is reached (no steps, or every one skipped). */
+    z.object({ kind: z.literal('none') }),
+    /** The contact would be stopped before anything goes out. */
+    z.object({
+      kind: z.literal('stopped'),
+      position: z.number().int().nullable(),
+      reason: stopReasonSchema,
+      rule: z.string().nullable(),
+      fields: z.array(z.string()),
+    }),
+    z.object({
+      kind: z.literal('action'),
+      position: z.number().int(),
+      channel: messageChannelSchema,
+      linkedinAction: linkedinActionSchema.nullable(),
+      executionMode: stepExecutionModeSchema,
+      /** Email address, LinkedIn profile or website the action goes to. */
+      target: z.string(),
+      /** The earliest moment it may go: delays, the recipient's active window and frequency caps. */
+      plannedAt: z.iso.datetime(),
+      timeZone: z.string(),
+      /** A frequency cap that moves it later, if any (`cap.contact`, `cap.company`). */
+      deferredBy: z.string().nullable(),
+      content: previewContentSchema,
+    }),
+  ]),
+});
+export type CampaignPreview = z.infer<typeof campaignPreviewSchema>;
 
 /** The prepared form an approval covers (Phase 6). */
 export const approvalFormSchema = z.object({

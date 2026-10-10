@@ -429,6 +429,15 @@ export class AppServices {
           this.commands.once(c.idempotencyKey, 'campaigns.create', () => this.campaigns.create(p, ctx(c))),
         ),
       )
+      .handle('campaigns.clone', (p, c) =>
+        mutate(['campaign'], () =>
+          this.commands.once(c.idempotencyKey, 'campaigns.clone', () => this.campaigns.clone(p, ctx(c))),
+        ),
+      )
+      .handle('campaigns.preview', (p, c) =>
+        // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
+        this.campaigns.preview(p, AbortSignal.timeout(140_000), c.correlationId),
+      )
       .handle('campaigns.update', (p, c) => mutate(['campaign'], () => this.campaigns.update(p, ctx(c))))
       .handle('campaigns.launch', ({ id }, c) =>
         mutate(['campaign', 'enrollment'], () => this.campaigns.launch(id, ctx(c))),

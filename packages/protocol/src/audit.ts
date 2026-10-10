@@ -31,6 +31,7 @@ export const auditActionTypes = [
   'suppression.added',
   'suppression.removed',
   'campaign.created',
+  'campaign.cloned',
   'campaign.updated',
   'campaign.launched',
   'campaign.paused',

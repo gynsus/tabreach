@@ -54,4 +54,6 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   // The user signs in to Google in the browser.
   'accounts.connectGmail': 11 * 60_000,
   'ai.testKey': 90_000,
+  // An AI step's message is written by the model (one call, up to a minute or two).
+  'campaigns.preview': 150_000,
 };
