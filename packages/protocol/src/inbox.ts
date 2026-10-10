@@ -81,6 +81,12 @@ export const conversationSchema = conversationSummarySchema.extend({
 });
 export type Conversation = z.infer<typeof conversationSchema>;
 
+export const replyDraftRequestSchema = z.object({
+  conversationId: z.uuid(),
+  /** The user's notes for this reply ("offer Thursday", "decline politely"); may be empty. */
+  instructions: z.string().max(1_000).default(''),
+});
+
 export const replySendSchema = z.object({
   conversationId: z.uuid(),
   /** The incoming message answered: the reply goes to its sender, in its thread. */

@@ -849,6 +849,13 @@ export const en = {
       busy: 'The previous reply is still on its way.',
       hint: 'Goes out right away from this account, in the same thread. The do-not-contact list is checked first; a campaign’s limits and hours do not apply to a reply.',
       retry: 'Send again',
+      notes: 'Notes for AI (optional)',
+      notesHint:
+        'What the reply should say. AI reads the conversation and fills in the message; you edit it before sending. One request to your AI provider.',
+      notesPlaceholder: 'e.g. offer a call on Thursday afternoon',
+      suggest: 'Suggest a reply',
+      suggestAgain: 'Suggest again (replaces the text)',
+      suggesting: 'Writing…',
       unknownHint:
         'It may have been sent — TabReach could not confirm it. Check the Sent folder, then answer under',
       statuses: { sending: 'Sending', sent: 'Sent', failed: 'Not sent', unknown: 'Not confirmed' },
@@ -1310,6 +1317,7 @@ export const en = {
     message: { notFound: 'This message no longer exists.', reviewed: 'This message was already reviewed.' },
     reply: {
       pending: 'The previous reply is still on its way. Wait until it is sent or settled.',
+      nothingToAnswer: 'There is no reply in this conversation to answer.',
       paused: 'Everything is paused. Resume to send.',
       accountUnavailable: 'This email account is disconnected or needs signing in again.',
       notFailed: 'This reply is not waiting to be sent again.',

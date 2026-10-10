@@ -56,4 +56,5 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   'ai.testKey': 90_000,
   // An AI step's message is written by the model (one call, up to a minute or two).
   'campaigns.preview': 150_000,
+  'conversations.draftReply': 120_000,
 };

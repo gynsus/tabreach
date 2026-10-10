@@ -346,6 +346,14 @@ export class AppServices {
       audit: this.audit,
       ledger: this.ledger,
       jobs: this.jobs,
+      ai: this.ai,
+      senderName: (accountId) => {
+        try {
+          return this.accounts.get(accountId).fromName;
+        } catch {
+          return null; // the account is gone: the suggestion just has no name to sign with
+        }
+      },
       policy: this.policy,
       channel: (accountId) => this.accounts.channel(accountId),
       addressOf: (accountId) => this.accounts.addressOf(accountId),
@@ -584,6 +592,10 @@ export class AppServices {
         mutate(['conversation'], () =>
           this.commands.once(c.idempotencyKey, 'conversations.reply', () => this.replies.send(p, ctx(c))),
         ),
+      )
+      .handle('conversations.draftReply', (p, c) =>
+        // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
+        this.replies.suggest(p.conversationId, p.instructions, AbortSignal.timeout(110_000), c.correlationId),
       )
       .handle('conversations.retryReply', ({ id }, c) =>
         mutate(['conversation'], () => this.replies.retry(id, ctx(c))),

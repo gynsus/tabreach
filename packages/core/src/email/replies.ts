@@ -9,6 +9,9 @@ import {
   type ManualReply,
 } from '@tabreach/protocol';
 import { z } from 'zod';
+import { AiGateway } from '../ai/gateway.js';
+import { untrusted, UNTRUSTED_RULES, type PromptTemplate } from '../ai/prompts.js';
+import { AiError } from '../ai/provider.js';
 import type { AuditLog } from '../audit/audit-log.js';
 import type { ContactPolicy } from '../campaigns/policy.js';
 import type { MessageChannel } from '../channels/channel.js';
@@ -22,6 +25,66 @@ import type { CommandContext } from '../prospects/prospect-service.js';
 import { messageIdFor } from './mime.js';
 
 export const JOB_REPLY = 'reply.send';
+/** How much of the thread the suggestion sees: the latest messages, each cut to a length. */
+const SUGGEST_MESSAGES = 8;
+const SUGGEST_MESSAGE_CHARS = 3_000;
+
+const suggestInput = z.object({
+  instructions: z.string().max(1_000),
+  senderName: z.string().nullable(),
+  recipient: z.object({ name: z.string().nullable(), companyName: z.string().nullable() }),
+  thread: z.array(
+    z.object({ from: z.enum(['sender', 'recipient']), subject: z.string().nullable(), body: z.string() }),
+  ),
+  nonce: z.string(),
+});
+const suggestOutput = z.object({ body: z.string().min(1).max(8_000) });
+
+/**
+ * docs/15 "AI use cases", ADR 031: a suggested answer to the latest message of a conversation. It
+ * only fills the editor; the person reads, edits and sends it. Version 1.
+ */
+export const suggestReply: PromptTemplate<z.infer<typeof suggestInput>, z.infer<typeof suggestOutput>> = {
+  key: 'reply.suggest',
+  version: 1,
+  purpose:
+    'Suggest a reply to the latest message of an email conversation with a prospect, for the user to edit.',
+  useCase: 'drafting',
+  input: suggestInput,
+  output: suggestOutput,
+  maxTokens: 4_000,
+  build: ({ instructions, senderName, recipient, thread, nonce }) => ({
+    system: [
+      'You suggest a reply, written by the sender, to the latest message from the recipient in a business email conversation.',
+      'The sender reads and edits your text before anything is sent.',
+      "Write in the language of the recipient's latest message unless the sender's notes ask otherwise.",
+      'Plain text, no Markdown, no subject line. Answer what the recipient asked or said; keep it short and natural.',
+      'Never invent facts, prices, dates, times, links, names or commitments that are not in the conversation or the',
+      "sender's notes. Where the reply needs a detail only the sender knows, put a short placeholder in square brackets,",
+      'for example [time] or [price].',
+      'If the recipient asks not to be contacted, write only a brief, polite acknowledgement.',
+      senderName ? `End with the sender's name: ${senderName}.` : 'Do not add a name at the end.',
+      UNTRUSTED_RULES,
+    ].join(' '),
+    user: [
+      instructions.trim()
+        ? `Sender's notes for this reply:\n${instructions.trim()}`
+        : 'The sender gave no notes.',
+      '',
+      `Recipient: ${recipient.name ?? 'unknown name'}${recipient.companyName ? `, ${recipient.companyName}` : ''}`,
+      '',
+      'The conversation so far, oldest first:',
+      ...thread.map((m, i) =>
+        untrusted(
+          `message-${i + 1}-from-${m.from}`,
+          `From: ${m.from}\nSubject: ${m.subject ?? ''}\n\n${m.body}`,
+          nonce,
+        ),
+      ),
+    ].join('\n'),
+  }),
+};
+
 /** The ledger action type of a reply from the inbox (distinguishes it from campaign sends). */
 export const REPLY_ACTION = 'email.reply';
 const PAUSED_RECHECK_MS = 60_000;
@@ -74,6 +137,9 @@ export interface ReplyDeps {
   audit: AuditLog;
   ledger: SideEffectLedger;
   jobs: JobQueue;
+  ai: AiGateway;
+  /** The display name of an account's sender (its From name), if set. */
+  senderName: (accountId: string) => string | null;
   policy: ContactPolicy;
   /** The sending channel of an active email account, or undefined. */
   channel: (accountId: string) => MessageChannel | undefined;
@@ -123,6 +189,85 @@ export class ReplyService {
         : null,
       replies: replies.map(toDto),
     };
+  }
+
+  /**
+   * An AI suggestion for the reply text (one model call). Nothing is stored or sent; the thread goes
+   * to the model as untrusted material.
+   */
+  async suggest(
+    conversationId: string,
+    instructions: string,
+    signal: AbortSignal,
+    correlationId: string,
+  ): Promise<{ body: string }> {
+    const conversation = this.conversation(conversationId);
+    const thread = (
+      this.d.db
+        .prepare(
+          `SELECT direction, subject, body FROM messages
+           WHERE conversation_id = ? AND body IS NOT NULL
+             AND (direction = 'outbound' OR classification = 'reply')
+           ORDER BY occurred_at DESC, created_at DESC LIMIT ?`,
+        )
+        .all(conversationId, SUGGEST_MESSAGES) as {
+        direction: 'inbound' | 'outbound';
+        subject: string | null;
+        body: string;
+      }[]
+    ).reverse();
+    if (!thread.some((m) => m.direction === 'inbound')) {
+      throw new RpcError('CONFLICT', 'Nothing to answer', 'reply.nothingToAnswer');
+    }
+    const contact = conversation.contact_id
+      ? (this.d.db
+          .prepare(
+            `SELECT c.first_name, c.last_name, c.full_name, co.name AS company FROM contacts c
+             LEFT JOIN companies co ON co.id = c.company_id WHERE c.id = ?`,
+          )
+          .get(conversation.contact_id) as
+          | {
+              first_name: string | null;
+              last_name: string | null;
+              full_name: string | null;
+              company: string | null;
+            }
+          | undefined)
+      : undefined;
+    const company = conversation.company_id
+      ? ((
+          this.d.db.prepare('SELECT name FROM companies WHERE id = ?').get(conversation.company_id) as
+            { name: string } | undefined
+        )?.name ?? null)
+      : null;
+    try {
+      const result = await this.d.ai.run(
+        suggestReply,
+        {
+          instructions,
+          senderName: this.d.senderName(conversation.channel_account_id),
+          recipient: {
+            name: contact
+              ? (contact.full_name ??
+                ([contact.first_name, contact.last_name].filter(Boolean).join(' ') || null))
+              : null,
+            companyName: contact?.company ?? company,
+          },
+          thread: thread.map((m) => ({
+            from: m.direction === 'inbound' ? ('recipient' as const) : ('sender' as const),
+            subject: m.subject?.slice(0, 300) ?? null,
+            body: m.body.slice(0, SUGGEST_MESSAGE_CHARS),
+          })),
+          nonce: AiGateway.nonce(),
+        },
+        { correlationId, signal },
+      );
+      return { body: result.body.trim() };
+    } catch (error) {
+      if (error instanceof AiError)
+        throw new RpcError('CONFLICT', 'AI could not write it', `ai.${error.kind}`);
+      throw error;
+    }
   }
 
   send(

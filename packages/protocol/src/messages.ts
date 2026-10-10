@@ -50,6 +50,7 @@ import {
   conversationSchema,
   conversationSummarySchema,
   manualReplySchema,
+  replyDraftRequestSchema,
   replySendSchema,
   reviewRequestSchema,
 } from './inbox.js';
@@ -520,6 +521,13 @@ export const requests = {
     kind: 'command',
     request: replySendSchema,
     response: manualReplySchema,
+  },
+  /** An AI suggestion for the reply text (ADR 031): one model call, nothing stored or sent. */
+  'conversations.draftReply': {
+    channel: 'app',
+    kind: 'query',
+    request: replyDraftRequestSchema,
+    response: z.object({ body: z.string() }),
   },
   /** Sends again a reply that was verified not sent. */
   'conversations.retryReply': { channel: 'app', kind: 'command', request: byId, response: manualReplySchema },

@@ -119,6 +119,7 @@ Persist template key/version with generated artefacts.
 - personalised draft;
 - draft checks that need semantics (grounding of specifics);
 - inbound reply classification;
+- suggested reply in the inbox (`reply.suggest` v1, `drafting` model; ADR 031): the latest 8 messages of the conversation (each cut to 3 000 characters) go in as untrusted material with the user's optional notes; the answer only fills the reply editor — nothing is stored or sent, and the person edits and presses Send. The prompt forbids invented facts, prices, dates and commitments and asks for `[placeholders]` where only the sender knows the detail;
 - contact-form field mapping assistance;
 - semantic target resolution.
 

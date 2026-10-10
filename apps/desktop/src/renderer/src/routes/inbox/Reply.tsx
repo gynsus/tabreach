@@ -6,7 +6,7 @@ import {
   type Conversation,
   type ManualReply,
 } from '@tabreach/protocol';
-import { Reply as ReplyIcon, Send } from 'lucide-react';
+import { Reply as ReplyIcon, Send, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -32,6 +32,13 @@ export function ReplyComposer({ conversation }: { conversation: Conversation }) 
   const [subject, setSubject] = useState(target?.subject ?? '');
   const [body, setBody] = useState('');
   const [key, setKey] = useState(uuidv7);
+  const [notes, setNotes] = useState('');
+  // The suggestion only fills the editor; it replaces what is there.
+  const suggest = useMutation({
+    mutationFn: () =>
+      call('conversations.draftReply', { conversationId: conversation.id, instructions: notes }),
+    onSuccess: (r) => setBody(r.body),
+  });
   const send = useMutation({
     mutationFn: () =>
       call(
@@ -88,6 +95,31 @@ export function ReplyComposer({ conversation }: { conversation: Conversation }) 
           />
         )}
       </Field>
+      <div className="grid gap-2 rounded-md bg-sunken p-3">
+        <Field label={t('inbox.reply.notes')} hint={t('inbox.reply.notesHint')}>
+          {(id, describedBy) => (
+            <Input
+              id={id}
+              value={notes}
+              maxLength={1_000}
+              aria-describedby={describedBy}
+              placeholder={t('inbox.reply.notesPlaceholder')}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          )}
+        </Field>
+        <div>
+          <Button size="sm" onClick={() => suggest.mutate()} disabled={suggest.isPending || send.isPending}>
+            <Sparkles size={13} aria-hidden />
+            {suggest.isPending
+              ? t('inbox.reply.suggesting')
+              : body.trim()
+                ? t('inbox.reply.suggestAgain')
+                : t('inbox.reply.suggest')}
+          </Button>
+        </div>
+        {suggest.isError ? <Alert>{errorMessage(t, suggest.error)}</Alert> : null}
+      </div>
       <Field label={t('inbox.reply.body')}>
         {(id) => (
           <textarea
@@ -95,6 +127,7 @@ export function ReplyComposer({ conversation }: { conversation: Conversation }) 
             className={textarea}
             value={body}
             maxLength={MAX_REPLY_BODY}
+            disabled={suggest.isPending}
             autoFocus
             onChange={(e) => setBody(e.target.value)}
           />
@@ -103,7 +136,7 @@ export function ReplyComposer({ conversation }: { conversation: Conversation }) 
       <p className="text-xs text-faint">{t('inbox.reply.hint')}</p>
       {send.isError ? <Alert>{errorMessage(t, send.error)}</Alert> : null}
       <div className="flex gap-2">
-        <Button variant="primary" type="submit" disabled={!ready || send.isPending}>
+        <Button variant="primary" type="submit" disabled={!ready || send.isPending || suggest.isPending}>
           <Send size={14} aria-hidden />
           {send.isPending ? t('inbox.reply.sendingShort') : t('inbox.reply.send')}
         </Button>
