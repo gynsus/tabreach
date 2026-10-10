@@ -200,7 +200,7 @@ export class FormService {
       throw new RpcError(
         'UNAVAILABLE',
         'The form could not be prepared',
-        result.reason ?? 'form.prepareFailed',
+        result.reason ?? 'forms.prepareFailed',
       );
     }
     const id = uuidv7();
@@ -342,7 +342,7 @@ export class FormService {
       assisted: (_message, runId) => this.latestFor(runId)?.mode === 'assisted',
       run: (worker, task, options) => {
         const p = this.latestFor(task.workflowRunId);
-        if (!p) throw new RpcError('CONFLICT', 'No prepared form', 'form.notPrepared');
+        if (!p) throw new RpcError('CONFLICT', 'No prepared form', 'forms.notPrepared');
         return worker.request(
           'form.submit',
           {

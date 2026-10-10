@@ -359,6 +359,25 @@ describe('campaign engine', () => {
     expect(h.channel.deliveries()).toHaveLength(1);
   });
 
+  it('a paused person gets nothing until resumed; resuming picks the step up again', async () => {
+    const campaign = h.launch([message({ delaySeconds: 60 * 60 })]);
+    const { campaigns } = h.services;
+    campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    const [ann] = h.enrollments(campaign);
+    expect(() => campaigns.resumeEnrollment(ann!.id, ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'enrollment.notPaused' }) }),
+    );
+    expect(campaigns.pauseEnrollment(ann!.id, ctx())).toMatchObject({ status: 'paused', waiting: null });
+    expect(() => campaigns.pauseEnrollment(ann!.id, ctx())).toThrow(
+      expect.objectContaining({ problem: expect.objectContaining({ detail: 'enrollment.notActive' }) }),
+    );
+    await h.advance(2 * 60 * 60_000);
+    expect(h.pending()).toHaveLength(0);
+    expect(campaigns.resumeEnrollment(ann!.id, ctx())).toMatchObject({ status: 'active' });
+    await h.run();
+    expect(h.pending().map((a) => a.contactName)).toEqual(['Ann']);
+  });
+
   it('waits for the active window in the recipient zone', async () => {
     h.clock.set('2026-10-03T12:00:00.000Z'); // Saturday
     const campaign = h.launch([message()]);

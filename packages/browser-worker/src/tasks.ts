@@ -517,7 +517,8 @@ export async function diagnose(
   try {
     await mkdir(env.diagnosticsDir, { recursive: true, mode: 0o700 });
     // A folder made earlier with wider rights is made private too: screenshots may show personal data.
-    await chmod(env.diagnosticsDir, 0o700).catch(() => {});
+    // If it cannot be made private, no screenshot is written into it.
+    await chmod(env.diagnosticsDir, 0o700);
     // What was typed into the page is not evidence of a failure: fields are masked (audit 5.5).
     await page.screenshot({
       path: join(env.diagnosticsDir, screenshot),

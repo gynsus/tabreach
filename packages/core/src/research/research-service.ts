@@ -3,6 +3,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   type Language,
   RpcError,
+  errorSummary,
   uuidv7,
   type ChangedEntity,
   type Logger,
@@ -90,7 +91,10 @@ export class ResearchService {
     },
   ) {
     this.fetcher = new PageFetcher(d.http, d.sleep, d.resolveHost, (url, error) =>
-      d.logger.info({ event: 'research.fetch_failed', url, error: String(error) }, 'page not fetched'),
+      d.logger.info(
+        { event: 'research.fetch_failed', page: pageOf(url), err: errorSummary(error) },
+        'page not fetched',
+      ),
     );
   }
 
@@ -526,4 +530,14 @@ export function pageForRef<P extends { url: string }>(ref: string, pages: P[]): 
   if (n !== undefined) return pages[Number(n) - 1];
   const url = ref.trim();
   return pages.find((p) => p.url === url || p.url === `${url}/`);
+}
+
+/** Origin and path of a page for a log line: queries and fragments may carry tokens. */
+function pageOf(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return '<invalid url>';
+  }
 }

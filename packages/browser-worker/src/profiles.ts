@@ -12,6 +12,7 @@ import {
 } from './overlay.js';
 import {
   RpcError,
+  errorSummary,
   type ControlMode,
   type Logger,
   type OverlayContext,
@@ -150,7 +151,7 @@ export class ProfileManager {
         throw new RpcError('CONFLICT', 'Profile in use', 'profile.inUse');
       }
       this.options.logger.warn(
-        { event: 'profile.open_failed', profileId: req.profileId, err: error },
+        { event: 'profile.open_failed', profileId: req.profileId, err: errorSummary(error) },
         'could not open profile',
       );
       throw new RpcError('BROWSER_LAUNCH_FAILED', 'Chrome could not open the profile', 'profile.openFailed');
@@ -195,7 +196,7 @@ export class ProfileManager {
         .catch((error: unknown) => {
           // The window is open either way; a slow or failing first page is the user's to see.
           this.options.logger.info(
-            { event: 'profile.start_url_failed', err: error },
+            { event: 'profile.start_url_failed', err: errorSummary(error) },
             'start page did not load',
           );
         });
@@ -227,7 +228,10 @@ export class ProfileManager {
     } catch {
       return { status: 'unhealthy', detail: 'profile.notWritable' };
     }
-    const lock = await lstat(join(dir, 'SingletonLock')).catch(() => null);
+    // Only a missing lock means free; anything else (no permission, …) is treated as in use.
+    const lock = await lstat(join(dir, 'SingletonLock')).catch((error: NodeJS.ErrnoException) =>
+      error.code === 'ENOENT' ? null : error,
+    );
     if (lock) return { status: 'busy', detail: 'profile.inUse' };
     return { status: 'healthy', detail: null };
   }
