@@ -28,7 +28,7 @@ docs/01 "Inbox" puts manual response drafting in the MVP: the user reads a prosp
 - New audit action `message.reply` (`planned | completed | failed | unknown`, object the conversation), shown on the contact's timeline with the text once sent.
 - `OutgoingMessage` gains optional `inReplyTo` / `references`; both email channels pass them to the MIME composer. Threaded campaign follow-ups (docs/17 `replyAsThread`) can reuse this.
 - Gmail API sends do not set `threadId` yet: the recipient's mail client threads the reply by its headers, while the sender's Gmail may show it apart from the thread. Setting `threadId` comes with threaded follow-ups.
-- An AI suggestion for the reply text is a separate step (`conversations.draftReply`, Phase 8d); it only fills the editor, it never sends.
+- An AI suggestion for the reply text (`conversations.draftReply`, prompt `reply.suggest`, docs/15) only fills the editor; it never sends and stores nothing besides the usual AI call log.
 
 ## Migration impact
 

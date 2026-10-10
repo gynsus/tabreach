@@ -195,4 +195,34 @@ describe('replies from the inbox', () => {
     await h.run();
     expect(outbound()).toHaveLength(1);
   });
+
+  it('AI suggests the text from the conversation and the notes; nothing is stored or sent', async () => {
+    const { conversationId } = await bobReplied();
+    const suggest = (notes = '') =>
+      h.services.replies.suggest(conversationId, notes, AbortSignal.timeout(5_000), 'corr');
+    await expect(suggest()).rejects.toMatchObject({ problem: { detail: 'ai.no_key' } });
+
+    await h.services.ai.setKey('anthropic', 'sk-ant-test-0123456789abcdef', ctx());
+    const before = h.db
+      .prepare('SELECT (SELECT COUNT(*) FROM manual_replies) + (SELECT COUNT(*) FROM messages) AS n')
+      .get();
+    h.anthropic.answer({ input: { body: '  Hi Bob,\n\nThursday at [time] works.\n\nAnn Sender  ' } });
+    expect(await suggest('offer Thursday')).toEqual({
+      body: 'Hi Bob,\n\nThursday at [time] works.\n\nAnn Sender',
+    });
+
+    const [request] = h.anthropic.requests;
+    expect(request!.system).toContain("End with the sender's name: Ann Sender.");
+    expect(request!.user).toContain("Sender's notes for this reply:\noffer Thursday");
+    expect(request!.user).toContain('Recipient: Bob Lee');
+    // The thread goes in oldest first, as untrusted material.
+    expect(request!.user.indexOf('Hello Bob')).toBeLessThan(request!.user.indexOf('Tell me more.'));
+    expect(request!.user).toMatch(/<untrusted source="message-2-from-recipient"[^>]*>\nFrom: recipient/);
+    expect(
+      h.db
+        .prepare('SELECT (SELECT COUNT(*) FROM manual_replies) + (SELECT COUNT(*) FROM messages) AS n')
+        .get(),
+    ).toEqual(before);
+    expect(h.mail.delivered).toHaveLength(1);
+  });
 });
