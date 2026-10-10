@@ -49,6 +49,8 @@ import {
   conversationListRequestSchema,
   conversationSchema,
   conversationSummarySchema,
+  manualReplySchema,
+  replySendSchema,
   reviewRequestSchema,
 } from './inbox.js';
 import {
@@ -512,6 +514,15 @@ export const requests = {
   'conversations.get': { channel: 'app', kind: 'query', request: byId, response: conversationSchema },
   'conversations.markRead': { channel: 'app', kind: 'command', request: byId, response: ok },
   'conversations.review': { channel: 'app', kind: 'command', request: reviewRequestSchema, response: ok },
+  /** Sends a reply written in the inbox (ADR 031): through the ledger, after the do-not-contact check. */
+  'conversations.reply': {
+    channel: 'app',
+    kind: 'command',
+    request: replySendSchema,
+    response: manualReplySchema,
+  },
+  /** Sends again a reply that was verified not sent. */
+  'conversations.retryReply': { channel: 'app', kind: 'command', request: byId, response: manualReplySchema },
   'research.start': {
     channel: 'app',
     kind: 'command',

@@ -34,6 +34,7 @@ import { CommandLog } from './commands/command-log.js';
 import { AccountService, type GmailDeps } from './email/accounts.js';
 import type { Http } from './email/gmail.js';
 import { InboxService } from './email/inbox.js';
+import { REPLY_ACTION, ReplyService } from './email/replies.js';
 import { imapSmtpClients } from './email/imap-smtp.js';
 import type { MailClients } from './email/transport.js';
 import { JobQueue } from './jobs/queue.js';
@@ -116,6 +117,7 @@ export class AppServices {
   readonly secrets: SecretStore;
   readonly accounts: AccountService;
   readonly inbox: InboxService;
+  readonly replies: ReplyService;
   readonly ai: AiGateway;
   readonly classifier: ReplyClassifier;
   readonly research: ResearchService;
@@ -338,6 +340,19 @@ export class AppServices {
       changed: (entities) => this.changed(entities),
       onReply: (messageId) => this.classifier.enqueue(messageId),
     });
+    this.replies = new ReplyService({
+      db,
+      now,
+      audit: this.audit,
+      ledger: this.ledger,
+      jobs: this.jobs,
+      policy: this.policy,
+      channel: (accountId) => this.accounts.channel(accountId),
+      addressOf: (accountId) => this.accounts.addressOf(accountId),
+      paused: () => this.appControl.isPaused(),
+      logger: logger.child({ component: 'inbox' }),
+      changed: (entities) => this.changed(entities),
+    });
     this.campaigns = new CampaignService(
       db,
       this.audit,
@@ -549,7 +564,10 @@ export class AppServices {
         })),
       }))
       .handle('conversations.list', (p) => this.inbox.list(p.filter, p))
-      .handle('conversations.get', ({ id }) => this.inbox.get(id))
+      .handle('conversations.get', ({ id }) => ({
+        ...this.inbox.get(id),
+        ...this.replies.forConversation(id),
+      }))
       .handle('conversations.markRead', ({ id }) =>
         mutate(['conversation'], () => {
           this.inbox.markRead(id);
@@ -561,6 +579,14 @@ export class AppServices {
           this.inbox.review(p.messageId, p.decision, ctx(c));
           return { ok: true as const };
         }),
+      )
+      .handle('conversations.reply', (p, c) =>
+        mutate(['conversation'], () =>
+          this.commands.once(c.idempotencyKey, 'conversations.reply', () => this.replies.send(p, ctx(c))),
+        ),
+      )
+      .handle('conversations.retryReply', ({ id }, c) =>
+        mutate(['conversation'], () => this.replies.retry(id, ctx(c))),
       )
       .handle('research.start', (p, c) => mutate(['research'], () => this.research.start(p, ctx(c))))
       .handle('research.list', ({ companyId }) => ({ items: this.research.list(companyId) }))
@@ -624,7 +650,9 @@ export class AppServices {
       )
       .handle('sideEffects.uncertain', () => ({ items: this.uncertainSends() }))
       .handle('sideEffects.resolve', ({ id, outcome }, c) =>
-        mutate(['job', 'enrollment'], () => this.resolveSideEffect(id, outcome, c.correlationId)),
+        mutate(['job', 'enrollment', 'conversation'], () =>
+          this.resolveSideEffect(id, outcome, c.correlationId),
+        ),
       )
       .handle('jobs.retry', ({ id }, c) =>
         mutate(['job', 'enrollment'], () => this.jobAction(id, 'retry', c.correlationId)),
@@ -701,9 +729,12 @@ export class AppServices {
     }
     // While a send job for this run is pending or running, it may be sending or reconciling right
     // now: a decision could race it into a second message (audit 3.5).
-    const active = effect.workflow_run_id
-      ? this.jobs.latestFor('workflow.run', 'runId', effect.workflow_run_id)
-      : undefined;
+    const reply = effect.action_type === REPLY_ACTION;
+    const active = reply
+      ? this.replies.activeJob(effect.scope_id)
+      : effect.workflow_run_id
+        ? this.jobs.latestFor('workflow.run', 'runId', effect.workflow_run_id)
+        : undefined;
     if (active && (active.status === 'pending' || active.status === 'running')) {
       throw new RpcError('CONFLICT', 'TabReach is still checking this send', 'sideEffect.busy');
     }
@@ -717,7 +748,10 @@ export class AppServices {
       payload: { outcome },
       correlationId,
     });
-    if (effect.workflow_run_id) {
+    if (reply) {
+      // A reply has no run to wake: its row records the answer; "not sent" lets the user send again.
+      this.replies.resolved(this.ledger.get(id) ?? effect, outcome);
+    } else if (effect.workflow_run_id) {
       const job = this.jobs.latestFor('workflow.run', 'runId', effect.workflow_run_id);
       if (job && (job.status === 'dead' || job.status === 'failed')) this.jobs.requeue(job.id);
       else if (!job) this.engine.wakeRun(effect.workflow_run_id);
@@ -733,11 +767,15 @@ export class AppServices {
     const rows = this.db
       .prepare(
         `SELECT se.id, se.status, se.channel, se.target_normalized, se.updated_at, se.workflow_run_id,
-                e.contact_id, cam.name AS campaign_name, c.first_name, c.last_name, c.full_name
+                se.action_type, se.scope_id,
+                COALESCE(e.contact_id, cv.contact_id) AS contact_id, cam.name AS campaign_name,
+                c.first_name, c.last_name, c.full_name
          FROM side_effects se
          LEFT JOIN campaign_enrollments e ON e.id = se.scope_id
          LEFT JOIN campaigns cam ON cam.id = e.campaign_id
-         LEFT JOIN contacts c ON c.id = e.contact_id
+         LEFT JOIN manual_replies mr ON mr.id = se.scope_id
+         LEFT JOIN conversations cv ON cv.id = mr.conversation_id
+         LEFT JOIN contacts c ON c.id = COALESCE(e.contact_id, cv.contact_id)
          WHERE se.status IN ('unknown', 'executing')
          ORDER BY se.updated_at`,
       )
@@ -748,6 +786,8 @@ export class AppServices {
       target_normalized: string;
       updated_at: string;
       workflow_run_id: string | null;
+      action_type: string;
+      scope_id: string;
       contact_id: string | null;
       campaign_name: string | null;
       first_name: string | null;
@@ -755,9 +795,12 @@ export class AppServices {
       full_name: string | null;
     }[];
     return rows.flatMap((r) => {
-      const job = r.workflow_run_id
-        ? this.jobs.latestFor('workflow.run', 'runId', r.workflow_run_id)
-        : undefined;
+      const reply = r.action_type === REPLY_ACTION;
+      const job = reply
+        ? this.replies.activeJob(r.scope_id)
+        : r.workflow_run_id
+          ? this.jobs.latestFor('workflow.run', 'runId', r.workflow_run_id)
+          : undefined;
       const checking = job?.status === 'pending' || job?.status === 'running';
       if (r.status === 'executing' && checking) return []; // an ordinary send in progress
       return [
@@ -769,6 +812,7 @@ export class AppServices {
           contactName:
             r.full_name ?? ([r.first_name, r.last_name].filter(Boolean).join(' ') || r.target_normalized),
           campaignName: r.campaign_name,
+          source: reply ? ('reply' as const) : ('campaign' as const),
           attemptedAt: r.updated_at,
           checking,
         },

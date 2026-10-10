@@ -51,10 +51,43 @@ export const conversationMessageSchema = z.object({
 });
 export type ConversationMessage = z.infer<typeof conversationMessageSchema>;
 
+/** Limits of a reply written in the inbox. */
+export const MAX_REPLY_SUBJECT = 300;
+export const MAX_REPLY_BODY = 20_000;
+
+/**
+ * A reply the user writes and sends from the inbox (ADR 031). `sending` until the outcome is known;
+ * `unknown` waits for a check or for the user under Needs attention; `failed` can be sent again.
+ */
+export const manualReplyStatusSchema = z.enum(['sending', 'sent', 'failed', 'unknown']);
+export const manualReplySchema = z.object({
+  id: z.uuid(),
+  to: z.string(),
+  subject: z.string(),
+  body: z.string(),
+  status: manualReplyStatusSchema,
+  /** Why it was not sent (`suppression.email`, `auth_failed`, …); null otherwise. */
+  errorClass: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+});
+export type ManualReply = z.infer<typeof manualReplySchema>;
+
 export const conversationSchema = conversationSummarySchema.extend({
   messages: z.array(conversationMessageSchema),
+  /** The message a reply would answer (the latest human reply), or null when there is none. */
+  replyTarget: z.object({ messageId: z.uuid(), address: z.string(), subject: z.string() }).nullable(),
+  /** Replies written here that are not (yet) known as sent; sent ones are in `messages`. */
+  replies: z.array(manualReplySchema),
 });
 export type Conversation = z.infer<typeof conversationSchema>;
+
+export const replySendSchema = z.object({
+  conversationId: z.uuid(),
+  /** The incoming message answered: the reply goes to its sender, in its thread. */
+  messageId: z.uuid(),
+  subject: z.string().trim().min(1).max(MAX_REPLY_SUBJECT),
+  body: z.string().trim().min(1).max(MAX_REPLY_BODY),
+});
 
 export const conversationListRequestSchema = z.object({
   filter: z.enum(['all', 'unread', 'review']).default('all'),

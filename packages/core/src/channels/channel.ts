@@ -9,6 +9,9 @@ export interface OutgoingMessage {
   subject: string | null;
   body: string;
   contentHash: string;
+  /** Email threading: the Message-ID this answers and the thread's References (ADR 031). */
+  inReplyTo?: string | null;
+  references?: string | null;
 }
 
 export type SendResult =

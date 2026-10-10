@@ -181,6 +181,7 @@ export class CoreService {
     for (const type of [
       ...core.services.engine.jobTypes(),
       ...core.services.inbox.jobTypes(),
+      ...core.services.replies.jobTypes(),
       ...core.services.classifier.jobTypes(),
       ...core.services.research.jobTypes(),
       ...core.services.signInChecks.jobTypes(),

@@ -215,7 +215,7 @@ Exit criteria status (2026-09-30): the adapter is off by default and when its se
 
 ## Phase 8 — Hardening and release
 
-Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18); 8b local recovery backups with restore and the portable export without secrets (done 2026-10-10, ADR 029); 8c first-run setup — language, Chrome, AI key, email account, first profile, each skippable (done 2026-10-10); 8d-1 campaign clone and the dry run for one contact (done 2026-10-10); archived campaigns shown on request and deletion of never-launched campaigns (done 2026-10-10); 8d-2 campaign status CSV export (done 2026-10-10, FR-PROS-007).
+Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18); 8b local recovery backups with restore and the portable export without secrets (done 2026-10-10, ADR 029); 8c first-run setup — language, Chrome, AI key, email account, first profile, each skippable (done 2026-10-10); 8d-1 campaign clone and the dry run for one contact (done 2026-10-10); archived campaigns shown on request and deletion of never-launched campaigns (done 2026-10-10); 8d-2 campaign status CSV export (done 2026-10-10, FR-PROS-007); 8d-3 replies written and sent from the inbox, threaded, through the ledger (done 2026-10-10, ADR 031).
 
 Deliver:
 

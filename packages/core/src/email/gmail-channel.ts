@@ -38,6 +38,8 @@ export class GmailChannel implements MessageChannel {
       body: message.body,
       messageId,
       date: this.now(),
+      inReplyTo: message.inReplyTo,
+      references: message.references,
     });
     const result = await (await this.api()).send(raw, signal);
     if (result.outcome === 'completed')

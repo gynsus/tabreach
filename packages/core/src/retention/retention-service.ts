@@ -166,6 +166,11 @@ export class RetentionService {
         `UPDATE messages SET body = NULL WHERE body IS NOT NULL AND occurred_at < ?`,
         bodies,
       );
+      // Inbox replies once settled; one still sending or unknown keeps what it would send.
+      report.messageBodies += this.run(
+        `UPDATE manual_replies SET body = '' WHERE body != '' AND status IN ('sent', 'failed') AND created_at < ?`,
+        bodies,
+      );
     }
 
     const evidence = cutoff(s.researchEvidence);

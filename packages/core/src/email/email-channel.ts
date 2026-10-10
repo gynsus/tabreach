@@ -67,6 +67,8 @@ export class EmailChannel implements MessageChannel {
       body: message.body,
       messageId,
       date: this.now(),
+      inReplyTo: message.inReplyTo,
+      references: message.references,
     });
     const smtp = this.clients.smtp(settings);
     let response: string;

@@ -440,7 +440,7 @@ export class InboxService {
     return { items: rows.map((r) => this.summary(r)), total, unread };
   }
 
-  get(id: string): Conversation {
+  get(id: string): Omit<Conversation, 'replyTarget' | 'replies'> {
     const row = this.row(id);
     const messages = this.d.db
       .prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY occurred_at, created_at')

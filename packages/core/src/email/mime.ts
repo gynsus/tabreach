@@ -7,6 +7,9 @@ export interface ComposeInput {
   body: string;
   messageId: string;
   date: Date;
+  /** Threading (RFC 5322 §3.6.4): the Message-ID answered, and the thread's ids so far. */
+  inReplyTo?: string | null | undefined;
+  references?: string | null | undefined;
 }
 
 /**
@@ -28,6 +31,8 @@ export async function composeMessage(input: ComposeInput): Promise<Buffer> {
     text: input.body,
     messageId: input.messageId,
     date: input.date,
+    ...(input.inReplyTo ? { inReplyTo: input.inReplyTo } : {}),
+    ...(input.references ? { references: input.references } : {}),
     textEncoding: 'quoted-printable',
   });
   return composer.compile().build();

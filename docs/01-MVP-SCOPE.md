@@ -166,7 +166,7 @@ MVP inbox is email-first:
 - campaign/prospect linkage;
 - unread/read;
 - simple AI intent classification;
-- manual response drafting;
+- manual response drafting: the user writes a reply in the conversation and sends it from the conversation's account, in the thread, after the do-not-contact check (ADR 031); an AI suggestion only fills the editor;
 - stop/continue sequence controls.
 
 LinkedIn: reply check before follow-ups (see above). Full LinkedIn inbox sync is deferred.

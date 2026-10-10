@@ -424,6 +424,8 @@ export const uncertainSendSchema = z.object({
   contactId: z.uuid().nullable(),
   contactName: z.string(),
   campaignName: z.string().nullable(),
+  /** A campaign step, or a reply the user sent from the inbox (ADR 031). */
+  source: z.enum(['campaign', 'reply']),
   attemptedAt: z.iso.datetime(),
   /** TabReach is still checking on its own (a job will look again); deciding now is refused. */
   checking: z.boolean(),

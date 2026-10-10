@@ -110,6 +110,7 @@ Implemented in Phase 3c for IMAP accounts (ADR 024): polling every 2 minutes fro
 - **Classification**: interested / not interested / out-of-office / opt-out / bounce / other. Opt-out → suppression (FR-POL-005). Out-of-office does not stop by default; it may delay.
 - **Headers**: optional `List-Unsubscribe` (mailto) configured per account; sender identity/signature per account.
 - **Limits**: per-account daily send cap and minimum spacing between sends.
+- **Replies from the inbox** (ADR 031): sent through the same channel with `In-Reply-To` / `References` of the answered message and `Re:` subject; guarded by the ledger like any send; only the do-not-contact list applies. Gmail `threadId` is not set yet.
 
 Microsoft Graph adapter can be added later behind the same interface. Do not bake Gmail-specific assumptions into domain services.
 

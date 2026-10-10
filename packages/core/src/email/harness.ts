@@ -98,6 +98,7 @@ export class Harness {
     for (const type of [
       ...this.services.engine.jobTypes(),
       ...this.services.inbox.jobTypes(),
+      ...this.services.replies.jobTypes(),
       ...this.services.classifier.jobTypes(),
       ...this.services.research.jobTypes(),
       ...this.services.signInChecks.jobTypes(),

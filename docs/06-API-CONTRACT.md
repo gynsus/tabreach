@@ -164,10 +164,12 @@ command contacts.releaseReplyHold      # campaigns may write again; earlier repl
 
 ```text
 query   conversations.list             # { filter: all | unread | review } -> items, total, unread count
-query   conversations.get              # summary + messages (outbound and inbound)
+query   conversations.get              # summary + messages (outbound and inbound) + replyTarget + replies not yet sent (ADR 031)
 command conversations.markRead
 command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
-command conversations.draftReply       # planned, Phase 8 (not implemented)
+command conversations.reply            # { conversationId, messageId, subject, body } + idempotency key -> ManualReply; sent by a job through the ledger (ADR 031)
+command conversations.retryReply       # { id } -> ManualReply; only a failed reply, same intent
+command conversations.draftReply       # planned, Phase 8d: AI suggestion that only fills the editor
 ```
 
 ## Browser profiles (Phase 5a)
