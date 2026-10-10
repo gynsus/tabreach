@@ -231,9 +231,9 @@ A hand check on real pages (English interface) replaced several fixture assumpti
 
 Checked by hand up to the press (nothing sent): a message to a connection with a conversation, and an invitation to a non-connection. Still to see on a real send: what the invitation page shows afterwards (until then a send there may end `unknown`, for the person to confirm), and profiles where Connect sits under "More".
 
-## Webhook adapter
+## Webhook adapter (post-MVP, ADR 030)
 
-Lightweight integration output:
+Not part of the MVP. The intended shape, kept for when it is built — lightweight integration output:
 
 - send structured event to a configured URL;
 - HMAC-signed payload;
