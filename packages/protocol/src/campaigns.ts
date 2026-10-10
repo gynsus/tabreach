@@ -174,6 +174,8 @@ export const campaignSchema = z.object({
   activeVersion: z.number().int().nullable(),
   enrollments: z.record(enrollmentStatusSchema, z.number().int().nonnegative()),
   pendingApprovals: z.number().int().nonnegative(),
+  /** Active or paused people still on an earlier version than the launched one. */
+  outdatedEnrollments: z.number().int().nonnegative(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -191,6 +193,15 @@ export const campaignUpdateSchema = z.object({
 
 /** A copy of the campaign's current draft, as a new draft: no versions, no people (FR-CAM-001). */
 export const campaignCloneSchema = z.object({ id, name: text(200).min(1) });
+
+/** Moving live people to the launched version (docs/17): moved, finished by it, or left as they are. */
+export const migrateReportSchema = z.object({
+  moved: z.number().int().nonnegative(),
+  completed: z.number().int().nonnegative(),
+  /** Approved, being sent or with an outcome on record: they stay on their version. */
+  busy: z.number().int().nonnegative(),
+});
+export type MigrateReport = z.infer<typeof migrateReportSchema>;
 
 export const enrollRequestSchema = z.object({
   campaignId: id,

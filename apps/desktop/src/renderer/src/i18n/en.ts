@@ -396,6 +396,7 @@ export const en = {
         archived: 'Campaign archived',
         deleted: 'Campaign deleted',
         enrolled: 'Contacts added to campaign',
+        migrated: 'People moved to the launched version',
       },
       enrollment: {
         created: 'Added to campaign',
@@ -403,6 +404,7 @@ export const en = {
         resumed: 'Sequence resumed',
         stopped: 'Sequence stopped',
         completed: 'Sequence completed',
+        migrated: 'Moved to the launched version',
       },
       approval: {
         requested: 'Waiting for approval',
@@ -600,6 +602,13 @@ export const en = {
       stopped: 'Stopped',
     },
     step: 'Step {{position}} of {{count}}',
+    migrate: {
+      notice_one: '{{count}} person is still on an earlier version. The launched version is v{{version}}.',
+      notice_other: '{{count}} people are still on an earlier version. The launched version is v{{version}}.',
+      hint: 'Moving keeps each person at their step and works out the time again from the new delays and sending hours. A message waiting for your approval is withdrawn and written again; one already approved or being sent stays on its version.',
+      action: 'Move to v{{version}}',
+      report: 'Moved: {{moved}}. Finished by the new version: {{completed}}. Left as they are: {{busy}}.',
+    },
     waitingWindow: 'Waiting for sending hours: {{at}}',
     sendingHours: 'Sending hours {{hours}} ({{zone}})',
     waiting: {

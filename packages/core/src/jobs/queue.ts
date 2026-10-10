@@ -159,6 +159,23 @@ export class JobQueue {
       .get(type, `$.${payloadField}`, value) as JobRow | undefined;
   }
 
+  /**
+   * Moves the pending job holding `dedupeKey` to `runAt`, or enqueues one. A running job is left
+   * alone: its handler reads the new time itself.
+   */
+  scheduleAt(type: string, payload: unknown, dedupeKey: string, runAt: Date): void {
+    const held = this.byDedupeKey(dedupeKey);
+    if (!held) {
+      this.enqueue(type, payload, { runAt, dedupeKey });
+      return;
+    }
+    if (held.status !== 'pending') return;
+    this.db
+      .prepare(`UPDATE jobs SET run_at = ?, updated_at = ? WHERE id = ? AND status = 'pending'`)
+      .run(runAt.toISOString(), this.now().toISOString(), held.id);
+    this.onEnqueued();
+  }
+
   /** The job holding a dedupe key right now (pending or running), if any. */
   byDedupeKey(key: string): JobRow | undefined {
     return this.db.prepare('SELECT * FROM jobs WHERE dedupe_key = ?').get(key) as JobRow | undefined;

@@ -14,7 +14,7 @@
 
 A campaign contains a mutable draft configuration and immutable launched versions.
 
-Launching produces a `CampaignVersion`. Running enrollments always point to an immutable version. Editing a running campaign and re-launching creates a new version; existing enrollments stay on their version unless the user explicitly migrates them.
+Launching produces a `CampaignVersion`. Running enrollments always point to an immutable version. Editing a running campaign and re-launching creates a new version; existing enrollments stay on their version unless the user explicitly migrates them. See "Moving people to the current version".
 
 ## Required campaign settings
 
@@ -177,6 +177,17 @@ Show a dry-run preview for one target.
 - a template step shows the rendered subject and body; an AI step is written only when asked (`generate`: one AI call, with the company's research started first if it has none — the preview then says to ask again).
 
 Nothing is stored for the campaign: no enrollment, run, draft, approval or ledger entry, and no audit event of its own (an AI example is logged as an AI call with its cost, and a research run it starts is an ordinary research run). A website form is not opened (it is prepared after enrollment, before approval). Unsaved edits are saved first by the UI, so the preview matches what would be launched.
+
+### Moving people to the current version
+
+After a re-launch, the People section says how many live (active or paused) people are still on an earlier version and offers "Move to v<N>" (`campaigns.migrate`, report `{ moved, completed, busy }`; audit `enrollment.migrated` per person with `fromVersion`, `toVersion`, `withdrawnApproval`, and `campaign.migrated` with the report). Nothing moves by itself.
+
+- A person between steps moves. Their step number is kept; the time is worked out again: the new step's delay from the end of their last finished step (or from joining), not before now, then into the new version's sending hours. This is how changed sending hours take effect for people already in the campaign.
+- A person whose message waits for an approval nobody gave yet moves too: the run is cancelled, its approval expires, and the message is written again from the new version (a new approval). No ledger entry exists yet for it, so nothing can be duplicated.
+- A person whose message was approved, is being prepared or sent, waits for a person in the browser, or has a ledger entry stays on their version (`busy`) — moving them could send twice or send something other than what was approved.
+- A person whose step number is past the end of the new version completes.
+
+The intent key of a send stays `(enrollment, step position, channel, action, target)`, so a step already sent is never sent again after a move.
 
 ### Clone (FR-CAM-001)
 

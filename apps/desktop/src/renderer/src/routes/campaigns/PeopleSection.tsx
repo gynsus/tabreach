@@ -55,6 +55,7 @@ export function PeopleSection({ campaign }: { campaign: Campaign }) {
           </Button>
         </div>
       </div>
+      {campaign.outdatedEnrollments > 0 && canEnroll ? <MovePeople campaign={campaign} /> : null}
       {list.isError ? <Alert>{errorMessage(t, list.error)}</Alert> : null}
       {list.isSuccess && rows.length === 0 ? (
         <p className="text-[13px] text-soft">
@@ -82,6 +83,40 @@ export function PeopleSection({ campaign }: { campaign: Campaign }) {
       ) : null}
       {adding ? <AddPeople campaignId={campaign.id} onClose={() => setAdding(false)} /> : null}
     </section>
+  );
+}
+
+/** Moving people on an earlier version to the launched one (docs/17). */
+function MovePeople({ campaign }: { campaign: Campaign }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const move = useMutation({
+    mutationFn: () => call('campaigns.migrate', { id: campaign.id }),
+    onSuccess: async (report) => {
+      toast(t('campaigns.migrate.report', report));
+      await invalidateEntities(qc, ['campaign', 'enrollment', 'approval', 'activity']);
+    },
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+  });
+  return (
+    <div
+      data-testid="outdated-people"
+      className="grid gap-2 rounded-md border border-rule bg-sunken px-4 py-3 text-[13px]"
+    >
+      <p>
+        {t('campaigns.migrate.notice', {
+          count: campaign.outdatedEnrollments,
+          version: campaign.activeVersion,
+        })}
+      </p>
+      <p className="text-xs text-faint">{t('campaigns.migrate.hint')}</p>
+      <div>
+        <Button size="sm" onClick={() => move.mutate()} disabled={move.isPending}>
+          {t('campaigns.migrate.action', { version: campaign.activeVersion })}
+        </Button>
+      </div>
+    </div>
   );
 }
 

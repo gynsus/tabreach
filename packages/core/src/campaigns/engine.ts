@@ -884,6 +884,91 @@ export class CampaignEngine {
     this.d.changed(['enrollment', 'campaign', 'activity']);
   }
 
+  /**
+   * Moves a live enrollment to another version of its campaign (docs/17, "Moving people to the
+   * current version"). Only an enrollment between steps, or whose message waits for a decision that
+   * nobody made yet, moves: that message is withdrawn and written again from the new version. One
+   * approved, being sent or with an outcome on record stays (`busy`) — moving it could send twice.
+   * The step number is kept; the time is worked out again from the new delay and sending hours.
+   */
+  migrateEnrollment(
+    e: EnrollmentRow,
+    versionId: string,
+    correlationId: string,
+  ): 'moved' | 'completed' | 'busy' | 'current' {
+    if (e.campaign_version_id === versionId) return 'current';
+    const run = this.openRun(e.id);
+    if (run) {
+      const decided = this.d.db
+        .prepare(
+          `SELECT 1 FROM approvals WHERE workflow_run_id = ? AND status <> 'pending' AND status <> 'expired'`,
+        )
+        .get(run.id);
+      const effect = this.d.db.prepare('SELECT 1 FROM side_effects WHERE workflow_run_id = ?').get(run.id);
+      if (run.status !== 'waiting_approval' || decided || effect) return 'busy';
+      this.cancelRun(run);
+    }
+    const versionNumber = (id: string) =>
+      (
+        this.d.db.prepare('SELECT version_number FROM campaign_versions WHERE id = ?').get(id) as {
+          version_number: number;
+        }
+      ).version_number;
+    const payload = {
+      fromVersion: versionNumber(e.campaign_version_id),
+      toVersion: versionNumber(versionId),
+      withdrawnApproval: run !== undefined,
+    };
+    this.d.db
+      .prepare(
+        `UPDATE campaign_enrollments SET campaign_version_id = ?, lock_version = lock_version + 1, updated_at = ?
+         WHERE id = ? AND lock_version = ?`,
+      )
+      .run(versionId, this.d.now().toISOString(), e.id, e.lock_version);
+    Object.assign(e, { campaign_version_id: versionId, lock_version: e.lock_version + 1 });
+    this.d.audit.record({
+      actorType: 'user',
+      actionType: 'enrollment.migrated',
+      objectType: 'enrollment',
+      objectId: e.id,
+      payload,
+      correlationId,
+    });
+    const step = this.step(versionId, e.current_step_position);
+    if (!step) {
+      // The new version has fewer steps than this person has done: their sequence is over.
+      this.completeEnrollment(e, correlationId);
+      return 'completed';
+    }
+    const at = this.stepDueAt(e, step);
+    this.updateEnrollment(e, { next_action_at: at.toISOString() });
+    if (e.status === 'active' && this.campaignStatus(e.campaign_id) === 'active') {
+      this.d.jobs.scheduleAt(JOB_ADVANCE, { enrollmentId: e.id }, `enrollment:${e.id}`, at);
+    }
+    this.d.changed(['enrollment', 'approval', 'campaign', 'activity']);
+    return 'moved';
+  }
+
+  /**
+   * When the current step may start, worked out again: its delay from the end of the last finished
+   * step (or from joining), not before now, then into the recipient's sending hours.
+   */
+  private stepDueAt(e: EnrollmentRow, step: CampaignStep): Date {
+    const last = this.d.db
+      .prepare(
+        `SELECT updated_at FROM workflow_runs WHERE business_type = 'enrollment' AND business_id = ?
+           AND status = 'completed' AND step_position < ? ORDER BY updated_at DESC LIMIT 1`,
+      )
+      .get(e.id, e.current_step_position) as { updated_at: string } | undefined;
+    const base = new Date(last?.updated_at ?? e.created_at);
+    const now = this.d.now();
+    const due = new Date(Math.max(base.getTime() + step.delaySeconds * 1000, now.getTime()));
+    const facts = this.contact(e.contact_id);
+    return step.type === 'send_message' && facts
+      ? nextAllowedAt(due, this.timeZoneFor(e, facts), this.windowFor(e.campaign_version_id))
+      : due;
+  }
+
   /** Terminal stop: cancels the open run and closes its approvals. */
   stopEnrollment(
     e: EnrollmentRow,

@@ -12,6 +12,7 @@ import {
   type Enrollment,
   type EnrollmentStatus,
   type EnrollReport,
+  type MigrateReport,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
 import type { ChannelResolver } from '../channels/channel.js';
@@ -241,6 +242,33 @@ export class CampaignService {
         .all(id) as unknown as EnrollmentRow[];
       for (const e of live) this.engine.stopEnrollment(e, 'campaign_archived', ctx.correlationId, 'user');
       return campaign;
+    });
+  }
+
+  /**
+   * Moves the campaign's live people to its launched version; who cannot move safely stays
+   * (docs/17, "Moving people to the current version").
+   */
+  migrate(id: string, ctx: CommandContext): MigrateReport {
+    return transaction(this.db, () => {
+      const row = this.row(id);
+      if (!row.active_version_id || (row.status !== 'active' && row.status !== 'paused')) {
+        throw conflict('campaign.notLaunched');
+      }
+      const live = this.db
+        .prepare(
+          `SELECT * FROM campaign_enrollments
+           WHERE campaign_id = ? AND status IN ('active', 'paused') AND campaign_version_id <> ?
+           ORDER BY created_at, id`,
+        )
+        .all(id, row.active_version_id) as unknown as EnrollmentRow[];
+      const report: MigrateReport = { moved: 0, completed: 0, busy: 0 };
+      for (const e of live) {
+        const result = this.engine.migrateEnrollment(e, row.active_version_id, ctx.correlationId);
+        if (result !== 'current') report[result]++;
+      }
+      this.record('campaign.migrated', id, ctx, { ...report });
+      return report;
     });
   }
 
@@ -533,6 +561,16 @@ export class CampaignService {
       activeVersion: version,
       enrollments: { active: 0, paused: 0, completed: 0, stopped: 0, ...counts },
       pendingApprovals: pending,
+      outdatedEnrollments: r.active_version_id
+        ? (
+            this.db
+              .prepare(
+                `SELECT COUNT(*) AS n FROM campaign_enrollments
+                 WHERE campaign_id = ? AND status IN ('active', 'paused') AND campaign_version_id <> ?`,
+              )
+              .get(r.id, r.active_version_id) as { n: number }
+          ).n
+        : 0,
       createdAt: r.created_at,
       updatedAt: r.updated_at,
     };

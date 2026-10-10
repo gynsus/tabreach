@@ -284,6 +284,81 @@ describe('campaign engine', () => {
     expect(h.db.prepare('SELECT COUNT(*) AS n FROM side_effects').get()).toEqual({ n: 0 });
   });
 
+  it('moves people to the launched version: waiting ones get the new hours and text, an approved one stays', async () => {
+    const weekdays = { days: [1, 2, 3, 4, 5], start: '09:00', end: '18:00' };
+    const campaign = h.launch([message()], { window: weekdays });
+    const { campaigns } = h.services;
+    campaigns.enroll(campaign, [h.contact('Bob', 'bob@beta.test'), h.contact('Cy', 'cy@gamma.test')], ctx());
+    await h.run();
+    const cy = h.pending().find((a) => a.contactName === 'Cy')!;
+    h.services.approvals.approve(cy.id, cy.contentHash, ctx()); // approved, not sent yet
+    h.clock.set('2026-10-03T12:00:00.000Z'); // Saturday
+    campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    expect(h.enrollments(campaign).find((e) => e.contactName === 'Ann')).toMatchObject({
+      waiting: 'window',
+      nextActionAt: '2026-10-05T09:00:00.000Z',
+    });
+
+    const draft = campaigns.get(campaign).config;
+    campaigns.update(
+      {
+        id: campaign,
+        config: {
+          ...draft,
+          window: { days: [1, 2, 3, 4, 5, 6, 7], start: '00:00', end: '23:59' },
+          steps: [message({ subject: 'New {{firstName}}' })],
+        },
+      },
+      ctx(),
+    );
+    expect(campaigns.launch(campaign, ctx())).toMatchObject({ activeVersion: 2, outdatedEnrollments: 3 });
+
+    expect(campaigns.migrate(campaign, ctx())).toEqual({ moved: 2, completed: 0, busy: 1 });
+    expect(campaigns.get(campaign).outdatedEnrollments).toBe(1);
+    expect(h.pending().map((a) => a.contactName)).toEqual([]); // Bob's v1 message was withdrawn
+    await h.run();
+    // Ann and Bob are written again from v2, now; Cy's approved v1 message keeps v1's hours.
+    expect(h.channel.deliveries()).toEqual([]);
+    expect(
+      h
+        .pending()
+        .map((a) => [a.contactName, a.subject])
+        .sort(),
+    ).toEqual([
+      ['Ann', 'New Ann'],
+      ['Bob', 'New Bob'],
+    ]);
+    expect(h.enrollments(campaign).map((e) => [e.contactName, e.version])).toEqual([
+      ['Bob', 2],
+      ['Cy', 1],
+      ['Ann', 2],
+    ]);
+    h.clock.set('2026-10-05T09:00:00.000Z'); // Monday
+    await h.run();
+    expect(h.channel.deliveries().map((d) => d.subject)).toEqual(['Hello Cy']);
+    // Nothing left to move: Cy finished on v1.
+    expect(campaigns.migrate(campaign, ctx())).toEqual({ moved: 0, completed: 0, busy: 0 });
+    expect(
+      h.db.prepare(`SELECT COUNT(*) AS n FROM action_events WHERE action_type = 'enrollment.migrated'`).get(),
+    ).toEqual({ n: 2 });
+  });
+
+  it('a person past the end of the new version finishes; their step stays', async () => {
+    const campaign = h.launch([message(), message({ delaySeconds: 3 * 24 * 60 * 60 })]);
+    const { campaigns } = h.services;
+    campaigns.enroll(campaign, [h.contact('Ann', 'ann@acme.test')], ctx());
+    await h.run();
+    await h.approveAll();
+    expect(h.enrollments(campaign)[0]).toMatchObject({ stepPosition: 2, waiting: 'schedule' });
+    const draft = campaigns.get(campaign).config;
+    campaigns.update({ id: campaign, config: { ...draft, steps: [message()] } }, ctx());
+    campaigns.launch(campaign, ctx());
+    expect(campaigns.migrate(campaign, ctx())).toEqual({ moved: 0, completed: 1, busy: 0 });
+    expect(h.enrollments(campaign)[0]).toMatchObject({ status: 'completed', version: 2 });
+    await h.advance(4 * DAY);
+    expect(h.channel.deliveries()).toHaveLength(1);
+  });
+
   it('waits for the active window in the recipient zone', async () => {
     h.clock.set('2026-10-03T12:00:00.000Z'); // Saturday
     const campaign = h.launch([message()]);
