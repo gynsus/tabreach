@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_POLICY, type Campaign, type CampaignConfig } from '@tabreach/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { useToast } from '../../components/toast';
 import {
   Alert,
@@ -45,7 +45,9 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
   const toast = useToast();
   const [config, setConfig] = useState<CampaignConfig>(campaign.config);
   const [dirty, setDirty] = useState(false);
+  const navigate = useNavigate();
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [dialog, setDialog] = useState<'dryRun' | 'clone' | null>(null);
   const archived = campaign.status === 'archived';
 
@@ -85,6 +87,28 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
     onError: (error) => toast(errorMessage(t, error), 'bad'),
     onSettled: () => setConfirmArchive(false),
   });
+  // Only a never-launched campaign can be deleted; a launched one has history and is archived.
+  const neverLaunched = campaign.activeVersion === null;
+  const remove = useMutation({
+    mutationFn: () => call('campaigns.delete', { id: campaign.id }),
+    onSuccess: async () => {
+      setDirty(false);
+      toast(t('campaigns.deleted'));
+      await invalidateEntities(qc, ['campaign', 'activity']);
+      await navigate('/campaigns');
+    },
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+    onSettled: () => setConfirmDelete(false),
+  });
+  const deleteButton = confirmDelete ? (
+    <Button variant="danger" onClick={() => remove.mutate()} disabled={remove.isPending}>
+      {t('campaigns.confirmDelete')}
+    </Button>
+  ) : (
+    <Button variant="ghost" onClick={() => setConfirmDelete(true)} disabled={remove.isPending}>
+      {t('campaigns.delete')}
+    </Button>
+  );
   // A dry run or a copy works from the saved draft: unsaved edits are saved first.
   const prepare = async () => {
     if (!dirty || archived) return;
@@ -93,7 +117,7 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
     await refresh();
   };
   const errors = fieldErrors(launch.error);
-  const busy = save.isPending || launch.isPending || status.isPending;
+  const busy = save.isPending || launch.isPending || status.isPending || remove.isPending;
   const windowOverride = config.window !== null;
 
   return (
@@ -116,7 +140,10 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
         }
         actions={
           archived ? (
-            <Button onClick={() => setDialog('clone')}>{t('campaigns.clone.action')}</Button>
+            <>
+              <Button onClick={() => setDialog('clone')}>{t('campaigns.clone.action')}</Button>
+              {neverLaunched ? deleteButton : null}
+            </>
           ) : (
             <>
               <Button onClick={() => setDialog('dryRun')} disabled={busy}>
@@ -146,7 +173,9 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
                   {t('campaigns.resume')}
                 </Button>
               ) : null}
-              {confirmArchive ? (
+              {neverLaunched ? (
+                deleteButton
+              ) : confirmArchive ? (
                 <Button variant="danger" onClick={() => status.mutate('campaigns.archive')} disabled={busy}>
                   {t('campaigns.confirmArchive')}
                 </Button>

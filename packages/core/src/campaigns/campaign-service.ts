@@ -244,6 +244,22 @@ export class CampaignService {
     });
   }
 
+  /**
+   * Deletes a campaign that was never launched (draft or archived). A launched one has versions,
+   * people and send history that duplicate checks and caps rely on; it can only be archived.
+   */
+  delete(id: string, ctx: CommandContext): void {
+    transaction(this.db, () => {
+      const row = this.row(id);
+      const launched = this.db
+        .prepare('SELECT 1 FROM campaign_versions WHERE campaign_id = ? LIMIT 1')
+        .get(id);
+      if (row.active_version_id || launched) throw conflict('campaign.launched');
+      this.db.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
+      this.record('campaign.deleted', id, ctx, { name: row.name });
+    });
+  }
+
   enroll(campaignId: string, contactIds: readonly string[], ctx: CommandContext): EnrollReport {
     return transaction(this.db, () => {
       const row = this.row(campaignId);

@@ -28,9 +28,10 @@ export const statusTone: Record<CampaignStatus, 'neutral' | 'ok' | 'warn' | 'acc
 export function CampaignsPage() {
   const { t } = useTranslation();
   const [creating, setCreating] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const campaigns = useQuery({
-    queryKey: ['campaigns', 'list'],
-    queryFn: () => call('campaigns.list', { includeArchived: false }),
+    queryKey: ['campaigns', 'list', showArchived],
+    queryFn: () => call('campaigns.list', { includeArchived: showArchived }),
   });
   const items = campaigns.data?.items ?? [];
 
@@ -40,10 +41,20 @@ export function CampaignsPage() {
         title={t('campaigns.title')}
         subtitle={t('campaigns.subtitle')}
         actions={
-          <Button variant="primary" onClick={() => setCreating(true)}>
-            <Plus size={14} aria-hidden />
-            {t('campaigns.new')}
-          </Button>
+          <>
+            <label className="flex items-center gap-2 text-[13px] text-soft">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(e) => setShowArchived(e.target.checked)}
+              />
+              {t('campaigns.showArchived')}
+            </label>
+            <Button variant="primary" onClick={() => setCreating(true)}>
+              <Plus size={14} aria-hidden />
+              {t('campaigns.new')}
+            </Button>
+          </>
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-6">

@@ -350,6 +350,24 @@ test('a dry run shows the first message for one contact without sending; a copy 
     page.getByRole('region', { name: 'Message 1' }).getByLabel('Message', { exact: true }),
   ).toHaveValue('Hi {{firstName|there}}, this is a test.');
   await expect(page.getByTestId('enrollment')).toHaveCount(0);
+
+  // A copy that was never launched can be deleted; there is nothing to archive.
+  await expect(page.getByRole('button', { name: 'Archive' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete this campaign for good?' }).click();
+  await expect(page.getByRole('heading', { name: 'Campaigns' })).toBeVisible();
+  await expect(page.getByRole('link', { name: /E2E campaign \(copy\)/ })).toHaveCount(0);
+
+  // A launched campaign is only archived; the archive is one switch away on the list.
+  await page.getByRole('link', { name: /E2E campaign/ }).click();
+  await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Archive' }).click();
+  await page.getByRole('button', { name: 'Archive? Sequences in progress stop.' }).click();
+  await expect(page.getByText('Archived', { exact: true })).toBeVisible();
+  await go('#/campaigns');
+  await expect(page.getByRole('link', { name: /E2E campaign/ })).toHaveCount(0);
+  await page.getByLabel('Show archived').check();
+  await expect(page.getByRole('link', { name: /E2E campaign/ })).toContainText('Archived');
 });
 
 test('connecting an email account fills in known servers and reports a wrong server', async () => {

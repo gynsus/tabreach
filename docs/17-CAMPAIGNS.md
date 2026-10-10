@@ -179,3 +179,9 @@ Nothing is stored for the campaign: no enrollment, run, draft, approval or ledge
 ### Clone (FR-CAM-001)
 
 `campaigns.clone` creates a new draft campaign with the source's current draft settings and steps (email account included). Versions, enrollments, approvals and history stay with the source; an archived campaign can be cloned.
+
+### Archive and delete
+
+A launched campaign is never deleted, only archived: its versions, enrollments and send history are what duplicate checks, caps and the activity log rely on. Archiving stops every live enrollment and takes the campaign off the default list; the list's "Show archived" switch brings archived campaigns back into view, where they can be opened and copied.
+
+A campaign that was never launched (no version, so no people and no sends) can be deleted for good with `campaigns.delete`; the audit log keeps a `campaign.deleted` event with its name. The campaign page offers Delete instead of Archive for such a campaign. Deleting a launched campaign is refused with `CONFLICT campaign.launched`.
