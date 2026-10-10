@@ -102,15 +102,19 @@ Exact commands may evolve, but onboarding must remain near-one-command and fully
 
 ## Status
 
-Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-09-30, Phases 0–7 and the 1.5, 3.5, 4.5, 5.5 and 6.5 audits are done:
+Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-10-10, Phases 0–7, the 1.5, 3.5, 4.5, 5.5 and 6.5 audits and Phase 8a (recovery tests, diagnostics bundle, data retention) are done:
 
 - prospects, CSV import/export and the do-not-contact list;
 - campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
 - email through IMAP/SMTP or the Gmail API with the user's own OAuth client, without automatic duplicates, with replies and bounces stopping sequences;
 - the AI gateway with the user's key (Anthropic, OpenRouter, OpenAI), research with verified quotes, reply labels and AI drafts with automated checks and `approve_campaign`;
 - timelines of every contact, company and campaign;
-- managed Chrome profiles, page recognition by adapter packs, challenges handed to the person, the in-page overlay, take/return control, Pause all and Emergency stop, the `about_to_commit` checkpoint for critical browser actions, and JavaScript-only sites rendered for research.;
-- website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list.;
-- a LinkedIn adapter behind a switch that is off by default: invitations and messages from a signed-in browser profile, the person pressing Send unless auto is allowed per action class, the profile's identity checked before any click, the conversation read before every message, conservative per-account limits, and the share of unrecognized pages per pack version on the status screen. The pack was built on representative fixtures and still needs checking against real LinkedIn pages.
+- managed Chrome profiles, page recognition by adapter packs, challenges handed to the person, the in-page overlay, take/return control, Pause all and Emergency stop, the `about_to_commit` checkpoint for critical browser actions, and JavaScript-only sites rendered for research;
+- website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list;
+- a LinkedIn adapter behind a switch that is off by default: invitations and messages from a signed-in browser profile, the person pressing Send unless auto is allowed per action class, the profile's identity checked before any click, the conversation read before every message, conservative per-account limits, a `manual` mode where the person writes and sends with the text at hand, and the share of unrecognized pages per pack version on the status screen. The pack (0.5.1) was checked against real LinkedIn pages up to the send button.
 
-Next: Phase 8, hardening and release.
+Next: the rest of Phase 8 — backup and export, first-run setup, remaining MVP items, signed release.
+
+## License
+
+TabReach is free software under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`). You may use, modify and redistribute it, including commercially; modified versions, including ones offered over a network, must be released under the same license with their source. See ADR 028.
