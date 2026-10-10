@@ -128,7 +128,7 @@ Every message has an envelope:
 {
   "id": "019...",
   "kind": "command | query | result | event",
-  "type": "browser.task.start",
+  "type": "task.run",
   "schemaVersion": 1,
   "correlationId": "019...",
   "causationId": "019...",

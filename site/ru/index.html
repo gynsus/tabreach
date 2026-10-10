@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TabReach — браузер для аутрича, который работает на вашем Mac</title>
+    <meta
+      name="description"
+      content="Исследует компании с доказательствами, пишет персональные письма и отправляет их по почте, через формы на сайтах или в LinkedIn — после вашего одобрения. Данные остаются на вашем Mac. Открытый исходный код."
+    />
+    <link rel="canonical" href="https://tabreach.com/ru/" />
+    <link rel="alternate" hreflang="en" href="https://tabreach.com/" />
+    <link rel="alternate" hreflang="ru" href="https://tabreach.com/ru/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TabReach — браузер для аутрича, который работает на вашем Mac" />
+    <meta
+      property="og:description"
+      content="Исследование, персонализация и отправка — с вашим одобрением и с данными на вашем компьютере. Открытый код, AGPL-3.0."
+    />
+    <meta property="og:url" content="https://tabreach.com/ru/" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="wrap top">
+      <a class="brand" href="/ru/" aria-label="TabReach — на главную">
+        <img src="/favicon.svg" width="28" height="28" alt="" />
+        TabReach
+      </a>
+      <nav class="nav" aria-label="Основное">
+        <a class="hide-sm" href="#how">Как это работает</a>
+        <a class="hide-sm" href="#features">Возможности</a>
+        <a href="https://github.com/gynsus/tabreach">GitHub</a>
+        <a class="lang" href="/" hreflang="en" lang="en">EN</a>
+      </nav>
+    </header>
+
+    <main>
+      <div class="wrap hero">
+        <div>
+          <span class="eyebrow"
+            ><span class="dot" aria-hidden="true"></span> Только локально · Открытый код · macOS</span
+          >
+          <h1>Браузер для аутрича, который <em>работает на вашем Mac</em>.</h1>
+          <p class="lead">
+            TabReach изучает компанию, пишет письмо на основе найденного и отправляет его по почте, через
+            контактную форму на сайте или в LinkedIn — после того как вы его одобрите. Ваши контакты, почта и
+            сессии браузера не покидают компьютер.
+          </p>
+          <div class="ctas">
+            <a class="btn primary" href="https://github.com/gynsus/tabreach">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path
+                  d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.15.08 1.76 1.19 1.76 1.19 1.03 1.76 2.7 1.25 3.36.96.1-.75.4-1.25.73-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.62 1.58.23 2.75.11 3.04.74.8 1.18 1.83 1.18 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"
+                />
+              </svg>
+              Открыть на GitHub
+            </a>
+            <a class="btn" href="#status">Приложение для Mac</a>
+          </div>
+          <p class="note">
+            Свой ключ AI — Anthropic, OpenAI или OpenRouter. Без аккаунта, подписки и сервера.
+          </p>
+        </div>
+
+        <figure class="mock" aria-label="Одобрение письма в TabReach">
+          <div class="mock-bar" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="mock-body">
+            <div class="mock-head">
+              <b>Ждёт вашего одобрения</b>
+              <span class="pill">Почта · шаг 1 из 3</span>
+            </div>
+            <div class="muted">Кому: anna@northwind.example · пн 09:00 (Europe/Berlin)</div>
+            <div class="mail">
+              <b>Ваш новый склад в Лейпциге</b>
+              <p>
+                Анна, добрый день! Поздравляю с <mark>открытием площадки в Лейпциге в марте</mark>. Команды со
+                вторым складом обычно первым делом упираются в синхронизацию остатков…
+              </p>
+            </div>
+            <div class="source">
+              «We opened our second warehouse in Leipzig in March.» — northwind.example/news
+            </div>
+            <div class="checks">
+              <span>Опирается на исследование</span><span>Длина</span><span>Ссылки</span><span>Подпись</span
+              ><span>Не в «Не связываться»</span>
+            </div>
+            <div class="mock-actions" aria-hidden="true">
+              <span class="go">Одобрить</span><span>Изменить</span><span>Пропустить</span>
+            </div>
+          </div>
+        </figure>
+      </div>
+
+      <section id="how">
+        <div class="wrap">
+          <h2>От списка до ответа — по шагам</h2>
+          <p class="sub">
+            Кампания — это цепочка, которую вы настраиваете один раз. TabReach проводит по ней каждого
+            человека и останавливается везде, где решать должны вы.
+          </p>
+          <ol class="steps">
+            <li>
+              <h3>Импорт</h3>
+              <p>Контакты и компании из CSV или выгрузки CRM. Повторы объединяются, а не удваиваются.</p>
+            </li>
+            <li>
+              <h3>Исследование</h3>
+              <p>
+                Читает сайт компании в настоящем браузере и хранит каждый факт с дословной цитатой и
+                источником.
+              </p>
+            </li>
+            <li>
+              <h3>Текст</h3>
+              <p>
+                По вашему шаблону или силами AI из проверенных фактов — с проверкой длины, ссылок и подписи.
+              </p>
+            </li>
+            <li>
+              <h3>Одобрение</h3>
+              <p>
+                Вы видите, что именно уйдёт, кому и когда. Изменить, одобрить, пропустить — по одной клавише.
+              </p>
+            </li>
+            <li>
+              <h3>Отправка и ответы</h3>
+              <p>
+                В ваши часы отправки и в пределах лимитов. Ответ останавливает цепочку и попадает во
+                «Входящие».
+              </p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="features">
+        <div class="wrap">
+          <h2>Сделан, чтобы ему можно было доверить своё имя</h2>
+          <p class="sub">
+            Письма уходят от вашего имени и с ваших аккаунтов. Всё в TabReach устроено с учётом этого.
+          </p>
+          <div class="grid">
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <rect x="3" y="4" width="18" height="12" rx="2" />
+                <path d="M8 20h8M12 16v4" />
+              </svg>
+              <h3>Всё остаётся на вашем Mac</h3>
+              <p>
+                Одно приложение, одна локальная база. Ни облачного аккаунта, ни синхронизации, ни сервера с
+                вашими контактами и почтой.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9 12l2 2 4-4" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              <h3>Ничего без одобрения</h3>
+              <p>
+                По умолчанию каждое письмо ждёт вас. Когда кампания заслужила доверие, письма, прошедшие все
+                проверки, могут уходить сами.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M4 7h16M4 12h10M4 17h6" />
+                <path d="M17 15l2 2 3-3" />
+              </svg>
+              <h3>Никаких дублей</h3>
+              <p>
+                Каждая отправка записывается до того, как произойдёт. Если исход неясен, TabReach спросит вас,
+                а не отправит снова.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M7 8h10M7 12h6" />
+                <path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-6l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+              </svg>
+              <h3>Исследование с доказательствами</h3>
+              <p>
+                Факт без цитаты, которая действительно есть на странице, отбрасывается. Всегда видно, откуда
+                взялась фраза.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <path d="M12 7v5l3 2" />
+              </svg>
+              <h3>Вежливость по умолчанию</h3>
+              <p>
+                Часы отправки в часовом поясе получателя, лимиты на человека и компанию, список «Не
+                связываться» — проверяется прямо перед каждой отправкой.
+              </p>
+            </div>
+            <div class="card">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7l9 6 9-6" />
+                <rect x="3" y="5" width="18" height="14" rx="2" />
+              </svg>
+              <h3>Входящие, которые понимают ответы</h3>
+              <p>
+                Ответы привязываются к человеку и кампании, размечаются — интересно, не интересно, в отпуске,
+                просит не писать — и на них можно ответить в той же переписке.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap">
+          <h2>Каналы</h2>
+          <p class="sub">
+            API там, где они есть, ваш браузер — там, где их нет. И вы управляете и тем и другим.
+          </p>
+          <div class="channels">
+            <span class="chip"><b>Gmail</b> <small>через ваш собственный OAuth-клиент Google</small></span>
+            <span class="chip"><b>Любой ящик</b> <small>IMAP / SMTP</small></span>
+            <span class="chip"><b>Формы на сайтах</b> <small>заполнена, снята, одобрена</small></span>
+            <span class="chip"><b>LinkedIn</b> <small>с подсказкой — «Отправить» нажимаете вы</small></span>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="wrap split">
+          <ul class="list yes">
+            <li style="padding: 0"><h3>Что TabReach делает</h3></li>
+            <li>
+              Работает через установленный у вас Google Chrome в отдельных профилях, в которые вы входите сами
+            </li>
+            <li>Останавливается и отдаёт вам окно при любой CAPTCHA, 2FA или незнакомой странице</li>
+            <li>Хранит полную историю каждого действия и письма с поиском</li>
+            <li>Делает локальные резервные копии и восстанавливает их в один шаг</li>
+            <li>Говорит по-английски и по-русски</li>
+          </ul>
+          <ul class="list no">
+            <li style="padding: 0"><h3>Чего он не сделает никогда</h3></li>
+            <li>Решать CAPTCHA или обходить проверки безопасности</li>
+            <li>Маскироваться подменой отпечатка браузера или ротацией прокси</li>
+            <li>Продавать или собирать базы лидов</li>
+            <li>Отправлять ваши данные на наш сервер — его просто нет</li>
+            <li>Отправлять то, что вы не одобрили, если вы сами этого не разрешили</li>
+          </ul>
+        </div>
+      </section>
+
+      <section id="status">
+        <div class="wrap oss">
+          <div>
+            <h2>Открытый код, AGPL-3.0</h2>
+            <p>
+              Исходный код открыт. Подписанное и нотаризованное приложение для Mac (Apple Silicon и Intel)
+              готовится к первому выпуску — следите за репозиторием, чтобы узнать о выходе, или соберите его
+              из исходников уже сегодня.
+            </p>
+          </div>
+          <a class="btn primary" href="https://github.com/gynsus/tabreach">Следить на GitHub</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span
+          >© 2026 TabReach · <a href="https://github.com/gynsus/tabreach/blob/main/LICENSE">AGPL-3.0</a> ·
+          <a href="https://github.com/gynsus/tabreach/blob/main/docs/USER-GUIDE.md"
+            >Руководство (англ.)</a
+          ></span
+        >
+        <span>Автор — <a href="https://grigoryfrolov.com/">Григорий Фролов</a></span>
+      </div>
+    </footer>
+  </body>
+</html>

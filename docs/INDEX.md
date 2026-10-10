@@ -7,8 +7,13 @@
 3. [`01-MVP-SCOPE.md`](01-MVP-SCOPE.md) — what is and is not in the first release.
 4. [`03-SYSTEM-ARCHITECTURE.md`](03-SYSTEM-ARCHITECTURE.md) — executable architecture.
 5. [`22-IMPLEMENTATION-PLAN.md`](22-IMPLEMENTATION-PLAN.md) — phase order.
-6. [`26-FIRST-CLAUDE-CODE-TASK.md`](26-FIRST-CLAUDE-CODE-TASK.md) — first task to give Claude Code.
-7. [`REVISION-NOTES-2026-09-28.md`](REVISION-NOTES-2026-09-28.md) — what changed in the architecture revision and why (Russian).
+6. [`DEVELOPMENT.md`](DEVELOPMENT.md) — setup, commands, layout and conventions.
+7. [`26-FIRST-CLAUDE-CODE-TASK.md`](26-FIRST-CLAUDE-CODE-TASK.md) — the completed Phase 0 task, kept for history.
+8. [`REVISION-NOTES-2026-09-28.md`](REVISION-NOTES-2026-09-28.md) — what changed in the architecture revision and why (Russian).
+
+## For users
+
+- [`USER-GUIDE.md`](USER-GUIDE.md) — installing, setting up and using TabReach.
 
 ## Product and requirements
 
@@ -82,7 +87,12 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 024 | Reply ingestion: only prospect mail, from the moment of connecting | Accepted |
 | 025 | Draft checks and campaign approval | Accepted |
 | 026 | Chrome runs as a normal browser in user profiles | Accepted |
+| 027 | Research pages render without a window, behind a request guard | Accepted |
+| 028 | The project is licensed under AGPL-3.0-only | Accepted |
+| 029 | Restoring a backup restarts core onto it; the outside world does not roll back | Accepted |
+| 030 | The webhook step is deferred to after the MVP | Accepted |
+| 031 | Replies written and sent from the inbox | Accepted |
 
 ## Recommended first command to Claude Code
 
-> Read `CLAUDE.md`, then the documents in its mandatory reading order and the ADRs. Phases 0–4 with the 1.5, 3.5 and 4.5 audits are done. Implement Phase 5 from `docs/22-IMPLEMENTATION-PLAN.md` (browser worker and human control), in the order 5a–5d described there. (`26-FIRST-CLAUDE-CODE-TASK.md` describes the completed Phase 0 and is kept for history.)
+> Read `CLAUDE.md`, then the documents in its mandatory reading order and the ADRs. Phases 0–7, their audits and Phases 8a–8c are done; Phase 8d is in progress. Continue with the open items of Phase 8d in `docs/22-IMPLEMENTATION-PLAN.md`, then Phase 8e (signed release, user documentation, acceptance run).
