@@ -2,6 +2,7 @@
   "name": "tabreach",
   "version": "0.0.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "type": "module",
   "packageManager": "pnpm@12.4.2",
   "engines": {

@@ -5,6 +5,7 @@
   "description": "Local-only outreach browser",
   "author": "TabReach",
   "private": true,
+  "license": "AGPL-3.0-only",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
