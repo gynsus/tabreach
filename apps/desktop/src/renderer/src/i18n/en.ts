@@ -1095,6 +1095,40 @@ export const en = {
       saved: 'Contact policy saved',
     },
   },
+  setup: {
+    title: 'Set up TabReach',
+    subtitle:
+      'Four steps to start: Chrome, your AI key, an email account and a browser profile. Each can be skipped and done later in Settings.',
+    stepDone: 'Done',
+    stepOpen: 'Not done yet',
+    chrome: {
+      title: 'Google Chrome',
+      found:
+        'Found Google Chrome {{version}}. TabReach opens its own profiles in it; your usual Chrome profile is not touched.',
+      missing:
+        'Google Chrome was not found. Install it from google.com/chrome, then check again. Email works without it; websites and LinkedIn need it.',
+      checking: 'Checking for Google Chrome…',
+      recheck: 'Check again',
+    },
+    ai: {
+      title: 'AI provider key',
+      hint: 'Your own key: research and drafts are paid directly to the provider. It is stored encrypted on this Mac.',
+    },
+    email: {
+      title: 'Email account',
+      hint: 'Gmail through your own Google OAuth client, or any mailbox over IMAP/SMTP.',
+    },
+    profile: {
+      title: 'First browser profile',
+      hint: 'A separate Chrome profile that TabReach manages, for website forms and LinkedIn. You sign in to sites in it yourself.',
+      done_one: '{{count}} profile ready.',
+      done_other: '{{count}} profiles ready.',
+    },
+    later: 'Everything here can be changed later in Settings and Browser profiles.',
+    skip: 'Skip for now',
+    finish: 'Finish',
+    again: 'Open the first-run setup again',
+  },
   errors: {
     backup: {
       notFound: 'That backup is no longer there.',

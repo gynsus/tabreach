@@ -55,6 +55,7 @@ export const auditActionTypes = [
   'backup.deleted',
   'backup.restored',
   'backup.exported',
+  'setup.completed',
   'job.retried',
   'job.dismissed',
   'account.connected',

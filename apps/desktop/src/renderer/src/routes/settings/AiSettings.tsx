@@ -48,6 +48,20 @@ export function AiSettings() {
   );
 }
 
+/** The provider and its key only: the first-run setup's AI step (models and budget keep defaults). */
+export function AiKeySetup() {
+  const { t } = useTranslation();
+  const settings = useQuery({ queryKey: ['settings', 'ai'], queryFn: () => call('ai.settings.get', {}) });
+  if (settings.isError) return <Alert>{errorMessage(t, settings.error)}</Alert>;
+  if (!settings.data) return <Loading />;
+  return (
+    <div className="grid gap-4">
+      <ProviderPicker settings={settings.data} />
+      <ApiKey key={`key-${settings.data.provider}`} settings={settings.data} />
+    </div>
+  );
+}
+
 const PROVIDERS: AiProviderName[] = ['anthropic', 'openrouter', 'openai'];
 const KEY_PREFIX: Record<AiProviderName, string> = {
   anthropic: 'sk-ant-…',

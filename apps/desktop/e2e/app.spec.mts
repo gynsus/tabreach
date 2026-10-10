@@ -76,6 +76,18 @@ const dataRows = (table: string) =>
     .getByRole('row')
     .filter({ has: page.getByRole('cell') });
 
+test('a fresh install opens the first-run setup; skipping it lands on contacts for good', async () => {
+  // Cold start on CI: the first paint waits up to 3 s for the saved language.
+  await expect(page.getByRole('heading', { name: 'Set up TabReach' })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId('setup-chrome')).toHaveAttribute('data-done', 'true', { timeout: 20_000 });
+  for (const step of ['setup-ai', 'setup-email', 'setup-profile'])
+    await expect(page.getByTestId(step)).toHaveAttribute('data-done', 'false');
+  await page.getByRole('button', { name: 'Skip for now' }).click();
+  await expect(page).toHaveURL(/#\/contacts$/);
+  await go('#/');
+  await expect(page).toHaveURL(/#\/contacts$/);
+});
+
 test('status screen shows core, database, secret storage and worker working', async () => {
   await go('#/status');
   // Cold start on CI: the first paint waits up to 3 s for the saved language.

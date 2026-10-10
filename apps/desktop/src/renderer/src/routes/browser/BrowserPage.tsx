@@ -208,7 +208,7 @@ function ProfileRow({ profile: p }: { profile: BrowserProfile }) {
   );
 }
 
-function CreateProfile({ onClose }: { onClose: () => void }) {
+export function CreateProfile({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [name, setName] = useState('');

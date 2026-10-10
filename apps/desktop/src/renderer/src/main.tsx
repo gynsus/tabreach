@@ -17,6 +17,7 @@ import { ContactsPage } from './routes/contacts/ContactsPage';
 import { BrowserPage } from './routes/browser/BrowserPage';
 import { SettingsPage } from './routes/settings/SettingsPage';
 import { StatusPage } from './routes/status/StatusPage';
+import { SetupPage, StartPage } from './routes/setup/SetupPage';
 import { SuppressionsPage } from './routes/suppressions/SuppressionsPage';
 import './styles.css';
 
@@ -26,7 +27,8 @@ const router = createHashRouter([
     path: '/',
     element: <AppShell />,
     children: [
-      { index: true, element: <Navigate to="/contacts" replace /> },
+      { index: true, element: <StartPage /> },
+      { path: 'setup', element: <SetupPage /> },
       { path: 'contacts', element: <ContactsPage /> },
       { path: 'contacts/:id', element: <ContactPage /> },
       { path: 'companies', element: <CompaniesPage /> },

@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import type { Language } from '@tabreach/protocol';
 import { useTranslation } from 'react-i18next';
-import { Navigate, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { Alert, Field, PageHeader, Select } from '../../components/ui';
 import { languages, setLanguage } from '../../i18n';
 import { call, errorMessage } from '../../lib/api';
@@ -78,14 +78,29 @@ export function SettingsPage() {
 }
 
 function General() {
+  const { t } = useTranslation();
+  return (
+    <div className="grid max-w-md gap-4">
+      <LanguageField />
+      <p className="text-[13px] text-soft">
+        <Link to="/setup" className="text-accent underline-offset-2 hover:underline">
+          {t('setup.again')}
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+/** The interface language; also the first-run setup's first choice. */
+export function LanguageField() {
   const { t, i18n } = useTranslation();
   const save = useMutation({
     mutationFn: (language: Language) => call('settings.ui.update', { language }),
     onSuccess: (s) => setLanguage(s.language),
   });
   return (
-    <div className="grid max-w-md gap-4">
-      <Field label={t('settings.language')} hint={t('settings.languageHint')}>
+    <>
+      <Field label={t('settings.language')} hint={t('settings.languageHint')} className="max-w-md">
         {(id, describedBy) => (
           <Select
             id={id}
@@ -103,6 +118,6 @@ function General() {
         )}
       </Field>
       {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
-    </div>
+    </>
   );
 }
