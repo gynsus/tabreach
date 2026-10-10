@@ -477,6 +477,9 @@ export class AppServices {
       .handle('campaigns.archive', ({ id }, c) =>
         mutate(['campaign', 'enrollment', 'approval'], () => this.campaigns.archive(id, ctx(c))),
       )
+      .handle('campaigns.migrate', ({ id }, c) =>
+        mutate(['campaign', 'enrollment', 'approval', 'activity'], () => this.campaigns.migrate(id, ctx(c))),
+      )
       .handle('campaigns.delete', ({ id }, c) =>
         mutate(['campaign'], () => {
           this.campaigns.delete(id, ctx(c));

@@ -103,6 +103,7 @@ query   campaigns.list / campaigns.get
 command campaigns.create / campaigns.update / campaigns.archive
 command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume
+command campaigns.migrate              # { id } -> { moved, completed, busy } — live people to the launched version (docs/17)
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
 query   enrollments.list               # { campaignId } — step, next action, what it waits for (approval, schedule, window + sendingHours, retry, draft)
 command enrollments.pause / enrollments.resume / enrollments.stop
