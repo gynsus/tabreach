@@ -7,6 +7,7 @@ import {
   uuidv7,
   type Campaign,
   type CampaignConfig,
+  type CampaignPreview,
   type CampaignStatus,
   type Enrollment,
   type EnrollmentStatus,
@@ -109,6 +110,54 @@ export class CampaignService {
       });
       return this.get(row.id);
     });
+  }
+
+  /** A new draft with this campaign's current draft settings and steps; no versions, no people. */
+  clone(input: { id: string; name: string }, ctx: CommandContext): Campaign {
+    return transaction(this.db, () => {
+      const source = this.row(input.id);
+      const id = uuidv7();
+      const ts = this.now().toISOString();
+      this.db
+        .prepare(
+          `INSERT INTO campaigns (id, name, status, draft_config, created_at, updated_at)
+           VALUES (?, ?, 'draft', ?, ?, ?)`,
+        )
+        .run(id, input.name, source.draft_config, ts, ts);
+      this.record('campaign.cloned', id, ctx, { from: source.id });
+      return this.get(id);
+    });
+  }
+
+  /**
+   * The dry run (FR-CAM-008): the launch checks, then the first action for one contact. Nothing is
+   * stored; see CampaignEngine.preview.
+   */
+  async preview(
+    input: { campaignId: string; contactId: string; generate: boolean },
+    signal: AbortSignal,
+    correlationId: string,
+  ): Promise<CampaignPreview> {
+    const row = this.row(input.campaignId);
+    const config = campaignConfigSchema.parse(JSON.parse(row.draft_config));
+    this.validate(config);
+    const contact = this.db
+      .prepare(
+        `SELECT first_name, last_name, full_name, email FROM contacts WHERE id = ? AND status = 'active'`,
+      )
+      .get(input.contactId) as ContactNameRow | undefined;
+    if (!contact) throw notFound('contact');
+    const { conditions, ...outcome } = await this.engine.preview(
+      config,
+      input.contactId,
+      input.generate,
+      signal,
+      correlationId,
+    );
+    const enrolled = this.db
+      .prepare('SELECT 1 FROM campaign_enrollments WHERE campaign_id = ? AND contact_id = ?')
+      .get(input.campaignId, input.contactId);
+    return { contactName: displayName(contact), conditions, alreadyEnrolled: !!enrolled, outcome };
   }
 
   /**

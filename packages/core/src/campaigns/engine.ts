@@ -3,15 +3,19 @@ import type { DatabaseSync } from 'node:sqlite';
 import {
   activeWindowSchema,
   campaignConfigSchema,
+  RpcError,
   stepSchema,
   uuidv7,
   type ActiveWindow,
   type BrowserExecutionMode,
+  type CampaignConfig,
+  type CampaignPreview,
   type CampaignStep,
   type ChangedEntity,
   type Condition,
   type DraftOrigin,
   type Logger,
+  type PreviewContent,
   type StopReason,
 } from '@tabreach/protocol';
 import { z } from 'zod';
@@ -1499,6 +1503,166 @@ export class CampaignEngine {
       this.d.changed(['enrollment']);
       return 'next';
     });
+  }
+
+  // Dry run ----------------------------------------------------------------------------------
+
+  /**
+   * What the campaign's first action would be for one contact (FR-CAM-008): the same conditions,
+   * target, template and policy checks a run makes, against the draft config. Nothing is stored and
+   * nothing reaches a site; with `generate` an AI step's message is written (one AI call, and the
+   * company's research started if it has none).
+   */
+  async preview(
+    config: CampaignConfig,
+    contactId: string,
+    generate: boolean,
+    signal: AbortSignal,
+    correlationId: string,
+  ): Promise<CampaignPreview['outcome'] & { conditions: CampaignPreview['conditions'] }> {
+    const facts = this.contact(contactId);
+    if (!facts) throw new RpcError('NOT_FOUND', 'contact not found', 'contact.notFound');
+    const conditions: CampaignPreview['conditions'] = [];
+    const stopped = (
+      position: number | null,
+      reason: StopReason,
+      rule: string | null = null,
+      fields: string[] = [],
+    ) => ({ kind: 'stopped' as const, position, reason, rule, fields, conditions });
+    let at = this.d.now().getTime();
+    let index = 0;
+    while (index < config.steps.length) {
+      const step = config.steps[index] as CampaignStep;
+      const position = index + 1;
+      at += step.delaySeconds * 1000;
+      if (step.type === 'condition') {
+        const holds = this.conditionsHold(step.conditions, facts);
+        conditions.push({ position, holds, onFalse: step.onFalse });
+        if (!holds && step.onFalse === 'stop') return stopped(position, 'condition_not_met');
+        index += holds ? 1 : 2;
+        continue;
+      }
+      const target = this.targetFor(step.channel, facts);
+      const values = templateValues(facts);
+      if (step.channel === 'linkedin' && !values.fullName)
+        return stopped(position, 'invalid_target', 'linkedin.nameRequired');
+      if (!target) return stopped(position, 'invalid_target', `target.${step.channel}`);
+      const timeZone = recipientTimeZone(facts.timezone, facts.company_timezone, config.timezone);
+      const window = config.window ?? activeWindowSchema.parse(this.d.policy.current().window);
+      let websiteHost: string | null = null;
+      if (step.channel === 'web_form') {
+        try {
+          websiteHost = new URL(target).hostname;
+        } catch {
+          websiteHost = null;
+        }
+      }
+      // The window is accounted for below; the policy says whether anything stops or delays it.
+      const verdict = this.d.policy.check({
+        channel: step.channel,
+        websiteHost,
+        contactId,
+        companyId: facts.company_id,
+        idempotencyKey: `preview:${correlationId}`,
+        timeZone,
+        window,
+        skipWindow: true,
+      });
+      if (verdict.kind === 'stop') return stopped(position, verdict.reason, verdict.rule);
+      let deferredBy: string | null = null;
+      if (verdict.kind === 'defer' && verdict.until.getTime() > at) {
+        at = verdict.until.getTime();
+        deferredBy = verdict.rule;
+      }
+      const plannedAt = nextAllowedAt(new Date(at), timeZone, window);
+      let content: PreviewContent;
+      if (step.mode === 'template') {
+        const subject = renderTemplate(step.subject, values);
+        const body = renderTemplate(step.body, values);
+        const missing = [...new Set([...subject.missing, ...body.missing])];
+        if (missing.length > 0) return stopped(position, 'missing_data', null, missing);
+        content = {
+          kind: 'template',
+          subject: step.channel === 'linkedin' ? null : subject.text || null,
+          body: body.text,
+        };
+      } else {
+        const signature = renderTemplate(step.signature, values);
+        if (signature.missing.length > 0) return stopped(position, 'missing_data', null, signature.missing);
+        content = generate
+          ? await this.previewDraft(config, step, facts, signature.text, signal, correlationId)
+          : { kind: 'ai_not_generated' };
+      }
+      return {
+        kind: 'action',
+        position,
+        channel: step.channel,
+        linkedinAction: step.channel === 'linkedin' ? step.linkedinAction : null,
+        executionMode: step.executionMode,
+        target,
+        plannedAt: plannedAt.toISOString(),
+        timeZone,
+        deferredBy,
+        content,
+        conditions,
+      };
+    }
+    return { kind: 'none', conditions };
+  }
+
+  /** An AI step's first message, written as a run would write it (generate), but not stored. */
+  private async previewDraft(
+    config: CampaignConfig,
+    step: SendStep,
+    facts: ContactFacts,
+    signature: string,
+    signal: AbortSignal,
+    correlationId: string,
+  ): Promise<PreviewContent> {
+    if (!this.d.drafter) return { kind: 'ai_failed', reason: 'no_key' };
+    let result: DraftResult;
+    try {
+      result = await this.d.drafter.write(
+        {
+          companyId: facts.company_id,
+          instructions: step.instructions,
+          stepNumber: 1,
+          maxLength: Math.max(
+            100,
+            (step.channel === 'linkedin' && step.linkedinAction === 'connect' ? 300 : config.maxLength) -
+              signature.length -
+              2,
+          ),
+          recipient: {
+            firstName: facts.first_name,
+            lastName: facts.last_name,
+            jobTitle: facts.job_title,
+            companyName: facts.company_name,
+          },
+          previous: [],
+        },
+        signal,
+        correlationId,
+      );
+    } catch (error) {
+      // A run retries these later; a dry run says so and lets the person try again.
+      if (error instanceof RetryableError) return { kind: 'ai_failed', reason: error.errorClass };
+      throw error;
+    }
+    if (result.kind === 'wait') return { kind: 'ai_research_running' };
+    if (result.kind === 'failed') return { kind: 'ai_failed', reason: result.reason };
+    const sig = signature.trim();
+    const text = cleanDraftBody(result.draft.body, sig);
+    return {
+      kind: 'ai',
+      subject: step.channel === 'linkedin' ? null : cleanSubject(result.draft.subject),
+      body: sig ? `${text}\n\n${sig}` : text,
+      facts: this.factsById(result.facts.map((f) => f.id)).map(({ claim, quote, url }) => ({
+        claim,
+        quote,
+        url,
+      })),
+    };
   }
 
   closeApprovals(runId: string, status: 'superseded' | 'expired'): void {

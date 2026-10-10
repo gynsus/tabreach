@@ -320,6 +320,38 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(page.getByRole('listitem').filter({ hasText: 'Campaign launched' })).toHaveCount(0);
 });
 
+test('a dry run shows the first message for one contact without sending; a copy is a new draft', async () => {
+  await go('#/campaigns');
+  await page.getByRole('link', { name: /E2E campaign/ }).click();
+  // Jane is in the campaign from the test before; the dry run adds no one.
+  await expect(page.getByTestId('enrollment')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Dry run' }).click();
+  const dryRun = page.getByRole('dialog', { name: 'Dry run' });
+  await dryRun.getByRole('searchbox', { name: 'Search contacts' }).fill('jane.again');
+  await dryRun.getByRole('radio').first().check();
+  const result = dryRun.getByTestId('dry-run-result');
+  await expect(result).toHaveAttribute('data-kind', 'action');
+  // The same text the approval showed: this contact has no first name, so the default is used.
+  await expect(result.getByTestId('dry-run-body')).toHaveText('Hi there, this is a test.');
+  await expect(result).toContainText('Hello there');
+  await expect(result).toContainText('jane.again@');
+  await expect(result.getByRole('alert')).toContainText('already in the campaign');
+  await dryRun.getByRole('button', { name: 'Close' }).click();
+  await expect(page.getByTestId('enrollment')).toHaveCount(1);
+
+  await page.getByRole('button', { name: 'Copy', exact: true }).click();
+  const copy = page.getByRole('dialog', { name: 'Copy campaign' });
+  await expect(copy.getByLabel('Name')).toHaveValue('E2E campaign (copy)');
+  await copy.getByRole('button', { name: 'Create copy' }).click();
+  await expect(page.getByRole('heading', { name: 'E2E campaign (copy)' })).toBeVisible();
+  await expect(page.getByText('not launched')).toBeVisible();
+  await expect(
+    page.getByRole('region', { name: 'Message 1' }).getByLabel('Message', { exact: true }),
+  ).toHaveValue('Hi {{firstName|there}}, this is a test.');
+  await expect(page.getByTestId('enrollment')).toHaveCount(0);
+});
+
 test('connecting an email account fills in known servers and reports a wrong server', async () => {
   await go('#/settings/email');
   await page.getByRole('button', { name: 'Connect an account' }).click();

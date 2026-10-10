@@ -31,6 +31,8 @@ export interface PolicyTarget {
   idempotencyKey: string;
   timeZone: string;
   window: ActiveWindow;
+  /** A dry run plans the window itself: only stops and caps are asked for. */
+  skipWindow?: boolean;
 }
 
 const ok: PolicyVerdict = { kind: 'ok' };
@@ -81,7 +83,7 @@ export class ContactPolicy {
     if (hold) return { kind: 'stop', reason: hold, rule: `reply.${hold}` };
 
     const now = this.now();
-    const allowed = nextAllowedAt(now, target.timeZone, target.window);
+    const allowed = target.skipWindow ? now : nextAllowedAt(now, target.timeZone, target.window);
     if (allowed > now) return { kind: 'defer', until: allowed, rule: 'window' };
 
     const policy = this.current();

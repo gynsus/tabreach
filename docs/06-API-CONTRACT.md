@@ -105,7 +105,8 @@ command campaigns.pause / campaigns.resume
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
 query   enrollments.list               # { campaignId } — step, next action, what it waits for
 command enrollments.pause / enrollments.resume / enrollments.stop
-command campaigns.clone / campaigns.preview   # planned, Phase 8 (not implemented)
+command campaigns.clone               # { id, name } -> a new draft with the source's draft config; no versions, no people
+query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run)
 ```
 
 Launch validation fails with `VALIDATION_FAILED` and field keys such as `steps.0.body: template.unknownField`;

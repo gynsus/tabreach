@@ -164,3 +164,18 @@ Before launch validate:
 - limits valid.
 
 Show a dry-run preview for one target.
+
+### Dry run (FR-CAM-008)
+
+`campaigns.preview` runs the launch validation on the saved draft, then walks the steps for one contact the way a run would:
+
+- condition steps are evaluated (`stop` ends the preview, `skip` leaves out the step after it);
+- the first message step's target is resolved (email, company website, LinkedIn profile); no target, a LinkedIn contact without a name, missing template data, a suppression, a bounce or a reply hold is reported as the stop reason a run would record;
+- the earliest moment is the step delays from now, moved by a frequency cap if one applies, then into the recipient's active window;
+- a template step shows the rendered subject and body; an AI step is written only when asked (`generate`: one AI call, with the company's research started first if it has none — the preview then says to ask again).
+
+Nothing is stored for the campaign: no enrollment, run, draft, approval or ledger entry, and no audit event of its own (an AI example is logged as an AI call with its cost, and a research run it starts is an ordinary research run). A website form is not opened (it is prepared after enrollment, before approval). Unsaved edits are saved first by the UI, so the preview matches what would be launched.
+
+### Clone (FR-CAM-001)
+
+`campaigns.clone` creates a new draft campaign with the source's current draft settings and steps (email account included). Versions, enrollments, approvals and history stay with the source; an archived campaign can be cloned.
