@@ -188,7 +188,7 @@ export interface CampaignEngineDeps {
       companyId: string,
       context: ResearchContext,
       correlationId: string,
-      options?: { start: boolean },
+      options?: { start: boolean; contactId?: string | null },
     ): ResearchNeed;
   };
   /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
@@ -1704,6 +1704,7 @@ export class CampaignEngine {
       ? await this.d.drafter.write(
           {
             companyId: facts.company_id,
+            contactId: facts.id,
             context: researchContextOf(e.campaign_id, config),
             instructions: step.instructions,
             stepNumber: run.step_position,
@@ -1905,6 +1906,7 @@ export class CampaignEngine {
       result = await this.d.drafter.write(
         {
           companyId: facts.company_id,
+          contactId: facts.id,
           context: researchContextOf(campaignId, config),
           instructions: step.instructions,
           stepNumber: 1,
@@ -2133,7 +2135,10 @@ export class CampaignEngine {
   /** The research a campaign has, or starts, for the contact's company (docs/16 "Campaign context"). */
   private researchNeed(
     campaignId: string,
-    config: Pick<CampaignConfig, 'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays'>,
+    config: Pick<
+      CampaignConfig,
+      'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays' | 'researchContacts'
+    >,
     facts: ContactFacts,
     o: { start: boolean; correlationId: string },
   ): ResearchNeed | null {
@@ -2267,7 +2272,10 @@ const fold = (s: string) => s.normalize('NFC').toLocaleLowerCase().trim();
 /** The campaign's research settings as research asks with them. */
 export function researchContextOf(
   campaignId: string | null,
-  config: Pick<CampaignConfig, 'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays'>,
+  config: Pick<
+    CampaignConfig,
+    'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays' | 'researchContacts'
+  >,
 ): ResearchContext {
   return {
     campaignId,
@@ -2275,6 +2283,7 @@ export function researchContextOf(
     icp: config.icp,
     instructions: config.researchInstructions,
     maxAgeMs: config.researchMaxAgeDays * 24 * 60 * 60_000,
+    people: config.researchContacts,
   };
 }
 

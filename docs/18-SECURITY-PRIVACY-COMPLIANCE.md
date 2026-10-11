@@ -95,6 +95,10 @@ The product operates across jurisdictions, so it provides primitives rather than
 
 Do not represent these features as legal advice.
 
+## Research about people
+
+Contact-level research (docs/16) keeps to what the person's employer publishes about them on its own site, for a business purpose the user set in the campaign. It reads only pages that name the person. The prompt forbids facts about other people and anything private (age, education, private life, contact details), and a fact needs a verified quote from those pages. LinkedIn and other platforms are never read for it. Its evidence and facts follow the same retention as company research.
+
 ## Data retention
 
 Configurable retention categories:

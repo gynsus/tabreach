@@ -91,7 +91,8 @@ query   ai.usage                       # { month } -> calls, tokens, estimated c
 ## Research
 
 ```text
-command research.start                 # { companyId, criteria? } — needs a website and an AI key
+command research.start                 # { companyId, criteria?, contactId? } — needs a website and an AI key; with contactId: research about that person on the company's site (needs their name)
+query   research.listForContact        # { contactId } -> research runs about the person
 query   research.factSource            # { factId } -> claim, quote, url, title, capturedAt, extractor, text (around the quote, null after retention), highlight {start,end} (FR-RES-005)
 query   research.list                  # { companyId } -> runs, newest first
 query   research.get                   # run + facts (verified or not) + evidence (url, title, capturedAt)

@@ -574,6 +574,13 @@ export const requests = {
     request: z.object({ companyId: z.uuid() }),
     response: z.object({ items: z.array(researchRunSchema) }),
   },
+  /** Research about one person (docs/16 "Research about a person"). */
+  'research.listForContact': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ contactId: z.uuid() }),
+    response: z.object({ items: z.array(researchRunSchema) }),
+  },
   'research.get': { channel: 'app', kind: 'query', request: byId, response: researchDetailSchema },
   /** A fact's captured source text with its quote located (FR-RES-005). */
   'research.factSource': {

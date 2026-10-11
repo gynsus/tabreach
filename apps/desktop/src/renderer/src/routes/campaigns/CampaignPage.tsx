@@ -324,6 +324,19 @@ function TargetingSection(props: {
       {area('goal', 1_000)}
       {area('icp', 2_000)}
       {area('researchInstructions', 2_000)}
+      <label className="flex items-start gap-2 text-[13px]">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={config.researchContacts}
+          disabled={props.disabled}
+          onChange={(e) => props.onChange({ ...config, researchContacts: e.target.checked })}
+        />
+        <span className="grid gap-0.5">
+          {t('campaigns.targeting.researchContacts')}
+          <span className="text-xs text-faint">{t('campaigns.targeting.researchContactsHint')}</span>
+        </span>
+      </label>
       <Field
         label={t('campaigns.targeting.budget')}
         hint={t('campaigns.targeting.budgetHint')}

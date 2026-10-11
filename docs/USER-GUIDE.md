@@ -41,6 +41,7 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
 - Export contacts as CSV at any time.
 - **Do not contact** — an address, a whole domain, a company or a profile URL. It is checked right before every send, including replies you write yourself.
 - Research (on a company page, needs an AI key) reads the company's website and keeps facts only with a quote that really appears on the page, with its link. **Show in source** next to a fact opens the page text as it was read, with the quote highlighted.
+- **Research this person** (on a contact page) looks for the person on their company's own site — team, news, blog — and keeps only facts about them with verified quotes. LinkedIn and other sites are not read. A campaign can do this for everyone (**Also research each person** in Goal and audience); its AI messages then use what the site says about the recipient.
 
 ## Campaigns
 

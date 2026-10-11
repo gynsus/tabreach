@@ -96,4 +96,4 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 
 ## Recommended first command to Claude Code
 
-> Read `CLAUDE.md`, then the documents in its mandatory reading order and the ADRs. Phases 0–7, their audits and Phases 8a–8c are done; Phase 8d is in progress. Continue with the open items of Phase 8d in `docs/22-IMPLEMENTATION-PLAN.md`, then Phase 8e (signed release, user documentation, acceptance run).
+> Read `CLAUDE.md`, then the documents in its mandatory reading order and the ADRs. Phases 0–7, their audits and Phases 8a–8d are done. Continue with Phase 8e in `docs/22-IMPLEMENTATION-PLAN.md` (signed release, user documentation, acceptance run).

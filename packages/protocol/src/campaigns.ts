@@ -174,6 +174,11 @@ export const campaignConfigSchema = z.object({
   /** Research older than this is run again before the campaign relies on it. */
   researchMaxAgeDays: z.number().int().min(1).max(365).default(30),
   /**
+   * Also research each person on their company's own site (docs/16 "Research about a person"); AI
+   * messages then use what it says about them. One more AI call per person.
+   */
+  researchContacts: z.boolean().default(false),
+  /**
    * The most the campaign may spend on AI in all (its messages, research and dry runs), in US
    * dollars; null: no limit of its own. Reached: AI steps and research wait until it is raised.
    */
@@ -197,6 +202,7 @@ export const EMPTY_CAMPAIGN_CONFIG: CampaignConfig = {
   icp: '',
   researchInstructions: '',
   researchMaxAgeDays: 30,
+  researchContacts: false,
   aiBudgetUsd: null,
 };
 
@@ -256,6 +262,9 @@ export const researchBatchReportSchema = z.object({
   fresh: z.number().int().nonnegative(),
   /** Started now or already under way. */
   queued: z.number().int().nonnegative(),
+  /** People researched on their company's site (campaigns that research people): started or under way, and already fresh. */
+  peopleQueued: z.number().int().nonnegative(),
+  peopleFresh: z.number().int().nonnegative(),
   noWebsite: z.number().int().nonnegative(),
   /** Failed within the last day: not tried again yet. */
   failed: z.number().int().nonnegative(),

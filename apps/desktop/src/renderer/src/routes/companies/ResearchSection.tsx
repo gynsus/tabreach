@@ -89,7 +89,7 @@ export function ResearchSection({ companyId, hasWebsite }: { companyId: string; 
   );
 }
 
-function ResearchResult({ run }: { run: ResearchDetail }) {
+export function ResearchResult({ run }: { run: ResearchDetail }) {
   const { t } = useTranslation();
   const facts = run.facts.filter((f) => f.kind === 'fact' && f.verified);
   const unsupported = run.facts.filter((f) => f.kind === 'fact' && !f.verified);

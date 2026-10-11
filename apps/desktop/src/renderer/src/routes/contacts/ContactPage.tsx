@@ -8,6 +8,7 @@ import { Alert, Badge, Button, DetailList, PageHeader, Tags } from '../../compon
 import { call, errorMessage } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
 import { ContactForm } from './ContactForm';
+import { PersonResearch } from './PersonResearch';
 
 export function ContactPage() {
   const { id = '' } = useParams();
@@ -74,6 +75,7 @@ export function ContactPage() {
           ]}
         />
         <ReplyHold contactId={c.id} />
+        <PersonResearch contactId={c.id} companyId={c.companyId} />
         <Timeline scope={{ contactId: c.id }} refs={['campaign']} />
       </div>
       {editing ? <ContactForm open contact={c} onClose={() => setEditing(false)} /> : null}

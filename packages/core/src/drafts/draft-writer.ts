@@ -35,11 +35,11 @@ export type WrittenDraft = z.infer<typeof output>;
 /**
  * docs/15 "AI use cases: personalised draft", docs/17. Version 2: no fact refs or sign-off in the
  * text, and a first message does not pretend to continue a conversation (live check, DeepSeek).
- * Version 3: the campaign's goal.
+ * Version 3: the campaign's goal. Version 4: facts may be about the recipient too.
  */
 export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
   key: 'draft.write',
-  version: 3,
+  version: 4,
   purpose: 'Write one personalised outreach email from the sender instructions and verified research facts.',
   useCase: 'drafting',
   input,
@@ -73,7 +73,7 @@ export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
         `${recipient.companyName ? `, ${recipient.companyName}` : ''}`,
       '',
       facts.length
-        ? `Facts about the recipient's company, from its website:\n${facts
+        ? `Facts from the website of the recipient's company (about the company, and some about the recipient):\n${facts
             .map((f) => untrusted(f.ref, `${f.claim}\nQuote: ${f.quote}`, nonce))
             .join('\n')}`
         : 'No research facts are available.',
@@ -93,6 +93,8 @@ const BUDGET_RECHECK_MS = 60 * 60_000;
 
 export interface DraftRequest {
   companyId: string | null;
+  /** The recipient: researched too when the campaign researches people. */
+  contactId: string;
   /** The campaign's goal, ICP and what to look for: the research the message relies on is asked with them. */
   context: ResearchContext;
   instructions: string;
@@ -134,7 +136,18 @@ export class DraftWriter {
   async write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> {
     const research = req.companyId ? this.research(req.companyId, req.context, correlationId) : null;
     if (research?.kind === 'wait') return { kind: 'wait', until: research.until };
-    const facts = research?.kind === 'facts' ? research.facts : [];
+    // What the company's site says about the recipient, when the campaign researches people.
+    let personFacts: { id: string; claim: string; quote: string }[] = [];
+    if (req.companyId && req.context.people) {
+      const person = this.d.campaignResearch.need(req.companyId, req.context, correlationId, {
+        start: true,
+        contactId: req.contactId,
+      });
+      if (person.kind === 'wait') return { kind: 'wait', until: person.until };
+      const run = person.kind === 'ready' ? person.run : person.stale;
+      if (run) personFacts = this.d.research.factsOf(run.id);
+    }
+    const facts = [...(research?.kind === 'facts' ? research.facts : []), ...personFacts];
     const refs = facts.map((f, i) => ({ ref: `F${i + 1}`, ...f }));
     let draft: WrittenDraft;
     try {
