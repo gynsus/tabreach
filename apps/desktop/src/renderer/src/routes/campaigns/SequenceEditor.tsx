@@ -6,6 +6,7 @@ import {
   type Condition,
 } from '@tabreach/protocol';
 import { ArrowDown, ArrowUp, Mail, Plus, Split, Trash2 } from 'lucide-react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { Button, Field, Input, Select, NumberInput } from '../../components/ui';
@@ -27,6 +28,7 @@ export const newMessage = (): CampaignStep => ({
   body: '',
   instructions: '',
   signature: '',
+  replyAsThread: false,
 });
 
 export const newCondition = (): CampaignStep => ({
@@ -117,6 +119,8 @@ export function SequenceEditor(props: {
             <MessageFields
               step={step}
               index={i}
+              // A reply in the thread needs an email step before it.
+              threadable={steps.slice(0, i).some((s) => s.type === 'send_message' && s.channel === 'email')}
               errors={props.errors}
               disabled={props.disabled}
               onChange={(s) => update(i, s)}
@@ -147,12 +151,15 @@ type ConditionStep = Extract<CampaignStep, { type: 'condition' }>;
 function MessageFields(props: {
   step: MessageStep;
   index: number;
+  threadable: boolean;
   errors: Record<string, string>;
   disabled: boolean;
   onChange: (step: MessageStep) => void;
 }) {
   const { t } = useTranslation();
   const { step, index } = props;
+  const threaded = step.channel === 'email' && props.threadable && step.replyAsThread;
+  const threadInput = useId();
   const hint = t('campaigns.placeholdersHint', {
     fields: templateFields.map((f) => `{{${f}}}`).join(', '),
     example: `{{companyName|${t('campaigns.placeholderFallback')}}}`,
@@ -286,6 +293,21 @@ function MessageFields(props: {
           </p>
         ) : null}
       </fieldset>
+      {step.channel === 'email' && props.threadable ? (
+        <div className="grid gap-1">
+          <label htmlFor={threadInput} className="flex items-center gap-2 text-[13px]">
+            <input
+              id={threadInput}
+              type="checkbox"
+              checked={step.replyAsThread}
+              disabled={props.disabled}
+              onChange={(e) => props.onChange({ ...step, replyAsThread: e.target.checked })}
+            />
+            {t('campaigns.thread.label')}
+          </label>
+          <p className="text-xs text-faint">{t('campaigns.thread.hint')}</p>
+        </div>
+      ) : null}
       {step.mode === 'ai' ? (
         <>
           <Field
@@ -326,7 +348,11 @@ function MessageFields(props: {
       ) : (
         <>
           {step.channel === 'linkedin' ? null : (
-            <Field label={t('campaigns.subject')} errorKey={props.errors[`steps.${index}.subject`]}>
+            <Field
+              label={t('campaigns.subject')}
+              hint={threaded ? t('campaigns.thread.subjectHint') : undefined}
+              errorKey={props.errors[`steps.${index}.subject`]}
+            >
               {(id, describedBy) => (
                 <Input
                   id={id}

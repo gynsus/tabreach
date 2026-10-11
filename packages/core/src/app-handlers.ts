@@ -268,6 +268,9 @@ export class AppServices {
       logger: logger.child({ component: 'campaigns' }),
       changed: (entities) => this.changed(entities),
       onSent: (sent) => this.inbox.recordSent(sent),
+      threads: {
+        continuation: (scope, position, channel) => this.inbox.continuation(scope, position, channel),
+      },
       paused: () => this.appControl.isPaused(),
       drafter: { write: (req, signal, correlationId) => this.drafts.write(req, signal, correlationId) },
       beforeSend: async (channel, signal, correlationId) => {

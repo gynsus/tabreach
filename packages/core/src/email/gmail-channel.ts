@@ -41,7 +41,7 @@ export class GmailChannel implements MessageChannel {
       inReplyTo: message.inReplyTo,
       references: message.references,
     });
-    const result = await (await this.api()).send(raw, signal);
+    const result = await (await this.api()).send(raw, signal, message.providerThreadId ?? null);
     if (result.outcome === 'completed')
       return { ...result, externalRefs: { ...result.externalRefs, messageId } };
     if (result.errorClass === 'auth_failed') this.onAuthFailed();

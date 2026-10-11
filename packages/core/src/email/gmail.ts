@@ -134,11 +134,20 @@ export class GmailApi {
    * Sends a raw RFC 5322 message. Maps failures to ledger outcomes (ADR 023): a request that never
    * connected, or an explicit refusal (4xx), is not sent; a lost answer or a server error is unknown.
    */
-  async send(raw: Buffer, signal: AbortSignal): Promise<SendResult> {
+  async send(raw: Buffer, signal: AbortSignal, threadId: string | null = null): Promise<SendResult> {
     let result: { id: string; threadId: string };
     try {
-      result = await this.json('POST', '/messages/send', { raw: base64url(raw) }, signal);
+      // `threadId` files a follow-up in the sender's existing Gmail thread (its headers and subject match).
+      result = await this.json(
+        'POST',
+        '/messages/send',
+        { raw: base64url(raw), ...(threadId ? { threadId } : {}) },
+        signal,
+      );
     } catch (error) {
+      // The thread is gone (deleted in Gmail): refused, nothing sent — send it as a new conversation.
+      if (threadId && error instanceof GmailError && error.status === 404)
+        return this.send(raw, signal, null);
       if (error instanceof OAuthError) return { outcome: 'not_sent', errorClass: 'auth_failed' };
       if (error instanceof GmailError) {
         if (error.isQuota) return { outcome: 'not_sent', errorClass: 'rate_limited' };

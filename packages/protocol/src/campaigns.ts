@@ -109,6 +109,12 @@ export const sendMessageStepSchema = z.object({
   signature: z.string().max(1_000).default(''),
   /** LinkedIn steps (Phase 7): send an invitation or a message. */
   linkedinAction: linkedinActionSchema.default('message'),
+  /**
+   * Email steps: send as a reply in the thread of the person's earlier campaign emails — subject
+   * "Re: <the first one's subject>", In-Reply-To and References; in Gmail also the same thread.
+   * Without an earlier email that went out, the step's own subject is used.
+   */
+  replyAsThread: z.boolean().default(false),
 });
 
 export const conditionStepSchema = z.object({

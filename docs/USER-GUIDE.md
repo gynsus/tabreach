@@ -44,7 +44,7 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
 
 ## Campaigns
 
-1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step.
+1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
 2. Choose the sending hours (or keep the default from Settings) and the approval mode:
    - **Approve each** (default) — every message waits for you;
    - **Approve campaign** — after a sample you approved by hand, AI messages that pass every check go on their own.

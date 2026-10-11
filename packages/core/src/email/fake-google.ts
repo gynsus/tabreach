@@ -18,7 +18,7 @@ export class FakeGoogle {
   /** What the user does on the consent page. */
   consent: 'allow' | 'deny' | 'wrong_state' = 'allow';
   refreshRevoked = false;
-  readonly sent: { id: string; raw: string; messageId: string }[] = [];
+  readonly sent: { id: string; raw: string; messageId: string; threadId: string }[] = [];
   readonly inbox: { id: string; raw: string; historyId: number }[] = [];
   historyId = 100;
   /** History older than this is gone (Gmail keeps about a week). */
@@ -26,6 +26,8 @@ export class FakeGoogle {
   sendCalls = 0;
   /** Tokens revoked through the revoke endpoint. */
   readonly revoked: string[] = [];
+  /** Threads the user deleted: sending into one is refused with 404. */
+  threadsGone = false;
   /** Full downloads (format=raw) of inbox messages. */
   rawDownloads = 0;
   private challenge = '';
@@ -103,7 +105,7 @@ export class FakeGoogle {
     if (path === '/profile')
       return json(200, { emailAddress: this.address, historyId: String(this.historyId) });
     if (path === '/messages/send' && init.method === 'POST')
-      return this.send(JSON.parse(String(init.body)) as { raw: string });
+      return this.send(JSON.parse(String(init.body)) as { raw: string; threadId?: string });
     if (path === '/messages') {
       const id = (url.searchParams.get('q') ?? '').replace('rfc822msgid:', '');
       const found = this.sent.filter((m) => m.messageId === `<${id}>`);
@@ -141,7 +143,7 @@ export class FakeGoogle {
     return json(404, {});
   }
 
-  private async send(body: { raw: string }): Promise<Response> {
+  private async send(body: { raw: string; threadId?: string }): Promise<Response> {
     this.sendCalls++;
     const behaviour = this.next.shift() ?? 'ok';
     if (behaviour === 'unreachable')
@@ -150,12 +152,14 @@ export class FakeGoogle {
     if (behaviour === 'server_error') return json(500, {});
     if (behaviour === 'quota')
       return json(403, { error: { code: 403, errors: [{ reason: 'userRateLimitExceeded' }] } });
+    if (body.threadId && this.threadsGone) return json(404, { error: { code: 404, status: 'NOT_FOUND' } });
     const raw = Buffer.from(body.raw.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
     const messageId = /^Message-ID:\s*(<[^>]+>)/im.exec(raw)?.[1] ?? '';
     const id = `sent-${this.sent.length + 1}`;
-    this.sent.push({ id, raw, messageId });
+    const threadId = body.threadId ?? `t-${id}`;
+    this.sent.push({ id, raw, messageId, threadId });
     if (behaviour === 'hang') return new Promise<never>(() => {});
     if (behaviour === 'server_error_after_storing') return json(500, {});
-    return json(200, { id, threadId: `t-${id}` });
+    return json(200, { id, threadId });
   }
 }

@@ -558,6 +558,11 @@ export const en = {
       test: 'Test channel — nothing leaves this Mac',
     },
     subject: 'Subject',
+    thread: {
+      label: 'Send as a reply in the same thread',
+      hint: 'The email goes as a reply to the earlier campaign emails to this person: subject “Re: …” of the first one, in the same conversation in their mail client (and in your Gmail).',
+      subjectHint: 'Used only if no earlier email went out to the person.',
+    },
     body: 'Message',
     placeholdersHint: 'Placeholders: {{fields}}. A default after |, e.g. {{example}}',
     conditionField: 'Field',

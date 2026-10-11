@@ -17,6 +17,7 @@ const message = (over: Partial<Extract<CampaignStep, { type: 'send_message' }>> 
   body: 'Hi {{firstName}}, a note for {{companyName|your team}}.',
   instructions: '',
   signature: '',
+  replyAsThread: false,
   ...over,
 });
 
