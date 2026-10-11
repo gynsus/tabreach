@@ -104,6 +104,7 @@ command campaigns.create / campaigns.update / campaigns.archive
 command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume
 command campaigns.migrate              # { id } -> { moved, completed, busy } — live people to the launched version (docs/17)
+command campaigns.research             # { id } -> { companies, withoutCompany, fresh, queued, noWebsite, failed } — research every company of the campaign's people with its goal and ICP (FR-RES-001, docs/16)
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
 query   enrollments.list               # { campaignId } — step, next action, what it waits for (approval, schedule, window + sendingHours, retry, draft)
 command enrollments.pause / enrollments.resume / enrollments.stop

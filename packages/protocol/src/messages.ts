@@ -79,6 +79,7 @@ import {
   enrollmentSchema,
   enrollReportSchema,
   migrateReportSchema,
+  researchBatchReportSchema,
   enrollRequestSchema,
   jobSchema,
   draftVersionSchema,
@@ -356,6 +357,13 @@ export const requests = {
   'campaigns.resume': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.archive': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.migrate': { channel: 'app', kind: 'command', request: byId, response: migrateReportSchema },
+  /** Research for every company of the campaign's people, with its goal and ICP (FR-RES-001). */
+  'campaigns.research': {
+    channel: 'app',
+    kind: 'command',
+    request: byId,
+    response: researchBatchReportSchema,
+  },
   /** Only a campaign that was never launched: it has no versions, people or history. */
   'campaigns.delete': { channel: 'app', kind: 'command', request: byId, response: ok },
   'campaigns.enroll': {

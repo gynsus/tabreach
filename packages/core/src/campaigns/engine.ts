@@ -16,6 +16,7 @@ import {
   type DraftOrigin,
   type Logger,
   type PreviewContent,
+  type Qualification,
   type StopReason,
 } from '@tabreach/protocol';
 import { z } from 'zod';
@@ -37,6 +38,7 @@ import { executeSideEffect } from '../ledger/execute.js';
 import { intentKey, type IntentParts, type SideEffectLedger } from '../ledger/side-effects.js';
 import type { ContactPolicy, PolicyVerdict } from './policy.js';
 import { isInsideWindow, nextAllowedAt, recipientTimeZone } from './schedule.js';
+import type { ResearchContext, ResearchNeed } from '../research/campaign-research.js';
 import { renderTemplate } from './template.js';
 
 export const JOB_ADVANCE = 'enrollment.advance';
@@ -176,6 +178,18 @@ export interface CampaignEngineDeps {
    */
   threads?: {
     continuation(scopeId: string, beforePosition: number, channel: string): ThreadContinuation | null;
+  };
+  /**
+   * Research asked with the campaign's goal and ICP (docs/16), for `research.qualification`
+   * conditions. Without it such a condition sees no research.
+   */
+  research?: {
+    need(
+      companyId: string,
+      context: ResearchContext,
+      correlationId: string,
+      options?: { start: boolean },
+    ): ResearchNeed;
   };
   /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
   drafter?: { write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> };
@@ -346,9 +360,29 @@ export class CampaignEngine {
         }
         if (step.type === 'condition') {
           const facts = this.contact(e.contact_id);
-          const holds = facts !== undefined && this.conditionsHold(step.conditions, facts);
+          let qualification: Qualification | null = null;
+          let researchMissing: string | null = null;
+          if (facts && step.conditions.some((c) => c.field === 'research.qualification')) {
+            const need = this.researchNeed(e.campaign_id, this.versionConfig(e.campaign_version_id), facts, {
+              start: true,
+              correlationId: ctx.correlationId,
+            });
+            // The research is under way: the condition is decided when it is done.
+            if (need?.kind === 'wait') return { continueAt: need.until };
+            qualification = qualificationOf(need);
+            if (qualification === null)
+              researchMissing = need?.kind === 'unavailable' ? need.reason : 'research.none';
+          }
+          const holds = facts !== undefined && this.conditionsHold(step.conditions, facts, qualification);
           if (!holds && step.onFalse === 'stop') {
-            this.stopEnrollment(e, 'condition_not_met', ctx.correlationId, 'system');
+            // Without research the reason says why (no website, no AI key, research failed).
+            this.stopEnrollment(
+              e,
+              'condition_not_met',
+              ctx.correlationId,
+              'system',
+              researchMissing ? { rule: researchMissing } : {},
+            );
             return;
           }
           let next = this.finishStep(e, ctx.correlationId);
@@ -1555,6 +1589,7 @@ export class CampaignEngine {
       ? await this.d.drafter.write(
           {
             companyId: facts.company_id,
+            context: researchContextOf(e.campaign_id, config),
             instructions: step.instructions,
             stepNumber: run.step_position,
             // A LinkedIn invitation note holds 300 characters at most.
@@ -1627,6 +1662,7 @@ export class CampaignEngine {
    */
   async preview(
     config: CampaignConfig,
+    campaignId: string,
     contactId: string,
     generate: boolean,
     signal: AbortSignal,
@@ -1648,7 +1684,11 @@ export class CampaignEngine {
       const position = index + 1;
       at += step.delaySeconds * 1000;
       if (step.type === 'condition') {
-        const holds = this.conditionsHold(step.conditions, facts);
+        // A dry run only looks at research there is; it starts none for a condition.
+        const qualification = step.conditions.some((c) => c.field === 'research.qualification')
+          ? qualificationOf(this.researchNeed(campaignId, config, facts, { start: false, correlationId }))
+          : null;
+        const holds = this.conditionsHold(step.conditions, facts, qualification);
         conditions.push({ position, holds, onFalse: step.onFalse });
         if (!holds && step.onFalse === 'stop') return stopped(position, 'condition_not_met');
         index += holds ? 1 : 2;
@@ -1702,7 +1742,7 @@ export class CampaignEngine {
         const signature = renderTemplate(step.signature, values);
         if (signature.missing.length > 0) return stopped(position, 'missing_data', null, signature.missing);
         content = generate
-          ? await this.previewDraft(config, step, facts, signature.text, signal, correlationId)
+          ? await this.previewDraft(campaignId, config, step, facts, signature.text, signal, correlationId)
           : { kind: 'ai_not_generated' };
       }
       return {
@@ -1726,6 +1766,7 @@ export class CampaignEngine {
 
   /** An AI step's first message, written as a run would write it (generate), but not stored. */
   private async previewDraft(
+    campaignId: string,
     config: CampaignConfig,
     step: SendStep,
     facts: ContactFacts,
@@ -1739,6 +1780,7 @@ export class CampaignEngine {
       result = await this.d.drafter.write(
         {
           companyId: facts.company_id,
+          context: researchContextOf(campaignId, config),
           instructions: step.instructions,
           stepNumber: 1,
           maxLength: Math.max(
@@ -1963,11 +2005,30 @@ export class CampaignEngine {
     });
   }
 
-  private conditionsHold(conditions: Condition[], facts: ContactFacts): boolean {
+  /** The research a campaign has, or starts, for the contact's company (docs/16 "Campaign context"). */
+  private researchNeed(
+    campaignId: string,
+    config: Pick<CampaignConfig, 'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays'>,
+    facts: ContactFacts,
+    o: { start: boolean; correlationId: string },
+  ): ResearchNeed | null {
+    if (!facts.company_id || !this.d.research) return null;
+    return this.d.research.need(facts.company_id, researchContextOf(campaignId, config), o.correlationId, {
+      start: o.start,
+    });
+  }
+
+  private conditionsHold(
+    conditions: Condition[],
+    facts: ContactFacts,
+    qualification: Qualification | null = null,
+  ): boolean {
     const tags = (sql: string, id: string | null) =>
       id ? (this.d.db.prepare(sql).all(id) as { name: string }[]).map((t) => t.name) : [];
     const value = (field: Condition['field']): string | string[] | null => {
       switch (field) {
+        case 'research.qualification':
+          return qualification;
         case 'contact.firstName':
           return facts.first_name;
         case 'contact.lastName':
@@ -2077,6 +2138,28 @@ function templateValues(f: ContactFacts) {
 }
 
 const fold = (s: string) => s.normalize('NFC').toLocaleLowerCase().trim();
+
+/** The campaign's research settings as research asks with them. */
+export function researchContextOf(
+  campaignId: string | null,
+  config: Pick<CampaignConfig, 'goal' | 'icp' | 'researchInstructions' | 'researchMaxAgeDays'>,
+): ResearchContext {
+  return {
+    campaignId,
+    goal: config.goal,
+    icp: config.icp,
+    instructions: config.researchInstructions,
+    maxAgeMs: config.researchMaxAgeDays * 24 * 60 * 60_000,
+  };
+}
+
+/** The qualification research gave; an older run's when no fresh one can be had, else none. */
+function qualificationOf(need: ResearchNeed | null): Qualification | null {
+  if (!need) return null;
+  if (need.kind === 'ready') return need.run.qualification;
+  if (need.kind === 'unavailable') return need.stale?.qualification ?? null;
+  return null;
+}
 
 export function evaluateCondition(c: Condition, actual: string | string[] | null): boolean {
   const values = (Array.isArray(actual) ? actual : actual ? [actual] : []).map(fold).filter(Boolean);

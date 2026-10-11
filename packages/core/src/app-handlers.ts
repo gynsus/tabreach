@@ -22,6 +22,7 @@ import { LinkedinService } from './linkedin/linkedin-service.js';
 import { TargetResolver } from './forms/target-resolver.js';
 import { pinnedHttp } from './research/pinned-http.js';
 import { ResearchRenderer } from './research/renderer.js';
+import { CampaignResearch } from './research/campaign-research.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
@@ -121,6 +122,7 @@ export class AppServices {
   readonly ai: AiGateway;
   readonly classifier: ReplyClassifier;
   readonly research: ResearchService;
+  readonly campaignResearch: CampaignResearch;
   readonly drafts: DraftWriter;
   readonly timeline: TimelineService;
   readonly browser: BrowserService;
@@ -271,6 +273,10 @@ export class AppServices {
       threads: {
         continuation: (scope, position, channel) => this.inbox.continuation(scope, position, channel),
       },
+      research: {
+        need: (companyId, context, correlationId, o) =>
+          this.campaignResearch.need(companyId, context, correlationId, o),
+      },
       paused: () => this.appControl.isPaused(),
       drafter: { write: (req, signal, correlationId) => this.drafts.write(req, signal, correlationId) },
       beforeSend: async (channel, signal, correlationId) => {
@@ -324,9 +330,15 @@ export class AppServices {
       audit: this.audit,
       logger: logger.child({ component: 'forms' }),
     });
+    this.campaignResearch = new CampaignResearch({
+      research: this.research,
+      now,
+      logger: logger.child({ component: 'research' }),
+    });
     this.drafts = new DraftWriter({
       ai: this.ai,
       research: this.research,
+      campaignResearch: this.campaignResearch,
       now,
       logger: logger.child({ component: 'drafts' }),
     });
@@ -379,6 +391,10 @@ export class AppServices {
         if (step.executionMode === 'auto' && this.linkedin.modeFor(step.linkedinAction, 'auto') !== 'auto')
           return { field: 'steps.{i}.executionMode', key: 'linkedin.autoNotAllowed' };
         return null;
+      },
+      {
+        need: (companyId, context, correlationId, o) =>
+          this.campaignResearch.need(companyId, context, correlationId, o),
       },
     );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now, this.forms);
@@ -482,6 +498,9 @@ export class AppServices {
       )
       .handle('campaigns.migrate', ({ id }, c) =>
         mutate(['campaign', 'enrollment', 'approval', 'activity'], () => this.campaigns.migrate(id, ctx(c))),
+      )
+      .handle('campaigns.research', ({ id }, c) =>
+        mutate(['research', 'enrollment', 'activity'], () => this.campaigns.researchCompanies(id, ctx(c))),
       )
       .handle('campaigns.delete', ({ id }, c) =>
         mutate(['campaign'], () => {

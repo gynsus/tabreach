@@ -4,9 +4,12 @@ import { AiGateway } from '../ai/gateway.js';
 import { untrusted, UNTRUSTED_RULES, type PromptTemplate } from '../ai/prompts.js';
 import { AiError, type AiErrorKind } from '../ai/provider.js';
 import { RetryableError } from '../jobs/dispatcher.js';
+import type { CampaignResearch, ResearchContext } from '../research/campaign-research.js';
 import type { ResearchService } from '../research/research-service.js';
 
 const input = z.object({
+  /** The campaign's goal (docs/17), in the user's words; may be empty. */
+  goal: z.string(),
   instructions: z.string(),
   stepNumber: z.number().int().min(1),
   maxLength: z.number().int(),
@@ -32,16 +35,17 @@ export type WrittenDraft = z.infer<typeof output>;
 /**
  * docs/15 "AI use cases: personalised draft", docs/17. Version 2: no fact refs or sign-off in the
  * text, and a first message does not pretend to continue a conversation (live check, DeepSeek).
+ * Version 3: the campaign's goal.
  */
 export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
   key: 'draft.write',
-  version: 2,
+  version: 3,
   purpose: 'Write one personalised outreach email from the sender instructions and verified research facts.',
   useCase: 'drafting',
   input,
   output,
   maxTokens: 6_000,
-  build: ({ instructions, maxLength, recipient, facts, previous, nonce }) => ({
+  build: ({ goal, instructions, maxLength, recipient, facts, previous, nonce }) => ({
     system: [
       'You write one business outreach email on behalf of the sender, following the sender instructions.',
       'Write in the language of the sender instructions. Plain text, no Markdown, no placeholders.',
@@ -61,6 +65,7 @@ export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
       .filter(Boolean)
       .join(' '),
     user: [
+      ...(goal.trim() ? [`Campaign goal (what the sender wants to achieve):\n${goal.trim()}`, ''] : []),
       `Sender instructions:\n${instructions}`,
       '',
       `Recipient: ${[recipient.firstName, recipient.lastName].filter(Boolean).join(' ') || 'unknown name'}` +
@@ -83,16 +88,10 @@ export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
   }),
 };
 
-/** Research older than this is refreshed before a message relies on it. */
-const RESEARCH_MAX_AGE_MS = 30 * 24 * 60 * 60_000;
-/** A failed research is not retried for every message: without it, drafts use no facts for a day. */
-const FAILED_RESEARCH_BACKOFF_MS = 24 * 60 * 60_000;
-const RESEARCH_POLL_MS = 20_000;
-/** A research still running after this is not waited for: the message is written without it. */
-const RESEARCH_MAX_WAIT_MS = 60 * 60_000;
-
 export interface DraftRequest {
   companyId: string | null;
+  /** The campaign's goal, ICP and what to look for: the research the message relies on is asked with them. */
+  context: ResearchContext;
   instructions: string;
   stepNumber: number;
   maxLength: number;
@@ -123,22 +122,23 @@ export class DraftWriter {
     private readonly d: {
       ai: AiGateway;
       research: ResearchService;
+      campaignResearch: CampaignResearch;
       now: () => Date;
       logger: Logger;
     },
   ) {}
 
   async write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> {
-    const research = req.companyId ? this.research(req.companyId, correlationId) : { kind: 'none' as const };
-    if (research.kind === 'wait')
-      return { kind: 'wait', until: new Date(this.d.now().getTime() + RESEARCH_POLL_MS) };
-    const facts = research.kind === 'facts' ? research.facts : [];
+    const research = req.companyId ? this.research(req.companyId, req.context, correlationId) : null;
+    if (research?.kind === 'wait') return { kind: 'wait', until: research.until };
+    const facts = research?.kind === 'facts' ? research.facts : [];
     const refs = facts.map((f, i) => ({ ref: `F${i + 1}`, ...f }));
     let draft: WrittenDraft;
     try {
       draft = await this.d.ai.run(
         writeDraft,
         {
+          goal: req.context.goal,
           instructions: req.instructions,
           stepNumber: req.stepNumber,
           maxLength: req.maxLength,
@@ -161,47 +161,32 @@ export class DraftWriter {
       kind: 'ready',
       draft,
       facts: refs.filter((f) => used.has(f.ref)).map(({ id, claim, quote }) => ({ id, claim, quote })),
-      researchRunId: research.kind === 'facts' ? research.runId : null,
+      researchRunId: research?.kind === 'facts' ? research.runId : null,
       model: this.d.ai.settings().models.drafting,
       template: `${writeDraft.key}@${writeDraft.version}`,
     };
   }
 
+  /**
+   * The facts a message relies on: research asked with the campaign's context while it is fresh
+   * (started when there is none); without it, the latest facts there are, or none.
+   */
   private research(
     companyId: string,
+    context: ResearchContext,
     correlationId: string,
   ):
     | { kind: 'facts'; runId: string; facts: { id: string; claim: string; quote: string }[] }
-    | { kind: 'wait' }
+    | { kind: 'wait'; until: Date }
     | { kind: 'none' } {
-    const now = this.d.now().getTime();
-    // A run whose job is gone is failed first, so a draft never waits on it (audit 4.5).
-    this.d.research.resync();
-    const [latest] = this.d.research.list(companyId);
-    if (
-      latest &&
-      (latest.status === 'pending' || latest.status === 'running') &&
-      now - new Date(latest.startedAt).getTime() < RESEARCH_MAX_WAIT_MS
-    )
-      return { kind: 'wait' };
-    const found = this.d.research.latestFacts(companyId);
-    const completedAt = found
-      ? this.d.research.list(companyId).find((r) => r.id === found.runId)?.finishedAt
-      : null;
-    if (found && completedAt && now - new Date(completedAt).getTime() < RESEARCH_MAX_AGE_MS)
-      return { kind: 'facts', runId: found.runId, facts: found.facts };
-    const recentFailure =
-      latest?.status === 'failed' && now - new Date(latest.startedAt).getTime() < FAILED_RESEARCH_BACKOFF_MS;
-    if (!recentFailure) {
-      try {
-        this.d.research.start({ companyId }, { correlationId }, 'system');
-        return { kind: 'wait' };
-      } catch (error) {
-        // No website, or no AI key: write without facts rather than not at all.
-        this.d.logger.info({ event: 'draft.research_unavailable', companyId, correlationId }, String(error));
-      }
-    }
-    return found ? { kind: 'facts', runId: found.runId, facts: found.facts } : { kind: 'none' };
+    const need = this.d.campaignResearch.need(companyId, context, correlationId);
+    if (need.kind === 'wait') return need;
+    if (need.kind === 'ready')
+      return { kind: 'facts', runId: need.run.id, facts: this.d.research.factsOf(need.run.id) };
+    const fallback = need.stale
+      ? { runId: need.stale.id, facts: this.d.research.factsOf(need.stale.id) }
+      : this.d.research.latestFacts(companyId);
+    return fallback ? { kind: 'facts', ...fallback } : { kind: 'none' };
   }
 }
 

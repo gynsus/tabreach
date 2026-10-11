@@ -13,13 +13,22 @@ import {
   type EnrollmentStatus,
   type EnrollReport,
   type MigrateReport,
+  type Qualification,
+  type ResearchBatchReport,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
 import type { ChannelResolver } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
 import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
-import { JOB_RUN, type CampaignEngine, type EnrollmentRow, type VersionConfig } from './engine.js';
+import {
+  JOB_RUN,
+  researchContextOf,
+  type CampaignEngine,
+  type CampaignEngineDeps,
+  type EnrollmentRow,
+  type VersionConfig,
+} from './engine.js';
 import { isValidTimeZone } from './schedule.js';
 import { unknownPlaceholders } from './template.js';
 
@@ -57,6 +66,8 @@ export class CampaignService {
       field: string;
       key: string;
     } | null,
+    /** Research asked with the campaign's goal and ICP (docs/16); for "Research companies" and the People list. */
+    private readonly research?: CampaignEngineDeps['research'],
   ) {}
 
   list(includeArchived: boolean): Campaign[] {
@@ -150,6 +161,7 @@ export class CampaignService {
     if (!contact) throw notFound('contact');
     const { conditions, ...outcome } = await this.engine.preview(
       config,
+      input.campaignId,
       input.contactId,
       input.generate,
       signal,
@@ -249,6 +261,47 @@ export class CampaignService {
    * Moves the campaign's live people to its launched version; who cannot move safely stays
    * (docs/17, "Moving people to the current version").
    */
+  /**
+   * Research for every company of the campaign's people still in it (FR-RES-001, docs/16): asked
+   * with the launched version's goal, ICP and instructions; companies with fresh research are left
+   * alone. Runs are queued (two at a time); the report counts what happened.
+   */
+  researchCompanies(id: string, ctx: CommandContext): ResearchBatchReport {
+    return transaction(this.db, () => {
+      const row = this.row(id);
+      if (!row.active_version_id || (row.status !== 'active' && row.status !== 'paused')) {
+        throw conflict('campaign.notLaunched');
+      }
+      if (!this.aiReady()) throw new RpcError('CONFLICT', 'No AI key', 'ai.no_key');
+      if (!this.research) throw new RpcError('UNAVAILABLE', 'Research is not available', 'research.failed');
+      const config = this.engine.versionConfig(row.active_version_id);
+      const people = this.db
+        .prepare(
+          `SELECT c.company_id FROM campaign_enrollments e JOIN contacts c ON c.id = e.contact_id
+           WHERE e.campaign_id = ? AND e.status IN ('active', 'paused')`,
+        )
+        .all(id) as { company_id: string | null }[];
+      const companies = [...new Set(people.map((p) => p.company_id).filter((c): c is string => c !== null))];
+      const report: ResearchBatchReport = {
+        companies: companies.length,
+        withoutCompany: people.filter((p) => p.company_id === null).length,
+        fresh: 0,
+        queued: 0,
+        noWebsite: 0,
+        failed: 0,
+      };
+      for (const companyId of companies) {
+        const need = this.research.need(companyId, researchContextOf(id, config), ctx.correlationId);
+        if (need.kind === 'ready') report.fresh++;
+        else if (need.kind === 'wait') report.queued++;
+        else if (need.reason === 'research.noWebsite') report.noWebsite++;
+        else report.failed++;
+      }
+      this.record('campaign.researched', id, ctx, { ...report });
+      return report;
+    });
+  }
+
   migrate(id: string, ctx: CommandContext): MigrateReport {
     return transaction(this.db, () => {
       const row = this.row(id);
@@ -387,6 +440,14 @@ export class CampaignService {
   /** Launch validation (docs/17): field paths map to translatable keys. */
   private validate(config: CampaignConfig): void {
     const fields: Record<string, string> = {};
+    config.steps.forEach((step, i) => {
+      // A research condition needs research, and research needs an AI key: without one every person would stop.
+      if (step.type === 'condition' && step.conditions.some((c) => c.field === 'research.qualification')) {
+        if (!this.aiReady()) fields[`steps.${i}.conditions`] = 'ai.keyRequired';
+        else if (step.conditions.some((c) => c.field === 'research.qualification' && !config.icp.trim()))
+          fields[`steps.${i}.conditions`] = 'campaign.icpRequired';
+      }
+    });
     if (config.steps.length === 0) fields.steps = 'steps.required';
     if (config.timezone !== null && !isValidTimeZone(config.timezone)) fields.timezone = 'timezone.invalid';
     config.steps.forEach((step, i) => {
@@ -498,9 +559,23 @@ export class CampaignService {
       stepCount: this.engine.stepCount(r.campaign_version_id),
       nextActionAt: r.status === 'active' ? r.next_action_at : null,
       stopReason: r.stop_reason,
+      qualification: this.qualification(r),
       ...this.waiting(r),
       updatedAt: r.updated_at,
     };
+  }
+
+  /** The company's qualification by research with this version's context, if there is any (nothing is started). */
+  private qualification(r: EnrollmentRow): Qualification | null {
+    if (!this.research || !r.company_id) return null;
+    const need = this.research.need(
+      r.company_id,
+      researchContextOf(r.campaign_id, this.engine.versionConfig(r.campaign_version_id)),
+      'people-list',
+      { start: false },
+    );
+    if (need.kind === 'ready') return need.run.qualification;
+    return need.kind === 'unavailable' ? (need.stale?.qualification ?? null) : null;
   }
 
   private waiting(e: EnrollmentRow): Pick<Enrollment, 'waiting' | 'sendingHours'> {

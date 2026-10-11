@@ -44,6 +44,10 @@ interface RunRow {
   status: ResearchRun['status'];
   error: string | null;
   criteria: string | null;
+  goal: string | null;
+  instructions: string | null;
+  context_hash: string | null;
+  campaign_id: string | null;
   summary: string | null;
   qualification: ResearchRun['qualification'];
   qualification_reason: string | null;
@@ -121,7 +125,14 @@ export class ResearchService {
   }
 
   start(
-    input: { companyId: string; criteria?: string | null | undefined },
+    input: {
+      companyId: string;
+      criteria?: string | null | undefined;
+      /** A campaign's goal and what to look for (docs/16 "Campaign context"). */
+      goal?: string | null | undefined;
+      instructions?: string | null | undefined;
+      campaignId?: string | null | undefined;
+    },
     ctx: CommandContext,
     /** `system` when a campaign's AI step starts it, not the user. */
     actor: 'user' | 'system' = 'user',
@@ -132,14 +143,25 @@ export class ResearchService {
         throw RpcError.validation({ website: 'research.noWebsite' }, 'research.noWebsite');
       if (!this.d.ai.settings().keySet) throw new RpcError('CONFLICT', 'No AI key', 'ai.no_key');
       const id = uuidv7();
+      const context = {
+        goal: input.goal?.trim() ?? '',
+        icp: input.criteria?.trim() ?? '',
+        instructions: input.instructions?.trim() ?? '',
+      };
       this.d.db
         .prepare(
-          `INSERT INTO research_runs (id, company_id, status, criteria, correlation_id, started_at) VALUES (?, ?, 'pending', ?, ?, ?)`,
+          `INSERT INTO research_runs (id, company_id, status, criteria, goal, instructions, context_hash, campaign_id,
+                                      correlation_id, started_at)
+           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
           input.companyId,
-          input.criteria?.trim() || null,
+          context.icp || null,
+          context.goal || null,
+          context.instructions || null,
+          researchContextHash(context),
+          input.campaignId ?? null,
           ctx.correlationId,
           this.d.now().toISOString(),
         );
@@ -211,13 +233,39 @@ export class ResearchService {
         `SELECT id FROM research_runs WHERE company_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1`,
       )
       .get(companyId) as { id: string } | undefined;
-    if (!run) return null;
-    const facts = this.d.db
+    return run ? { runId: run.id, facts: this.factsOf(run.id) } : null;
+  }
+
+  /** Verified facts of one run. */
+  factsOf(runId: string): { id: string; claim: string; quote: string }[] {
+    return this.d.db
       .prepare(
         `SELECT id, claim, quote FROM research_facts WHERE research_run_id = ? AND kind = 'fact' AND verified = 1 ORDER BY position`,
       )
-      .all(run.id) as { id: string; claim: string; quote: string }[];
-    return { runId: run.id, facts };
+      .all(runId) as { id: string; claim: string; quote: string }[];
+  }
+
+  /**
+   * The company's latest run asked with this context (any status), and its latest completed one
+   * (docs/16 "Campaign context"); `contextHash` null is the empty context.
+   */
+  forContext(
+    companyId: string,
+    contextHash: string | null,
+  ): { latest: ResearchRun | null; completed: ResearchRun | null } {
+    const pick = (status: string | null) =>
+      this.d.db
+        .prepare(
+          `SELECT * FROM research_runs WHERE company_id = ? AND context_hash IS ? ${status ? 'AND status = ?' : ''}
+           ORDER BY started_at DESC LIMIT 1`,
+        )
+        .get(...([companyId, contextHash, ...(status ? [status] : [])] as string[])) as RunRow | undefined;
+    const latest = pick(null);
+    const completed = pick('completed');
+    return {
+      latest: latest ? this.toDto(latest) : null,
+      completed: completed ? this.toDto(completed) : null,
+    };
   }
 
   async run(runId: string, signal: AbortSignal): Promise<void> {
@@ -294,6 +342,8 @@ export class ResearchService {
         {
           company: { name: company.name, site },
           criteria: run.criteria,
+          goal: run.goal,
+          instructions: run.instructions,
           language: this.d.language(),
           pages: pages.map((p, i) => ({
             ref: `E${i + 1}`,
@@ -483,6 +533,9 @@ export class ResearchService {
       status: r.status,
       error: r.error,
       criteria: r.criteria,
+      goal: r.goal,
+      instructions: r.instructions,
+      campaignId: r.campaign_id,
       summary: r.summary,
       qualification: r.qualification,
       qualificationReason: r.qualification_reason,
@@ -499,6 +552,18 @@ export class ResearchService {
 }
 
 const MAX_ATTEMPTS = 3;
+
+/**
+ * Identifies what a run was asked for, so a campaign reuses only research done with its own goal,
+ * ICP and instructions. The empty context is null (runs from before migration 21 have null too).
+ */
+export function researchContextHash(c: { goal: string; icp: string; instructions: string }): string | null {
+  const parts = [c.goal.trim(), c.icp.trim(), c.instructions.trim()];
+  if (parts.every((p) => p === '')) return null;
+  return createHash('sha256')
+    .update(JSON.stringify(['v1', ...parts]))
+    .digest('hex');
+}
 
 /** Where research starts: the website as entered (a scheme added when missing), else the domain. */
 export function siteUrl(company: {
