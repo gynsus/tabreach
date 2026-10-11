@@ -53,6 +53,10 @@ BrowserTask          owns: execution record of one unit of browser work (dispatc
 BrowserSession       owns: control mode (automation/paused/human) and liveness.
                            Gates task execution; never holds workflow state.
 
+HumanTask            owns: a human_task step for one person (open/done/skipped/cancelled).
+                           No WorkflowRun: the enrollment waits on it; resolving it moves the
+                           enrollment's step (docs/17).
+
 SideEffect (ledger)  owns: whether an external action happened (reserved/executing/
                            completed/not_sent/unknown). Consulted before any critical execution.
 HumanIntervention    owns: an open request to the user and its resolution.

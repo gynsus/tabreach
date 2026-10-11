@@ -6,7 +6,7 @@ import {
   type CampaignStep,
   type Condition,
 } from '@tabreach/protocol';
-import { ArrowDown, ArrowUp, Mail, Plus, Split, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ClipboardCheck, Mail, Plus, Split, Trash2 } from 'lucide-react';
 import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -30,6 +30,13 @@ export const newMessage = (): CampaignStep => ({
   instructions: '',
   signature: '',
   replyAsThread: false,
+});
+
+export const newTask = (): CampaignStep => ({
+  type: 'human_task',
+  delaySeconds: 0,
+  title: '',
+  instructions: '',
 });
 
 export const newCondition = (): CampaignStep => ({
@@ -68,6 +75,8 @@ export function SequenceEditor(props: {
             <h3 className="flex items-center gap-2 text-[13px] font-semibold">
               {step.type === 'send_message' ? (
                 <Mail size={14} aria-hidden />
+              ) : step.type === 'human_task' ? (
+                <ClipboardCheck size={14} aria-hidden />
               ) : (
                 <Split size={14} aria-hidden />
               )}
@@ -126,6 +135,14 @@ export function SequenceEditor(props: {
               disabled={props.disabled}
               onChange={(s) => update(i, s)}
             />
+          ) : step.type === 'human_task' ? (
+            <TaskFields
+              step={step}
+              index={i}
+              errors={props.errors}
+              disabled={props.disabled}
+              onChange={(s) => update(i, s)}
+            />
           ) : (
             <ConditionFields
               step={step}
@@ -145,6 +162,10 @@ export function SequenceEditor(props: {
           <Plus size={14} aria-hidden />
           {t('campaigns.addCondition')}
         </Button>
+        <Button disabled={props.disabled} onClick={() => onChange([...steps, newTask()])}>
+          <Plus size={14} aria-hidden />
+          {t('campaigns.addTask')}
+        </Button>
       </div>
       {props.errors.steps ? <p className="text-xs text-bad">{t('errors.steps.required')}</p> : null}
     </div>
@@ -153,6 +174,55 @@ export function SequenceEditor(props: {
 
 type MessageStep = Extract<CampaignStep, { type: 'send_message' }>;
 type ConditionStep = Extract<CampaignStep, { type: 'condition' }>;
+type TaskStep = Extract<CampaignStep, { type: 'human_task' }>;
+
+/** A step the person does and marks done in Tasks (docs/17 human_task). */
+function TaskFields(props: {
+  step: TaskStep;
+  index: number;
+  errors: Record<string, string>;
+  disabled: boolean;
+  onChange: (step: TaskStep) => void;
+}) {
+  const { t } = useTranslation();
+  const { step, index } = props;
+  return (
+    <>
+      <p className="text-xs text-soft">{t('campaigns.task.hint')}</p>
+      <Field label={t('campaigns.task.title')} errorKey={props.errors[`steps.${index}.title`]}>
+        {(id, describedBy) => (
+          <Input
+            id={id}
+            value={step.title}
+            maxLength={200}
+            placeholder={t('campaigns.task.titlePlaceholder')}
+            disabled={props.disabled}
+            aria-describedby={describedBy}
+            aria-invalid={props.errors[`steps.${index}.title`] ? true : undefined}
+            onChange={(e) => props.onChange({ ...step, title: e.target.value })}
+          />
+        )}
+      </Field>
+      <Field
+        label={t('campaigns.task.instructions')}
+        hint={t('campaigns.task.instructionsHint')}
+        errorKey={props.errors[`steps.${index}.instructions`]}
+      >
+        {(id, describedBy) => (
+          <textarea
+            id={id}
+            className={cn(textarea, 'min-h-20')}
+            value={step.instructions}
+            maxLength={4_000}
+            disabled={props.disabled}
+            aria-describedby={describedBy}
+            onChange={(e) => props.onChange({ ...step, instructions: e.target.value })}
+          />
+        )}
+      </Field>
+    </>
+  );
+}
 
 function MessageFields(props: {
   step: MessageStep;

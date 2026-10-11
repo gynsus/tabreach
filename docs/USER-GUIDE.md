@@ -44,7 +44,7 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
 
 ## Campaigns
 
-1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
+1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A **task** step is something you do yourself, such as a call: when a person reaches it, it appears in **Tasks** with their details, and their sequence goes on when you press **Done** or **Skip** (or **Stop the person**). A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
 2. Fill in **Goal and audience** (optional, but it makes research and AI messages much better):
    - **Goal** — what the campaign should achieve; AI messages aim at it.
    - **Who fits (ICP)** — location, company type, signals, and who to leave out. Research rates each company: fits, may fit, does not fit, or not enough data. The People list shows the rating.

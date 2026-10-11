@@ -504,6 +504,15 @@ export class AppServices {
       .handle('campaigns.migrate', ({ id }, c) =>
         mutate(['campaign', 'enrollment', 'approval', 'activity'], () => this.campaigns.migrate(id, ctx(c))),
       )
+      .handle('tasks.list', ({ status, limit, offset }) =>
+        this.campaigns.listTasks(status, { limit, offset }),
+      )
+      .handle('tasks.resolve', ({ id, outcome }, c) =>
+        mutate(['task', 'enrollment', 'campaign', 'activity'], () => {
+          this.campaigns.resolveTask(id, outcome, ctx(c));
+          return { ok: true as const };
+        }),
+      )
       .handle('campaigns.research', ({ id }, c) =>
         mutate(['research', 'enrollment', 'activity'], () => this.campaigns.researchCompanies(id, ctx(c))),
       )

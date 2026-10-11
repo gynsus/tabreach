@@ -16,6 +16,7 @@ export const changedEntitySchema = z.enum([
   'conversation',
   'research',
   'browser',
+  'task',
 ]);
 export type ChangedEntity = z.infer<typeof changedEntitySchema>;
 

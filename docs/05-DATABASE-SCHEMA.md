@@ -493,6 +493,8 @@ Index `(conversation_id, created_at)`. A sent reply is also stored in `messages`
 
 ### Research (implemented, migration 13)
 
+`human_tasks (id, campaign_enrollment_id, campaign_version_id, step_position, title, instructions, status open|done|skipped|cancelled, resolution, created_at, resolved_at)` — one open task per person and step (migration 23; `sequence_steps.step_type` also allows `human_task`).
+
 `research_runs (id, company_id, status, error, criteria, goal, instructions, context_hash, campaign_id, summary, qualification, qualification_reason, reason_to_contact, missing_information json, template, model, pages_fetched, pages_skipped, correlation_id, started_at, finished_at)`; `evidence (id, url, title, content_hash unique, text, extractor, captured_at)`; `research_run_evidence (research_run_id, evidence_id)`; `research_facts (id, research_run_id, position, kind fact|inference, claim, evidence_id, quote, verified 0/1, based_on json, created_at)`. The earlier `research_runs` / `evidence` / `research_facts` sections above describe the target shape; these are what exists.
 
 ### `ai_calls`

@@ -116,6 +116,15 @@ function PreviewResult({ preview, onGenerate }: { preview: CampaignPreview; onGe
         </ul>
       ) : null}
       {o.kind === 'none' ? <p>{t('campaigns.dryRun.none')}</p> : null}
+      {o.kind === 'task' ? (
+        <p>
+          {t('campaigns.dryRun.task', {
+            title: o.title,
+            position: o.position,
+            at: formatDateTime(o.plannedAt, i18n.language),
+          })}
+        </p>
+      ) : null}
       {o.kind === 'stopped' ? (
         <div className="grid gap-1">
           <p className="font-medium text-bad">

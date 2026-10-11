@@ -128,7 +128,22 @@ export const conditionStepSchema = z.object({
   onFalse: z.enum(['stop', 'skip']),
 });
 
-export const stepSchema = z.discriminatedUnion('type', [sendMessageStepSchema, conditionStepSchema]);
+/**
+ * A step the person does themselves and marks done (docs/17): a call, a check, a gift. The
+ * sequence waits for it in Tasks; title and instructions take placeholders.
+ */
+export const humanTaskStepSchema = z.object({
+  type: z.literal('human_task'),
+  delaySeconds,
+  title: z.string().max(200),
+  instructions: z.string().max(4_000).default(''),
+});
+
+export const stepSchema = z.discriminatedUnion('type', [
+  sendMessageStepSchema,
+  conditionStepSchema,
+  humanTaskStepSchema,
+]);
 export type CampaignStep = z.infer<typeof stepSchema>;
 
 export const campaignConfigSchema = z.object({
@@ -300,7 +315,7 @@ export const enrollmentSchema = z.object({
   nextActionAt: z.iso.datetime().nullable(),
   stopReason: stopReasonSchema.nullable(),
   /** What the current step is waiting for, if anything; `window` — the recipient's sending hours. */
-  waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft', 'budget']).nullable(),
+  waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft', 'budget', 'task']).nullable(),
   /** The sending hours and zone that hold it, when `waiting` is `window`. */
   sendingHours: z.object({ timeZone: z.string(), window: activeWindowSchema }).nullable(),
   /** The company's qualification by research with this campaign's goal and ICP, if researched. */
@@ -383,6 +398,13 @@ export const campaignPreviewSchema = z.object({
   outcome: z.discriminatedUnion('kind', [
     /** No message step is reached (no steps, or every one skipped). */
     z.object({ kind: z.literal('none') }),
+    /** A task for the person comes before any message (a human_task step). */
+    z.object({
+      kind: z.literal('task'),
+      position: z.number().int(),
+      title: z.string(),
+      plannedAt: z.iso.datetime(),
+    }),
     /** The contact would be stopped before anything goes out. */
     z.object({
       kind: z.literal('stopped'),
@@ -545,4 +567,33 @@ export type LinkedinSettings = z.infer<typeof linkedinSettingsSchema>;
 export const linkedinSettingsUpdateSchema = linkedinSettingsSchema.omit({ riskAcknowledgedAt: true }).extend({
   /** Ticked in the settings: the person read the risk notice. */
   acknowledgeRisk: z.boolean(),
+});
+
+// Tasks (human_task steps) ---------------------------------------------------------------------
+
+export const humanTaskStatusSchema = z.enum(['open', 'done', 'skipped', 'cancelled']);
+
+export const humanTaskSchema = z.object({
+  id,
+  enrollmentId: id,
+  campaignId: id,
+  campaignName: z.string(),
+  contactId: id,
+  contactName: z.string(),
+  email: z.string().nullable(),
+  companyName: z.string().nullable(),
+  stepPosition: z.number().int(),
+  /** With the person's details filled in. */
+  title: z.string(),
+  instructions: z.string(),
+  status: humanTaskStatusSchema,
+  createdAt: z.iso.datetime(),
+  resolvedAt: z.iso.datetime().nullable(),
+});
+export type HumanTask = z.infer<typeof humanTaskSchema>;
+
+export const taskResolveSchema = z.object({
+  id,
+  /** done: the sequence goes on; skip: it goes on without it; stop: the person leaves the campaign. */
+  outcome: z.enum(['done', 'skip', 'stop']),
 });

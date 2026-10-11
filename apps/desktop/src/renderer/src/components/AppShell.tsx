@@ -2,6 +2,7 @@ import {
   Activity,
   Building2,
   CheckCheck,
+  ClipboardCheck,
   Gauge,
   Globe,
   Inbox,
@@ -19,6 +20,7 @@ import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
 import { useInboxCounts } from '../routes/inbox/InboxPage';
 import { PausedBanner } from '../routes/status/AppControl';
 import { useInterventions } from '../routes/status/Interventions';
+import { useOpenTasks } from '../routes/tasks/TasksPage';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
   const Icon = props.icon;
@@ -76,6 +78,7 @@ function CoreBanner() {
 
 export function AppShell() {
   const { t } = useTranslation();
+  const tasks = useOpenTasks();
   const pending = usePendingApprovals();
   const inbox = useInboxCounts();
   const interventions = useInterventions();
@@ -102,6 +105,7 @@ export function AppShell() {
             label={t('nav.approvals')}
             count={pending.data?.items.length ?? 0}
           />
+          <NavItem to="/tasks" icon={ClipboardCheck} label={t('nav.tasks')} count={tasks.data?.total ?? 0} />
           <NavItem to="/activity" icon={Activity} label={t('nav.activity')} />
         </NavGroup>
         <div className="mt-auto">

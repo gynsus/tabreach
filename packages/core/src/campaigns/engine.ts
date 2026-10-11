@@ -392,6 +392,11 @@ export class CampaignEngine {
           if (next > now) return { continueAt: next };
           continue;
         }
+        if (step.type === 'human_task') {
+          // The person does this step: a task waits in Tasks; resolving it moves the sequence on.
+          if (!this.openTask(e.id, e.current_step_position)) this.createTask(e, step, ctx.correlationId);
+          return;
+        }
         const runId = uuidv7();
         const ts = now.toISOString();
         this.d.db
@@ -928,6 +933,7 @@ export class CampaignEngine {
   }
 
   private completeEnrollment(e: EnrollmentRow, correlationId: string): void {
+    this.cancelTasks(e.id, 'completed');
     this.updateEnrollment(e, {
       status: 'completed',
       current_step_position: e.current_step_position,
@@ -967,6 +973,8 @@ export class CampaignEngine {
       if (run.status !== 'waiting_approval' || decided || effect) return 'busy';
       this.cancelRun(run);
     }
+    // A task of the old version goes; the new version's step at this position decides what comes.
+    this.cancelTasks(e.id, 'moved');
     const versionNumber = (id: string) =>
       (
         this.d.db.prepare('SELECT version_number FROM campaign_versions WHERE id = ?').get(id) as {
@@ -1038,6 +1046,7 @@ export class CampaignEngine {
   ): void {
     const run = this.openRun(e.id);
     if (run) this.cancelRun(run);
+    this.cancelTasks(e.id, `stopped:${reason}`);
     this.updateEnrollment(e, { status: 'stopped', stop_reason: reason, next_action_at: null });
     this.d.audit.record({
       actorType: actor,
@@ -1048,6 +1057,112 @@ export class CampaignEngine {
       correlationId,
     });
     this.d.changed(['enrollment', 'approval', 'campaign', 'activity']);
+  }
+
+  // Tasks (human_task steps) ----------------------------------------------------------------
+
+  openTask(enrollmentId: string, position: number): { id: string } | undefined {
+    return this.d.db
+      .prepare(
+        `SELECT id FROM human_tasks WHERE campaign_enrollment_id = ? AND step_position = ? AND status = 'open'`,
+      )
+      .get(enrollmentId, position) as { id: string } | undefined;
+  }
+
+  private createTask(
+    e: EnrollmentRow,
+    step: Extract<CampaignStep, { type: 'human_task' }>,
+    correlationId: string,
+  ): void {
+    const facts = this.contact(e.contact_id);
+    const values = facts ? templateValues(facts) : {};
+    const id = uuidv7();
+    this.d.db
+      .prepare(
+        `INSERT INTO human_tasks (id, campaign_enrollment_id, campaign_version_id, step_position, title, instructions,
+                                  status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'open', ?)`,
+      )
+      .run(
+        id,
+        e.id,
+        e.campaign_version_id,
+        e.current_step_position,
+        // A placeholder without a value is left empty rather than holding the person back.
+        renderTemplate(step.title, values).text,
+        renderTemplate(step.instructions, values).text,
+        this.d.now().toISOString(),
+      );
+    this.d.audit.record({
+      actorType: 'system',
+      actionType: 'task.created',
+      objectType: 'enrollment',
+      objectId: e.id,
+      payload: { taskId: id, step: e.current_step_position },
+      correlationId,
+    });
+    this.d.changed(['task', 'enrollment']);
+  }
+
+  /**
+   * The person resolved a task: done or skipped moves the sequence on (with the next step's delay
+   * from now); stop takes the person out of the campaign.
+   */
+  resolveTask(taskId: string, outcome: 'done' | 'skip' | 'stop', correlationId: string): void {
+    transaction(this.d.db, () => {
+      const task = this.d.db.prepare('SELECT * FROM human_tasks WHERE id = ?').get(taskId) as
+        | {
+            id: string;
+            campaign_enrollment_id: string;
+            campaign_version_id: string;
+            step_position: number;
+            status: string;
+          }
+        | undefined;
+      if (!task) throw new RpcError('NOT_FOUND', 'Task not found', 'task.notFound');
+      if (task.status !== 'open') throw new RpcError('CONFLICT', 'Task is not open', 'task.notOpen');
+      const ts = this.d.now().toISOString();
+      this.d.db
+        .prepare(`UPDATE human_tasks SET status = ?, resolution = ?, resolved_at = ? WHERE id = ?`)
+        .run(
+          outcome === 'done' ? 'done' : outcome === 'skip' ? 'skipped' : 'cancelled',
+          `user:${outcome}`,
+          ts,
+          task.id,
+        );
+      this.d.audit.record({
+        actorType: 'user',
+        actionType: 'task.resolved',
+        objectType: 'enrollment',
+        objectId: task.campaign_enrollment_id,
+        payload: { taskId: task.id, outcome },
+        correlationId,
+      });
+      const e = this.enrollment(task.campaign_enrollment_id);
+      if (!e || (e.status !== 'active' && e.status !== 'paused')) return;
+      if (outcome === 'stop') {
+        this.stopEnrollment(e, 'manual', correlationId, 'user', { taskId: task.id });
+        return;
+      }
+      // Only the step the task belongs to moves on (not a later one, after a move to another version).
+      if (
+        e.campaign_version_id === task.campaign_version_id &&
+        e.current_step_position === task.step_position
+      ) {
+        this.finishStep(e, correlationId);
+      }
+      this.d.changed(['task', 'enrollment', 'activity']);
+    });
+  }
+
+  private cancelTasks(enrollmentId: string, resolution: string): void {
+    const { changes } = this.d.db
+      .prepare(
+        `UPDATE human_tasks SET status = 'cancelled', resolution = ?, resolved_at = ?
+         WHERE campaign_enrollment_id = ? AND status = 'open'`,
+      )
+      .run(resolution, this.d.now().toISOString(), enrollmentId);
+    if (Number(changes) > 0) this.d.changed(['task']);
   }
 
   private cancelRun(run: RunRow): void {
@@ -1693,6 +1808,16 @@ export class CampaignEngine {
         if (!holds && step.onFalse === 'stop') return stopped(position, 'condition_not_met');
         index += holds ? 1 : 2;
         continue;
+      }
+      if (step.type === 'human_task') {
+        // The person's own step comes first: the dry run stops at it.
+        return {
+          kind: 'task',
+          position,
+          title: renderTemplate(step.title, templateValues(facts)).text,
+          plannedAt: new Date(at).toISOString(),
+          conditions,
+        };
       }
       const target = this.targetFor(step.channel, facts);
       const values = templateValues(facts);
