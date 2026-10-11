@@ -46,6 +46,7 @@ export const auditActionTypes = [
   'enrollment.completed',
   'enrollment.migrated',
   'campaign.migrated',
+  'campaign.researched',
   'approval.requested',
   'approval.approved',
   'approval.rejected',

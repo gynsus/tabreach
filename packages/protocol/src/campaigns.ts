@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { qualificationSchema } from './research.js';
 import { browserExecutionModeSchema, formFieldSchema, stepExecutionModeSchema } from './browser.js';
 
 /** DTOs for campaigns, enrollments, approvals, contact policy and jobs (docs/06, docs/17, ADR 021). */
@@ -68,6 +69,8 @@ export type LinkedinAction = z.infer<typeof linkedinActionSchema>;
 
 /** Fields a condition step can test (ADR 021 §7). */
 export const conditionFieldSchema = z.enum([
+  /** The company's qualification by research with this campaign's goal and ICP (docs/16); waits for it. */
+  'research.qualification',
   'contact.firstName',
   'contact.lastName',
   'contact.jobTitle',
@@ -147,6 +150,14 @@ export const campaignConfigSchema = z.object({
   allowedLinkDomains: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
   /** The email account email steps send from (required when the campaign has email steps). */
   emailAccountId: z.uuid().nullable().default(null),
+  /** What the campaign wants to achieve: research weighs relevance by it, AI messages aim at it. */
+  goal: z.string().trim().max(1_000).default(''),
+  /** Who fits (ICP): location, company type, services, signals, exclusions. Research qualifies against it. */
+  icp: z.string().trim().max(2_000).default(''),
+  /** What research should look for on the company's site, beyond the usual. */
+  researchInstructions: z.string().trim().max(2_000).default(''),
+  /** Research older than this is run again before the campaign relies on it. */
+  researchMaxAgeDays: z.number().int().min(1).max(365).default(30),
 });
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 /** A config as written by a caller: fields with defaults may be left out. */
@@ -162,6 +173,10 @@ export const EMPTY_CAMPAIGN_CONFIG: CampaignConfig = {
   forbiddenPhrases: [],
   allowedLinkDomains: [],
   emailAccountId: null,
+  goal: '',
+  icp: '',
+  researchInstructions: '',
+  researchMaxAgeDays: 30,
 };
 
 // Campaigns ---------------------------------------------------------------------------------
@@ -208,6 +223,21 @@ export const migrateReportSchema = z.object({
   busy: z.number().int().nonnegative(),
 });
 export type MigrateReport = z.infer<typeof migrateReportSchema>;
+
+/** "Research companies" (FR-RES-001): what happened to each company of the campaign's people. */
+export const researchBatchReportSchema = z.object({
+  companies: z.number().int().nonnegative(),
+  /** People without a company: nothing to research. */
+  withoutCompany: z.number().int().nonnegative(),
+  /** Already researched with this campaign's goal and ICP, recently enough. */
+  fresh: z.number().int().nonnegative(),
+  /** Started now or already under way. */
+  queued: z.number().int().nonnegative(),
+  noWebsite: z.number().int().nonnegative(),
+  /** Failed within the last day: not tried again yet. */
+  failed: z.number().int().nonnegative(),
+});
+export type ResearchBatchReport = z.infer<typeof researchBatchReportSchema>;
 
 export const enrollRequestSchema = z.object({
   campaignId: id,
@@ -265,6 +295,8 @@ export const enrollmentSchema = z.object({
   waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft']).nullable(),
   /** The sending hours and zone that hold it, when `waiting` is `window`. */
   sendingHours: z.object({ timeZone: z.string(), window: activeWindowSchema }).nullable(),
+  /** The company's qualification by research with this campaign's goal and ICP, if researched. */
+  qualification: qualificationSchema.nullable(),
   updatedAt: z.iso.datetime(),
 });
 export type Enrollment = z.infer<typeof enrollmentSchema>;

@@ -583,6 +583,36 @@ export const en = {
       'company.country': 'Country',
       'company.city': 'City',
       'company.tags': 'Company tags',
+      'research.qualification': 'Research: fits the ICP',
+    },
+    chooseQualification: 'Choose…',
+    research: {
+      action: 'Research companies',
+      hint: 'Researches the company of everyone in the campaign with its goal and ICP. Uses your AI key: about one model call per company.',
+      confirm: 'Start research (uses your AI key)',
+      report:
+        'Research: {{queued}} started or under way, {{fresh}} already fresh, {{noWebsite}} without a website, {{failed}} failed recently.',
+      fitHint: 'How the company fits the campaign’s ICP, by its research',
+    },
+    targeting: {
+      title: 'Goal and audience',
+      subtitle:
+        'Research and AI messages use these. Research is done with them for each company and is reused only while they stay the same.',
+      goal: 'Goal',
+      goalHint:
+        'What the campaign should achieve. Research explains why a company is worth contacting for it; AI messages aim at it.',
+      goalPlaceholder: 'Book 20-minute calls with heads of operations about automating order intake.',
+      icp: 'Who fits (ICP)',
+      icpHint:
+        'Location, company type, services, size if the site says it, signals, and who to leave out. Research rates each company: fits, may fit, does not fit, or not enough data.',
+      icpPlaceholder:
+        'Logistics and wholesale companies in Germany or Austria with their own warehouse. Not: freight forwarders without storage.',
+      researchInstructions: 'What research looks for',
+      researchInstructionsHint: 'Facts you need most from the company’s site, beyond the usual.',
+      researchInstructionsPlaceholder:
+        'Open jobs in the warehouse or IT, the order-management system they use, new locations.',
+      maxAge: 'Research is fresh for (days)',
+      maxAgeHint: 'Older research is done again before the campaign relies on it.',
     },
     ops: { eq: 'is', neq: 'is not', exists: 'is filled in', not_exists: 'is empty', contains: 'contains' },
     timezone: 'Fallback time zone',
@@ -1426,6 +1456,8 @@ export const en = {
       notLaunched: 'Launch the campaign first.',
       archived: 'This campaign is archived.',
       launched: 'A campaign that was launched cannot be deleted, only archived: its history is kept.',
+      icpRequired:
+        'A research condition needs “Who fits (ICP)” in Goal and audience: research rates companies against it.',
       changed: 'The campaign was changed meanwhile. Try again.',
       draft: 'Launch the campaign first.',
       active: 'The campaign is already running.',

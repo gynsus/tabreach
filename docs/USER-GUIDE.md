@@ -45,11 +45,18 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
 ## Campaigns
 
 1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
-2. Choose the sending hours (or keep the default from Settings) and the approval mode:
+2. Fill in **Goal and audience** (optional, but it makes research and AI messages much better):
+   - **Goal** — what the campaign should achieve; AI messages aim at it.
+   - **Who fits (ICP)** — location, company type, signals, and who to leave out. Research rates each company: fits, may fit, does not fit, or not enough data. The People list shows the rating.
+   - **What research looks for** — the facts you need most from the company's site.
+   - **Research is fresh for** — after that many days a company is researched again.
+
+   A **condition step** with "Research: fits the ICP is Match" lets only fitting companies through; the person waits until the company's research is done. **Research companies** in People researches every company of the campaign at once (it uses your AI key).
+3. Choose the sending hours (or keep the default from Settings) and the approval mode:
    - **Approve each** (default) — every message waits for you;
    - **Approve campaign** — after a sample you approved by hand, AI messages that pass every check go on their own.
-3. **Dry run** — pick a contact to see the first message, where and when it would go, or why it would not. Nothing is stored or sent.
-4. **Launch**, then **Add contacts**.
+4. **Dry run** — pick a contact to see the first message, where and when it would go, or why it would not. Nothing is stored or sent.
+5. **Launch**, then **Add contacts**.
 
 Good to know:
 

@@ -5,6 +5,9 @@ import { untrusted, UNTRUSTED_RULES, type PromptTemplate } from '../ai/prompts.j
 const input = z.object({
   company: z.object({ name: z.string(), site: z.string() }),
   criteria: z.string().nullable(),
+  /** The campaign's goal and what to look for (docs/16 "Campaign context"); the user's own words. */
+  goal: z.string().nullable(),
+  instructions: z.string().nullable(),
   language: languageSchema,
   pages: z
     .array(z.object({ ref: z.string(), url: z.string(), title: z.string().nullable(), text: z.string() }))
@@ -37,16 +40,20 @@ export type Synthesis = z.infer<typeof output>;
 
 const LANGUAGE_NAMES: Record<z.infer<typeof languageSchema>, string> = { en: 'English', ru: 'Russian' };
 
-/** docs/15 example output, docs/16 "Research result". Version 2: the list and length limits are stated. Version 3: plain prose in the interface language. */
+/**
+ * docs/15 example output, docs/16 "Research result". Version 2: the list and length limits are
+ * stated. Version 3: plain prose in the interface language. Version 4: the campaign's goal and
+ * what to look for steer the facts chosen and the reason to contact.
+ */
 export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis> = {
   key: 'research.synthesize',
-  version: 3,
+  version: 4,
   purpose: 'Summarise a company from its own web pages into verified facts, inferences and a qualification.',
   useCase: 'research',
   input,
   output,
   maxTokens: 8_000,
-  build: ({ company, criteria, language, pages, nonce }) => ({
+  build: ({ company, criteria, goal, instructions, language, pages, nonce }) => ({
     system: [
       'You research a company for business outreach, using only the pages provided.',
       'Facts: statements the pages make. Each fact gives the page ref (just E1, E2, …) and a quote copied character for character',
@@ -54,7 +61,10 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
       'Do not state anything the pages do not say: no guessed employee counts, revenue, customers or dates.',
       'Inferences: your interpretation, each based on facts by their index in the facts list.',
       'Qualification against the criteria: match, possible_match, not_match, or insufficient_data when the',
-      'pages do not say enough (also when no criteria are given). Missing information: what the pages do not answer.',
+      'pages do not say enough (also when no criteria are given). An exclusion in the criteria that the pages',
+      'confirm makes it not_match. Missing information: what the pages do not answer.',
+      'When a campaign goal is given, prefer facts that matter for it and say in the reason to contact why this',
+      'company is worth contacting for that goal. What to look for, when given, says which facts the sender needs most.',
       'Limits: at most 20 facts (the most useful for outreach), 10 inferences and 10 missing items; a claim up to',
       '300 characters, a quote up to 400, the summary up to 1500, each reason up to 600. Keep the answer compact.',
       `Write the summary, claims, inferences, reasons and missing items in ${LANGUAGE_NAMES[language]}, as plain`,
@@ -64,7 +74,9 @@ export const synthesizeResearch: PromptTemplate<z.infer<typeof input>, Synthesis
     ].join(' '),
     user: [
       `Company: ${company.name} (${company.site})`,
+      `Campaign goal: ${goal?.trim() || 'none given'}`,
       `Criteria: ${criteria?.trim() || 'none given'}`,
+      `What to look for: ${instructions?.trim() || 'nothing specific'}`,
       '',
       ...pages.map((p) => untrusted(`${p.ref} ${p.url}${p.title ? ` — ${p.title}` : ''}`, p.text, nonce)),
     ].join('\n'),

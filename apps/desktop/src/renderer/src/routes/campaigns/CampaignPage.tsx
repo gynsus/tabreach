@@ -10,6 +10,7 @@ import {
   Button,
   Field,
   Input,
+  NumberInput,
   PageHeader,
   Select,
   UnsavedChangesPrompt,
@@ -198,6 +199,8 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
             </Alert>
           ) : null}
 
+          <TargetingSection config={config} disabled={archived || busy} onChange={edit} />
+
           <section aria-labelledby="sequence-heading" className="grid gap-3">
             <h2 id="sequence-heading" className="text-[15px] font-semibold">
               {t('campaigns.sequence')}
@@ -274,6 +277,65 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
         <CloneModal campaign={campaign} prepare={prepare} onClose={() => setDialog(null)} />
       ) : null}
     </>
+  );
+}
+
+const textarea =
+  'min-h-20 w-full rounded-md border border-rule bg-raised px-2.5 py-2 text-[13px] text-ink placeholder:text-faint focus:border-accent focus:outline-none';
+
+/** Goal, ICP and what research looks for (docs/16 "Campaign context", docs/17). */
+function TargetingSection(props: {
+  config: CampaignConfig;
+  disabled: boolean;
+  onChange: (config: CampaignConfig) => void;
+}) {
+  const { t } = useTranslation();
+  const { config } = props;
+  const area = (key: 'goal' | 'icp' | 'researchInstructions', max: number) => (
+    <Field label={t(`campaigns.targeting.${key}`)} hint={t(`campaigns.targeting.${key}Hint`)}>
+      {(id, describedBy) => (
+        <textarea
+          id={id}
+          className={textarea}
+          maxLength={max}
+          value={config[key]}
+          placeholder={t(`campaigns.targeting.${key}Placeholder`)}
+          disabled={props.disabled}
+          aria-describedby={describedBy}
+          onChange={(e) => props.onChange({ ...config, [key]: e.target.value })}
+        />
+      )}
+    </Field>
+  );
+  return (
+    <section aria-labelledby="targeting-heading" className="grid gap-3">
+      <div className="grid gap-1">
+        <h2 id="targeting-heading" className="text-[15px] font-semibold">
+          {t('campaigns.targeting.title')}
+        </h2>
+        <p className="text-[13px] text-soft">{t('campaigns.targeting.subtitle')}</p>
+      </div>
+      {area('goal', 1_000)}
+      {area('icp', 2_000)}
+      {area('researchInstructions', 2_000)}
+      <Field
+        label={t('campaigns.targeting.maxAge')}
+        hint={t('campaigns.targeting.maxAgeHint')}
+        className="max-w-xs"
+      >
+        {(id, describedBy) => (
+          <NumberInput
+            id={id}
+            min={1}
+            max={365}
+            value={config.researchMaxAgeDays}
+            disabled={props.disabled}
+            aria-describedby={describedBy}
+            onCommit={(researchMaxAgeDays) => props.onChange({ ...config, researchMaxAgeDays })}
+          />
+        )}
+      </Field>
+    </section>
   );
 }
 

@@ -1,6 +1,12 @@
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { uuidv7, type Campaign, type Enrollment, type EnrollmentStatus } from '@tabreach/protocol';
-import { UserPlus } from 'lucide-react';
+import {
+  uuidv7,
+  type Campaign,
+  type Enrollment,
+  type EnrollmentStatus,
+  type Qualification,
+} from '@tabreach/protocol';
+import { Search, UserPlus } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
@@ -12,6 +18,13 @@ import { ExportButton } from '../imports/ExportButton';
 import { call, errorMessage, PAGE_SIZE } from '../../lib/api';
 import { usePagedList } from '../../lib/lists';
 import { invalidateEntities } from '../../lib/live';
+
+const fitTone: Record<Qualification, 'ok' | 'warn' | 'neutral' | 'bad'> = {
+  match: 'ok',
+  possible_match: 'warn',
+  not_match: 'bad',
+  insufficient_data: 'neutral',
+};
 
 const tone: Record<EnrollmentStatus, 'ok' | 'warn' | 'neutral' | 'bad'> = {
   active: 'ok',
@@ -44,6 +57,7 @@ export function PeopleSection({ campaign }: { campaign: Campaign }) {
           {t('campaigns.people')}
         </h2>
         <div className="flex items-center gap-2">
+          {rows.length > 0 && canEnroll ? <ResearchCompanies campaign={campaign} /> : null}
           {rows.length > 0 ? <ExportButton campaignId={campaign.id} /> : null}
           <Button
             onClick={() => setAdding(true)}
@@ -83,6 +97,33 @@ export function PeopleSection({ campaign }: { campaign: Campaign }) {
       ) : null}
       {adding ? <AddPeople campaignId={campaign.id} onClose={() => setAdding(false)} /> : null}
     </section>
+  );
+}
+
+/** Research for every company of the campaign's people, with its goal and ICP (FR-RES-001). */
+function ResearchCompanies({ campaign }: { campaign: Campaign }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [confirm, setConfirm] = useState(false);
+  const run = useMutation({
+    mutationFn: () => call('campaigns.research', { id: campaign.id }),
+    onSuccess: async (report) => {
+      toast(t('campaigns.research.report', report));
+      await invalidateEntities(qc, ['research', 'enrollment', 'activity']);
+    },
+    onError: (error) => toast(errorMessage(t, error), 'bad'),
+    onSettled: () => setConfirm(false),
+  });
+  return confirm ? (
+    <Button variant="primary" onClick={() => run.mutate()} disabled={run.isPending}>
+      {t('campaigns.research.confirm')}
+    </Button>
+  ) : (
+    <Button onClick={() => setConfirm(true)} title={t('campaigns.research.hint')}>
+      <Search size={14} aria-hidden />
+      {t('campaigns.research.action')}
+    </Button>
   );
 }
 
@@ -155,7 +196,14 @@ function EnrollmentRow({ enrollment: e }: { enrollment: Enrollment }) {
         <Link to={`/contacts/${e.contactId}`} className="truncate font-medium hover:underline">
           {e.contactName}
         </Link>
-        <span className="truncate text-xs text-faint">{e.email}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-xs text-faint">{e.email}</span>
+          {e.qualification ? (
+            <span title={t('campaigns.research.fitHint')}>
+              <Badge tone={fitTone[e.qualification]}>{t(`research.qualifications.${e.qualification}`)}</Badge>
+            </span>
+          ) : null}
+        </span>
       </span>
       <span>
         <Badge tone={tone[e.status]}>{t(`campaigns.enrollmentStatuses.${e.status}`)}</Badge>

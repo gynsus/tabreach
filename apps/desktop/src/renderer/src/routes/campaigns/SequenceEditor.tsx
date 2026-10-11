@@ -1,6 +1,7 @@
 import {
   conditionFieldSchema,
   conditionOpSchema,
+  qualificationSchema,
   templateFields,
   type CampaignStep,
   type Condition,
@@ -126,7 +127,12 @@ export function SequenceEditor(props: {
               onChange={(s) => update(i, s)}
             />
           ) : (
-            <ConditionFields step={step} disabled={props.disabled} onChange={(s) => update(i, s)} />
+            <ConditionFields
+              step={step}
+              errorKey={props.errors[`steps.${i}.conditions`]}
+              disabled={props.disabled}
+              onChange={(s) => update(i, s)}
+            />
           )}
         </section>
       ))}
@@ -398,6 +404,7 @@ function MessageFields(props: {
 
 function ConditionFields(props: {
   step: ConditionStep;
+  errorKey: string | undefined;
   disabled: boolean;
   onChange: (step: ConditionStep) => void;
 }) {
@@ -414,7 +421,17 @@ function ConditionFields(props: {
             className="w-48"
             value={rule.field}
             disabled={props.disabled}
-            onChange={(e) => setRule(i, { ...rule, field: conditionFieldSchema.parse(e.target.value) })}
+            onChange={(e) => {
+              const field = conditionFieldSchema.parse(e.target.value);
+              // A research qualification is one of four values: start from "match".
+              setRule(i, {
+                ...rule,
+                field,
+                ...(field === 'research.qualification' && field !== rule.field
+                  ? { op: 'eq', value: 'match' }
+                  : {}),
+              });
+            }}
           >
             {conditionFieldSchema.options.map((f) => (
               <option key={f} value={f}>
@@ -435,7 +452,25 @@ function ConditionFields(props: {
               </option>
             ))}
           </Select>
-          {rule.op === 'exists' || rule.op === 'not_exists' ? null : (
+          {rule.op === 'exists' || rule.op === 'not_exists' ? null : rule.field ===
+            'research.qualification' ? (
+            <Select
+              aria-label={t('campaigns.conditionValue')}
+              className="w-48"
+              value={rule.value ?? ''}
+              disabled={props.disabled}
+              onChange={(e) => setRule(i, { ...rule, value: e.target.value })}
+            >
+              <option value="" disabled>
+                {t('campaigns.chooseQualification')}
+              </option>
+              {qualificationSchema.options.map((q) => (
+                <option key={q} value={q}>
+                  {t(`research.qualifications.${q}`)}
+                </option>
+              ))}
+            </Select>
+          ) : (
             <Input
               aria-label={t('campaigns.conditionValue')}
               className="w-48"
@@ -455,6 +490,9 @@ function ConditionFields(props: {
           </Button>
         </div>
       ))}
+      {props.errorKey ? (
+        <p className="text-xs text-bad">{translateKey(t, `errors.${props.errorKey}`, t('errors.generic'))}</p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-3">
         <Button
           size="sm"

@@ -753,4 +753,18 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX manual_replies_conversation ON manual_replies (conversation_id, created_at);
     `,
   },
+  {
+    version: 21,
+    name: 'research_campaign_context',
+    sql: `
+      -- What a research run was asked for (docs/16 "Campaign context"): the campaign's goal and what
+      -- to look for, next to the criteria (ICP) it already kept. A campaign reuses a run whose
+      -- context hash matches its own while it is fresh; NULL is the empty context.
+      ALTER TABLE research_runs ADD COLUMN goal TEXT;
+      ALTER TABLE research_runs ADD COLUMN instructions TEXT;
+      ALTER TABLE research_runs ADD COLUMN context_hash TEXT;
+      ALTER TABLE research_runs ADD COLUMN campaign_id TEXT REFERENCES campaigns (id);
+      CREATE INDEX research_runs_context ON research_runs (company_id, context_hash, started_at);
+    `,
+  },
 ];

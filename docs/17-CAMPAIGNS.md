@@ -28,7 +28,7 @@ Implemented (`campaignConfigSchema`, packages/protocol/src/campaigns.ts):
 
 Stop-on-reply and per-day/per-period limits come from the contact policy (Settings → Policy), not from the campaign.
 
-Planned (Phase 8d, open): goal, target/ICP rules and research instructions per campaign, with research freshness.
+- goal, who fits (ICP) and what research looks for, and research freshness in days (Phase 8d-6): research is asked with them, AI messages aim at the goal, and the condition field `research.qualification` gates people by how their company fits; see docs/16 "Campaign context".
 
 A per-campaign webhook is deferred to after the MVP (ADR 030).
 
@@ -86,7 +86,7 @@ Two step types exist: `send_message` and `condition`. A pause between steps is t
 }
 ```
 
-`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`. A reply always stops the sequence (contact policy). An email step may set `replyAsThread`: it then goes as a reply to the person's earlier emails of the same enrollment that went out (completed in the ledger), whatever version or account sent them. The subject becomes `Re: <the first email's subject as sent>`, chosen when the draft is written, so the approval shows it. `In-Reply-To` is the last earlier email's Message-ID and `References` lists them all. With the Gmail API, the email also gets the Gmail `threadId` of the last one if that one went from the same account; a thread deleted in Gmail (404) falls back to a new Gmail thread, which is still threaded by its headers. Without an earlier email, the step's own subject is used and no thread headers are set. The engine only asks for a continuation of the conversation; the email module builds it from the ledger and the sent messages (no channel logic in campaigns, CLAUDE.md §3.2). Planned: a `human_task` step.
+`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`; the field `research.qualification` waits for the company's research with the campaign's context (docs/16). A reply always stops the sequence (contact policy). An email step may set `replyAsThread`: it then goes as a reply to the person's earlier emails of the same enrollment that went out (completed in the ledger), whatever version or account sent them. The subject becomes `Re: <the first email's subject as sent>`, chosen when the draft is written, so the approval shows it. `In-Reply-To` is the last earlier email's Message-ID and `References` lists them all. With the Gmail API, the email also gets the Gmail `threadId` of the last one if that one went from the same account; a thread deleted in Gmail (404) falls back to a new Gmail thread, which is still threaded by its headers. Without an earlier email, the step's own subject is used and no thread headers are set. The engine only asks for a continuation of the conversation; the email module builds it from the ledger and the sent messages (no channel logic in campaigns, CLAUDE.md §3.2). Planned: a `human_task` step.
 
 ## Contact policy at runtime
 

@@ -36,6 +36,10 @@ export const researchRunSchema = z.object({
   /** Why it failed: a key such as `research.noWebsite`, `ai.no_key`. */
   error: z.string().nullable(),
   criteria: z.string().nullable(),
+  /** The campaign context it was asked with (docs/16): goal and what to look for. */
+  goal: z.string().nullable(),
+  instructions: z.string().nullable(),
+  campaignId: z.uuid().nullable(),
   summary: z.string().nullable(),
   qualification: qualificationSchema.nullable(),
   qualificationReason: z.string().nullable(),
