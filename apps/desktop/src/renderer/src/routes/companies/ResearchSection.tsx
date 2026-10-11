@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Qualification, ResearchDetail, ResearchFact } from '@tabreach/protocol';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
+import { FactSourceButton } from '../../components/FactSource';
 import { useTranslation } from 'react-i18next';
 import { formatDateTime } from '../../components/Timeline';
 import { Alert, Badge, Button, Field } from '../../components/ui';
@@ -117,6 +118,7 @@ function ResearchResult({ run }: { run: ResearchDetail }) {
               <span>{f.claim}</span>
               <span className="text-xs text-soft">{t('common.quoted', { text: f.quote })}</span>
               <span className="font-mono text-[11px] break-all text-faint">{source(f)?.url}</span>
+              <FactSourceButton factId={f.id} />
             </li>
           ))}
         </ul>

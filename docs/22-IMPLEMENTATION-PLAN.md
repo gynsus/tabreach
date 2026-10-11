@@ -225,8 +225,8 @@ Deliver:
 - local recovery backup/restore and portable export (without secrets);
 - first-run setup wizard (Chrome check, AI key, email account, first profile);
 - MVP items found unassigned by the 4.5 audit (docs/01):
-  - done: campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008; 8d-1); campaign status CSV export (FR-PROS-007; 8d-2); replies written from the inbox, threaded, with an AI suggestion (ADR 031; 8d-3); Microsoft sign-in (XOAUTH2) for Outlook.com and Microsoft 365 mailboxes over IMAP/SMTP (ADR 032; 8d-4); email follow-ups sent in the thread of the earlier campaign emails (docs/17 `replyAsThread`, Gmail `threadId`; 8d-5); campaign goal, ICP and research instructions with research freshness, the `research.qualification` condition and research of all a campaign's companies (FR-RES-001, docs/16; 8d-6);
-  - open: contact-level research (docs/16); evidence text with the quote highlighted (FR-RES-005); per-campaign AI budget and cost; the `human_task` step (a pause between steps is a step's delay; `webhook` is deferred to after the MVP, ADR 030);
+  - done: campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008; 8d-1); campaign status CSV export (FR-PROS-007; 8d-2); replies written from the inbox, threaded, with an AI suggestion (ADR 031; 8d-3); Microsoft sign-in (XOAUTH2) for Outlook.com and Microsoft 365 mailboxes over IMAP/SMTP (ADR 032; 8d-4); email follow-ups sent in the thread of the earlier campaign emails (docs/17 `replyAsThread`, Gmail `threadId`; 8d-5); campaign goal, ICP and research instructions with research freshness, the `research.qualification` condition and research of all a campaign's companies (FR-RES-001, docs/16; 8d-6); evidence text with the quote highlighted (FR-RES-005; 8d-7);
+  - open: contact-level research (docs/16); per-campaign AI budget and cost; the `human_task` step (a pause between steps is a step's delay; `webhook` is deferred to after the MVP, ADR 030);
 - signing, notarization, DMG;
 - optional: auto-update feed;
 - user docs (a first version: `docs/USER-GUIDE.md`, 2026-10-10; to be completed with installation from the DMG).

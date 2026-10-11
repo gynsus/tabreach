@@ -628,6 +628,7 @@ export class AppServices {
       .handle('research.start', (p, c) => mutate(['research'], () => this.research.start(p, ctx(c))))
       .handle('research.list', ({ companyId }) => ({ items: this.research.list(companyId) }))
       .handle('research.get', ({ id }) => this.research.get(id))
+      .handle('research.factSource', ({ factId }) => this.research.factSource(factId))
       .handle('ai.settings.get', () => this.ai.settings())
       .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
       .handle('ai.setKey', async ({ provider, apiKey }, c) => {

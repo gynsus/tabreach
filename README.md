@@ -118,7 +118,7 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - campaign goal and ICP: research rates each company against them, a condition can let only fitting companies through, AI messages aim at the goal, and one button researches every company of a campaign;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: the rest of Phase 8d (contact-level research, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
+Next: the rest of Phase 8d (contact-level research, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 

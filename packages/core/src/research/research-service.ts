@@ -7,6 +7,7 @@ import {
   uuidv7,
   type ChangedEntity,
   type Logger,
+  type FactSource,
   type ResearchDetail,
   type RenderResult,
   type ResearchRun,
@@ -23,7 +24,7 @@ import type { CommandContext } from '../prospects/prospect-service.js';
 import { extractPage } from './extract.js';
 import { PageFetcher, type ResolveHost } from './fetcher.js';
 import { synthesizeResearch, type Synthesis } from './synthesize.js';
-import { quoteFound } from './verify.js';
+import { locateQuote, quoteFound } from './verify.js';
 
 export const JOB_RESEARCH = 'research.run';
 const MAX_PAGES = 6;
@@ -221,6 +222,57 @@ export class ResearchService {
         basedOn: JSON.parse(f.based_on) as string[],
       })),
       evidence: evidence.map((e) => ({ id: e.id, url: e.url, title: e.title, capturedAt: e.captured_at })),
+    };
+  }
+
+  /**
+   * A fact's source as captured, with the quote placed in it (FR-RES-005). A long text is cut to
+   * the part around the quote, so the answer stays small.
+   */
+  factSource(factId: string): FactSource {
+    const row = this.d.db
+      .prepare(
+        `SELECT f.id, f.claim, f.quote, e.url, e.title, e.captured_at, e.extractor, e.text
+         FROM research_facts f JOIN evidence e ON e.id = f.evidence_id WHERE f.id = ?`,
+      )
+      .get(factId) as
+      | {
+          id: string;
+          claim: string;
+          quote: string | null;
+          url: string;
+          title: string | null;
+          captured_at: string;
+          extractor: string;
+          text: string;
+        }
+      | undefined;
+    if (!row) throw new RpcError('NOT_FOUND', 'Fact not found', 'research.factNotFound');
+    const base = {
+      factId: row.id,
+      claim: row.claim,
+      quote: row.quote,
+      url: row.url,
+      title: row.title,
+      capturedAt: row.captured_at,
+      extractor: row.extractor,
+    };
+    // Retention removed the page text (docs/18): the source and the quote remain.
+    if (!row.text) return { ...base, text: null, omittedBefore: 0, omittedAfter: 0, highlight: null };
+    const found = row.quote ? locateQuote(row.quote, row.text) : null;
+    let start = 0;
+    let end = row.text.length;
+    if (end > SOURCE_MAX_CHARS) {
+      const middle = found ? Math.floor((found.start + found.end) / 2) : 0;
+      start = Math.max(0, Math.min(middle - SOURCE_MAX_CHARS / 2, row.text.length - SOURCE_MAX_CHARS));
+      end = start + SOURCE_MAX_CHARS;
+    }
+    return {
+      ...base,
+      text: row.text.slice(start, end),
+      omittedBefore: start,
+      omittedAfter: row.text.length - end,
+      highlight: found ? { start: found.start - start, end: found.end - start } : null,
     };
   }
 
@@ -552,6 +604,8 @@ export class ResearchService {
 }
 
 const MAX_ATTEMPTS = 3;
+/** The most of a source text one answer carries. */
+const SOURCE_MAX_CHARS = 60_000;
 
 /**
  * Identifies what a run was asked for, so a campaign reuses only research done with its own goal,

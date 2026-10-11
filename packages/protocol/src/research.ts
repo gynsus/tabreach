@@ -60,6 +60,28 @@ export const researchDetailSchema = researchRunSchema.extend({
 });
 export type ResearchDetail = z.infer<typeof researchDetailSchema>;
 
+/** A fact's source page as captured, with its quote located in it (FR-RES-005). */
+export const factSourceSchema = z.object({
+  factId: z.uuid(),
+  claim: z.string(),
+  quote: z.string().nullable(),
+  url: z.string(),
+  title: z.string().nullable(),
+  capturedAt: z.iso.datetime(),
+  /** How the text was read: `static-readability` or `rendered-readability`. */
+  extractor: z.string(),
+  /** The captured text, or the part of a long one around the quote; null when retention removed it. */
+  text: z.string().nullable(),
+  /** Characters of the full text left out before and after `text`. */
+  omittedBefore: z.number().int().nonnegative(),
+  omittedAfter: z.number().int().nonnegative(),
+  /** Where the quote is in `text`; null when it cannot be placed. */
+  highlight: z
+    .object({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative() })
+    .nullable(),
+});
+export type FactSource = z.infer<typeof factSourceSchema>;
+
 export const researchStartSchema = z.object({
   companyId: z.uuid(),
   /** What the user looks for (ICP): location, company type, signals, exclusions. */

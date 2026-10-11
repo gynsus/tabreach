@@ -31,7 +31,12 @@ import {
   appControlSchema,
 } from './browser.js';
 import { aiProviderSchema, aiSettingsInputSchema, aiSettingsSchema, aiUsageSchema } from './ai.js';
-import { researchDetailSchema, researchRunSchema, researchStartSchema } from './research.js';
+import {
+  factSourceSchema,
+  researchDetailSchema,
+  researchRunSchema,
+  researchStartSchema,
+} from './research.js';
 import {
   diagnosticScreenshotSchema,
   diagnosticsBundleRequestSchema,
@@ -555,6 +560,13 @@ export const requests = {
     response: z.object({ items: z.array(researchRunSchema) }),
   },
   'research.get': { channel: 'app', kind: 'query', request: byId, response: researchDetailSchema },
+  /** A fact's captured source text with its quote located (FR-RES-005). */
+  'research.factSource': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({ factId: z.uuid() }),
+    response: factSourceSchema,
+  },
   'ai.settings.get': { channel: 'app', kind: 'query', request: z.object({}), response: aiSettingsSchema },
   'ai.settings.update': {
     channel: 'app',

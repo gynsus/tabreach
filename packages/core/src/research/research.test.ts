@@ -388,3 +388,21 @@ describe('research of a JavaScript-only site (Phase 5d)', () => {
     expect(h.services.browser.list(false)[0]?.session?.id).not.toBe(first);
   });
 });
+
+describe('locating a quote in its source (FR-RES-005)', () => {
+  it('finds the original span across case, spacing and typography', async () => {
+    const { locateQuote } = await import('./verify.js');
+    const text = 'Intro.\nIn March 2026 we opened our\n   new  Berlin office — to support “customers”. More.';
+    const at = locateQuote('we opened our new Berlin office - to support "customers"', text);
+    expect(at).not.toBeNull();
+    expect(text.slice(at!.start, at!.end)).toBe(
+      'we opened our\n   new  Berlin office — to support “customers”',
+    );
+    expect(locateQuote('We opened our new Munich office', text)).toBeNull();
+    expect(locateQuote('Berlin', text)).toBeNull();
+    // Characters outside the BMP keep their positions.
+    const emoji = '🚀 Launch: we ship robots to Berlin every week.';
+    const e = locateQuote('we ship robots to Berlin', emoji);
+    expect(emoji.slice(e!.start, e!.end)).toBe('we ship robots to Berlin');
+  });
+});
