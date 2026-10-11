@@ -13,7 +13,7 @@ Produce useful outreach context from public/authorized sources while preserving 
 - Evidence is stored once per content hash and linked to runs. Synthesis: `research.synthesize` v4 since 8d-6, see "Campaign context" below (research model): the list and length limits are stated in the prompt (strict provider schemas drop them); summary, claims and reasons are written in the interface language as plain prose, while quotes stay verbatim in the page language. A fact's page ref is read from `E2`, `E2 <url>` or the page URL. A fact is kept as a fact only if its quote is found in its page's text after normalization and is at least 12 characters; otherwise it is stored as unverified and never used. Inferences need at least one verified fact.
 - A website stored without a scheme (`njsoft.dev`) is researched over `https://`. A run still pending or running after an hour, or whose job is gone, is not waited for by AI drafting: the message is written without facts. Research started by a campaign is recorded as TabReach's action, not the user's. A run whose job gives up (last attempt or a permanent error) is failed with the reason; on start, runs without a live job are failed (`research.failed`).
 - Live check with `deepseek/deepseek-v4.1-flash` via OpenRouter (2026-09-29, njsoft.dev, 6 pages): about 6.7k input and 4–5k output tokens (1–3k of them reasoning), 35–70 s, about $0.003 per run; 20 of 20 quotes verified on every run after v2.
-- Not yet: sitemap, contact-level research.
+- Not yet: sitemap.
 
 ## Implementation status (Phase 5d, 2026-09-29)
 
@@ -42,6 +42,18 @@ A campaign has a goal, an ICP (`icp`, who fits and who does not) and what resear
   - a dry run uses only research that already exists.
 - **"Research companies"** (People section, `campaigns.research`, FR-RES-001) asks `need` for every company of the campaign's people who are still in it, using the launched version's context. It reports companies, people without a company, fresh, queued, without a website and failed recently. Research jobs run two at a time.
 - The People list shows each person's company qualification under the context of their version; nothing is started for it.
+
+## Research about a person (Phase 8d-10)
+
+Contact-level research reads only the person's **company's own site**, with the same fetcher, the same rules (robots.txt, same site, public addresses, rendering) and the same limit of six pages. LinkedIn, search engines and other sites are not read.
+- A run has `contact_id` (migration 24) and needs the person's first and last name; parts of the full name are used when the fields are empty. Company research lists and lookups leave person runs out.
+- Only pages that name the person go to the model. "Naming" means first and last name together, in either order, with a middle name or patronymic allowed between them; accents and case are ignored, and a first name alone is not enough. The other pages are unlinked from the run.
+- With no such page the run fails `research.personNotFound` and no AI call is made.
+- `research.person` v1 writes a short summary and up to ten facts about this person only, each with a quote that is verified like a company fact. Inferences and qualification do not apply.
+- Started from the contact page ("Research this person"), or by a campaign with **Also research each person** (`researchContacts`).
+  - In such a campaign, AI messages wait for the person's research with the campaign context, as they do for the company's, and get its facts after the company's (`draft.write` v4).
+  - "Research companies" also queues people and reports them.
+  - Cost: one more AI call per person.
 
 ## Evidence with the quote highlighted (Phase 8d-7, FR-RES-005)
 

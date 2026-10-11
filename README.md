@@ -103,7 +103,7 @@ Details, layout and conventions: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md).
 
 ## Status
 
-Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-10-10, Phases 0–7, the 1.5, 3.5, 4.5, 5.5 and 6.5 audits and Phases 8a–8c (recovery tests, diagnostics bundle, data retention, backups with restore and an export without secrets, first-run setup) are done, and Phase 8d (remaining MVP items) is in progress:
+Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 2026-10-11, Phases 0–7, the 1.5, 3.5, 4.5, 5.5 and 6.5 audits and Phases 8a–8c (recovery tests, diagnostics bundle, data retention, backups with restore and an export without secrets, first-run setup) are done, and Phase 8d (remaining MVP items) is done:
 
 - prospects, CSV import/export and the do-not-contact list;
 - campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
@@ -117,9 +117,10 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, moving people to a newly launched version, and email follow-ups sent as replies in the same thread;
 - campaign goal and ICP: research rates each company against them, a condition can let only fitting companies through, AI messages aim at the goal, and one button researches every company of a campaign; each campaign can have its own AI budget, with its spend shown;
 - task steps the person does themselves (a call, a check), waiting in Tasks until marked done;
+- research about a person on their company's own site, with verified quotes, used by AI messages when the campaign asks for it;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: the rest of Phase 8d (contact-level research), then 8e — signed and notarized release, user documentation, acceptance run.
+Next: Phase 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 

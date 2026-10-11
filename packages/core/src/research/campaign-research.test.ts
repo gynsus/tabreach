@@ -191,6 +191,8 @@ describe('campaign research', () => {
       queued: 1,
       noWebsite: 1,
       failed: 0,
+      peopleQueued: 0,
+      peopleFresh: 0,
     });
     // Asking again while it runs starts nothing new.
     expect(h.services.campaigns.researchCompanies(id, ctx())).toMatchObject({ queued: 1 });
@@ -325,6 +327,103 @@ describe('campaign research', () => {
     // Calls for no campaign are not counted against it.
     expect(h.db.prepare(`SELECT COUNT(*) AS n FROM ai_calls WHERE campaign_id IS NULL`).get()).toEqual({
       n: 0,
+    });
+  });
+
+  describe('research about a person (docs/16)', () => {
+    const anna = (companyId: string) =>
+      h.services.prospects.createContact(
+        { firstName: 'Anna', lastName: 'Kowalska', email: 'anna@acme.test', companyId },
+        ctx(),
+      ).id;
+    const personSynthesis = {
+      input: {
+        personSummary: 'Head of Operations at Acme Robotics.',
+        facts: [
+          {
+            claim: 'Leads the opening of the first warehouse site in Germany.',
+            evidenceRef: 'E1',
+            quote: 'leads the opening of our first warehouse site in Germany',
+          },
+        ],
+        missingInformation: [],
+      },
+    };
+
+    it('reads only pages that name the person and keeps facts with verified quotes', async () => {
+      const company = acme();
+      const contact = anna(company);
+      h.anthropic.answer(personSynthesis);
+      const run = h.services.research.start({ companyId: company, contactId: contact }, ctx());
+      await h.run();
+      const detail = h.services.research.get(run.id);
+      expect(detail).toMatchObject({
+        status: 'completed',
+        contactId: contact,
+        template: 'research.person@1',
+      });
+      expect(detail.evidence.map((e) => e.url)).toEqual(['https://acme.test/about.html']);
+      expect(detail.facts.map((f) => f.verified)).toEqual([true]);
+      expect(h.anthropic.requests[0]?.user).toContain('Person: Anna Kowalska');
+      // It is not the company's research.
+      expect(h.services.research.list(company)).toEqual([]);
+      expect(h.services.research.listForContact(contact).map((r) => r.id)).toEqual([run.id]);
+    });
+
+    it('a person the site does not name is not researched by AI', async () => {
+      const company = acme();
+      const nobody = person(company, 'Zed');
+      h.services.prospects.updateContact({ id: nobody, lastName: 'Unknown' }, ctx());
+      const run = h.services.research.start({ companyId: company, contactId: nobody }, ctx());
+      await h.run();
+      expect(h.services.research.get(run.id)).toMatchObject({
+        status: 'failed',
+        error: 'research.personNotFound',
+      });
+      expect(h.anthropic.requests).toHaveLength(0);
+      const noName = h.services.prospects.createContact(
+        { email: 'x@acme.test', companyId: company },
+        ctx(),
+      ).id;
+      expect(() => h.services.research.start({ companyId: company, contactId: noName }, ctx())).toThrow(
+        expect.objectContaining({
+          problem: expect.objectContaining({ detail: 'research.personNameRequired' }),
+        }),
+      );
+    });
+
+    it('a campaign that researches people gives AI messages the facts about the recipient', async () => {
+      const company = acme();
+      const contact = anna(company);
+      launch(
+        config({
+          researchContacts: true,
+          steps: [
+            {
+              type: 'send_message',
+              channel: 'test',
+              executionMode: 'auto',
+              delaySeconds: 0,
+              mode: 'ai',
+              subject: '',
+              body: '',
+              instructions: 'Ask for a short call.',
+            },
+          ],
+        }),
+        [contact],
+      );
+      h.anthropic.answer(synthesis('match'), personSynthesis, {
+        input: { subject: 'Germany', body: 'Hello Anna.', usedFacts: ['F2'] },
+      });
+      await settle();
+      await settle();
+      const draftPrompt = h.anthropic.requests.at(-1)?.user ?? '';
+      expect(draftPrompt).toContain('Opened a Berlin office in March 2026.');
+      expect(draftPrompt).toContain('Leads the opening of the first warehouse site in Germany.');
+      expect(h.services.approvals.pending()[0]?.facts.map((f) => f.claim)).toEqual([
+        'Leads the opening of the first warehouse site in Germany.',
+      ]);
     });
   });
 });

@@ -40,6 +40,8 @@ export const researchRunSchema = z.object({
   goal: z.string().nullable(),
   instructions: z.string().nullable(),
   campaignId: z.uuid().nullable(),
+  /** Research about this person (docs/16 "Research about a person"); null: about the company. */
+  contactId: z.uuid().nullable(),
   summary: z.string().nullable(),
   qualification: qualificationSchema.nullable(),
   qualificationReason: z.string().nullable(),
@@ -86,4 +88,6 @@ export const researchStartSchema = z.object({
   companyId: z.uuid(),
   /** What the user looks for (ICP): location, company type, signals, exclusions. */
   criteria: z.string().trim().max(2_000).nullish(),
+  /** Research this person of the company on its site instead of the company. */
+  contactId: z.uuid().nullish(),
 });

@@ -9,6 +9,8 @@ export interface ResearchContext {
   instructions: string;
   /** Research older than this is run again before the campaign relies on it. */
   maxAgeMs: number;
+  /** Also research each person (docs/16 "Research about a person"). */
+  people: boolean;
 }
 
 export type ResearchNeed =
@@ -43,13 +45,14 @@ export class CampaignResearch {
     companyId: string,
     context: ResearchContext,
     correlationId: string,
-    options: { start: boolean } = { start: true },
+    options: { start: boolean; contactId?: string | null } = { start: true },
   ): ResearchNeed {
     const now = this.d.now().getTime();
     // A run whose job is gone is failed first, so nothing waits on it (audit 4.5).
     if (options.start) this.d.research.resync();
     const hash = researchContextHash(context);
-    const { latest, completed } = this.d.research.forContext(companyId, hash);
+    const contactId = options.contactId ?? null;
+    const { latest, completed } = this.d.research.forContext(companyId, hash, contactId);
     const fresh =
       completed?.finishedAt && now - new Date(completed.finishedAt).getTime() < context.maxAgeMs
         ? completed
@@ -87,6 +90,7 @@ export class CampaignResearch {
           goal: context.goal,
           instructions: context.instructions,
           campaignId: context.campaignId,
+          contactId,
         },
         { correlationId },
         'system',

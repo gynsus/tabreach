@@ -817,4 +817,15 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX human_tasks_status ON human_tasks (status, created_at);
     `,
   },
+  {
+    version: 24,
+    name: 'research_person',
+    sql: `
+      -- Research about one person on their company's own site (docs/16 "Research about a person").
+      -- NULL: research about the company.
+      ALTER TABLE research_runs ADD COLUMN contact_id TEXT REFERENCES contacts (id);
+      CREATE INDEX research_runs_contact ON research_runs (contact_id, context_hash, started_at)
+        WHERE contact_id IS NOT NULL;
+    `,
+  },
 ];

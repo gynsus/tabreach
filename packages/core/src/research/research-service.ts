@@ -23,6 +23,7 @@ import type { JobQueue } from '../jobs/queue.js';
 import type { CommandContext } from '../prospects/prospect-service.js';
 import { extractPage } from './extract.js';
 import { PageFetcher, type ResolveHost } from './fetcher.js';
+import { namesPerson, synthesizePerson } from './synthesize-person.js';
 import { synthesizeResearch, type Synthesis } from './synthesize.js';
 import { locateQuote, quoteFound } from './verify.js';
 
@@ -49,6 +50,7 @@ interface RunRow {
   instructions: string | null;
   context_hash: string | null;
   campaign_id: string | null;
+  contact_id: string | null;
   summary: string | null;
   qualification: ResearchRun['qualification'];
   qualification_reason: string | null;
@@ -133,6 +135,8 @@ export class ResearchService {
       goal?: string | null | undefined;
       instructions?: string | null | undefined;
       campaignId?: string | null | undefined;
+      /** Research about this person (of the company) instead of the company. */
+      contactId?: string | null | undefined;
     },
     ctx: CommandContext,
     /** `system` when a campaign's AI step starts it, not the user. */
@@ -143,6 +147,13 @@ export class ResearchService {
       if (!siteUrl(company))
         throw RpcError.validation({ website: 'research.noWebsite' }, 'research.noWebsite');
       if (!this.d.ai.settings().keySet) throw new RpcError('CONFLICT', 'No AI key', 'ai.no_key');
+      if (input.contactId) {
+        const person = this.person(input.contactId);
+        if (person.company_id !== input.companyId)
+          throw RpcError.validation({ companyId: 'research.notTheirCompany' }, 'research.notTheirCompany');
+        if (!personName(person))
+          throw RpcError.validation({ name: 'research.personNameRequired' }, 'research.personNameRequired');
+      }
       const id = uuidv7();
       const context = {
         goal: input.goal?.trim() ?? '',
@@ -152,8 +163,8 @@ export class ResearchService {
       this.d.db
         .prepare(
           `INSERT INTO research_runs (id, company_id, status, criteria, goal, instructions, context_hash, campaign_id,
-                                      correlation_id, started_at)
-           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
+                                      contact_id, correlation_id, started_at)
+           VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           id,
@@ -163,6 +174,7 @@ export class ResearchService {
           context.instructions || null,
           researchContextHash(context),
           input.campaignId ?? null,
+          input.contactId ?? null,
           ctx.correlationId,
           this.d.now().toISOString(),
         );
@@ -176,7 +188,7 @@ export class ResearchService {
         actionType: 'research.started',
         objectType: 'research',
         objectId: id,
-        payload: { companyId: input.companyId },
+        payload: { companyId: input.companyId, ...(input.contactId ? { contactId: input.contactId } : {}) },
         correlationId: ctx.correlationId,
       });
       return this.toDto(this.row(id));
@@ -186,7 +198,9 @@ export class ResearchService {
   list(companyId: string): ResearchRun[] {
     return (
       this.d.db
-        .prepare('SELECT * FROM research_runs WHERE company_id = ? ORDER BY started_at DESC')
+        .prepare(
+          'SELECT * FROM research_runs WHERE company_id = ? AND contact_id IS NULL ORDER BY started_at DESC',
+        )
         .all(companyId) as unknown as RunRow[]
     ).map((r) => this.toDto(r));
   }
@@ -282,10 +296,20 @@ export class ResearchService {
   ): { runId: string; facts: { id: string; claim: string; quote: string }[] } | null {
     const run = this.d.db
       .prepare(
-        `SELECT id FROM research_runs WHERE company_id = ? AND status = 'completed' ORDER BY started_at DESC LIMIT 1`,
+        `SELECT id FROM research_runs WHERE company_id = ? AND contact_id IS NULL AND status = 'completed'
+         ORDER BY started_at DESC LIMIT 1`,
       )
       .get(companyId) as { id: string } | undefined;
     return run ? { runId: run.id, facts: this.factsOf(run.id) } : null;
+  }
+
+  /** Research about one person, newest first (docs/16 "Research about a person"). */
+  listForContact(contactId: string): ResearchRun[] {
+    return (
+      this.d.db
+        .prepare('SELECT * FROM research_runs WHERE contact_id = ? ORDER BY started_at DESC')
+        .all(contactId) as unknown as RunRow[]
+    ).map((r) => this.toDto(r));
   }
 
   /** Verified facts of one run. */
@@ -304,14 +328,17 @@ export class ResearchService {
   forContext(
     companyId: string,
     contextHash: string | null,
+    /** Research about this person instead of the company. */
+    contactId: string | null = null,
   ): { latest: ResearchRun | null; completed: ResearchRun | null } {
     const pick = (status: string | null) =>
       this.d.db
         .prepare(
-          `SELECT * FROM research_runs WHERE company_id = ? AND context_hash IS ? ${status ? 'AND status = ?' : ''}
-           ORDER BY started_at DESC LIMIT 1`,
+          `SELECT * FROM research_runs WHERE company_id = ? AND context_hash IS ? AND contact_id IS ?
+           ${status ? 'AND status = ?' : ''} ORDER BY started_at DESC LIMIT 1`,
         )
-        .get(...([companyId, contextHash, ...(status ? [status] : [])] as string[])) as RunRow | undefined;
+        .get(...([companyId, contextHash, contactId, ...(status ? [status] : [])] as (string | null)[])) as
+        RunRow | undefined;
     const latest = pick(null);
     const completed = pick('completed');
     return {
@@ -386,6 +413,7 @@ export class ResearchService {
     }
     this.update(runId, { pages_fetched: pages.length, pages_skipped: skipped });
     if (pages.length === 0) return this.fail(runId, 'research.noPages');
+    if (run.contact_id) return this.runPerson(run, company.name, site, pages, signal);
 
     let synthesis: Synthesis;
     try {
@@ -414,14 +442,103 @@ export class ResearchService {
       }
       throw error;
     }
-    this.storeSynthesis(runId, synthesis, pages);
+    this.storeSynthesis(
+      runId,
+      {
+        summary: synthesis.companySummary,
+        facts: synthesis.facts,
+        inferences: synthesis.inferences,
+        qualification: synthesis.qualification,
+        qualificationReason: synthesis.qualificationReason,
+        reasonToContact: synthesis.reasonToContact,
+        missingInformation: synthesis.missingInformation,
+        template: `${synthesizeResearch.key}@${synthesizeResearch.version}`,
+      },
+      pages,
+    );
+    this.d.changed(['research', 'activity']);
+  }
+
+  /**
+   * Research about a person: only the pages that name them go to the model, so nothing is said
+   * about someone the site does not mention (docs/16 "Research about a person").
+   */
+  private async runPerson(
+    run: RunRow,
+    companyName: string,
+    site: string,
+    pages: { evidenceId: string; url: string; title: string | null; text: string }[],
+    signal: AbortSignal,
+  ): Promise<void> {
+    const person = this.person(run.contact_id as string);
+    const name = personName(person);
+    const named = name ? pages.filter((p) => namesPerson(p.text, name)) : [];
+    // Pages that do not name the person are not evidence of anything about them.
+    const keep = new Set(named.map((p) => p.evidenceId));
+    for (const p of pages) {
+      if (!keep.has(p.evidenceId))
+        this.d.db
+          .prepare('DELETE FROM research_run_evidence WHERE research_run_id = ? AND evidence_id = ?')
+          .run(run.id, p.evidenceId);
+    }
+    if (!name || named.length === 0) return this.fail(run.id, 'research.personNotFound');
+    let s;
+    try {
+      s = await this.d.ai.run(
+        synthesizePerson,
+        {
+          person: { name: `${name.first} ${name.last}`, jobTitle: person.job_title },
+          company: { name: companyName, site },
+          goal: run.goal,
+          instructions: run.instructions,
+          language: this.d.language(),
+          pages: named.map((p, i) => ({
+            ref: `E${i + 1}`,
+            url: p.url,
+            title: p.title,
+            text: p.text.slice(0, MAX_CHARS_PER_PAGE),
+          })),
+          nonce: AiGateway.nonce(),
+        },
+        { correlationId: run.correlation_id, signal, campaignId: run.campaign_id },
+      );
+    } catch (error) {
+      if (error instanceof AiError) {
+        if (error.retryable) throw new RetryableError(`ai_${error.kind}`);
+        return this.fail(run.id, `ai.${error.kind}`);
+      }
+      throw error;
+    }
+    this.storeSynthesis(
+      run.id,
+      {
+        summary: s.personSummary,
+        facts: s.facts,
+        inferences: [],
+        qualification: null,
+        qualificationReason: null,
+        reasonToContact: null,
+        missingInformation: s.missingInformation,
+        template: `${synthesizePerson.key}@${synthesizePerson.version}`,
+      },
+      named,
+    );
     this.d.changed(['research', 'activity']);
   }
 
   /** Keeps every claim, but only a quote found on its page makes a fact (docs/15 "Grounding verification"). */
   private storeSynthesis(
     runId: string,
-    s: Synthesis,
+    s: {
+      summary: string;
+      facts: Synthesis['facts'];
+      inferences: Synthesis['inferences'];
+      qualification: Synthesis['qualification'] | null;
+      qualificationReason: string | null;
+      reasonToContact: string | null;
+      missingInformation: string[];
+      template: string;
+    },
     pages: { evidenceId: string; url: string; text: string }[],
   ): void {
     transaction(this.d.db, () => {
@@ -471,12 +588,12 @@ export class ResearchService {
       }
       this.update(runId, {
         status: 'completed',
-        summary: s.companySummary,
+        summary: s.summary,
         qualification: s.qualification,
         qualification_reason: s.qualificationReason,
         reason_to_contact: s.reasonToContact,
         missing_information: JSON.stringify(s.missingInformation),
-        template: `${synthesizeResearch.key}@${synthesizeResearch.version}`,
+        template: s.template,
         model: this.d.ai.settings().models.research,
         finished_at: ts,
       });
@@ -569,6 +686,25 @@ export class ResearchService {
     return row;
   }
 
+  private person(id: string) {
+    const c = this.d.db
+      .prepare(
+        'SELECT id, first_name, last_name, full_name, job_title, company_id FROM contacts WHERE id = ?',
+      )
+      .get(id) as
+      | {
+          id: string;
+          first_name: string | null;
+          last_name: string | null;
+          full_name: string | null;
+          job_title: string | null;
+          company_id: string | null;
+        }
+      | undefined;
+    if (!c) throw new RpcError('NOT_FOUND', 'Contact not found', 'contact.notFound');
+    return c;
+  }
+
   private company(id: string) {
     const c = this.d.db
       .prepare('SELECT id, name, website_url, domain_normalized FROM companies WHERE id = ?')
@@ -588,6 +724,7 @@ export class ResearchService {
       goal: r.goal,
       instructions: r.instructions,
       campaignId: r.campaign_id,
+      contactId: r.contact_id,
       summary: r.summary,
       qualification: r.qualification,
       qualificationReason: r.qualification_reason,
@@ -617,6 +754,18 @@ export function researchContextHash(c: { goal: string; icp: string; instructions
   return createHash('sha256')
     .update(JSON.stringify(['v1', ...parts]))
     .digest('hex');
+}
+
+/** First and last name for finding a person on pages; from the full name when the parts are missing. */
+function personName(c: {
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+}): { first: string; last: string } | null {
+  if (c.first_name?.trim() && c.last_name?.trim())
+    return { first: c.first_name.trim(), last: c.last_name.trim() };
+  const words = (c.full_name ?? '').trim().split(/\s+/).filter(Boolean);
+  return words.length >= 2 ? { first: words[0] as string, last: words.at(-1) as string } : null;
 }
 
 /** Where research starts: the website as entered (a scheme added when missing), else the domain. */

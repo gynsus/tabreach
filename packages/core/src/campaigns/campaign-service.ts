@@ -306,6 +306,8 @@ export class CampaignService {
         queued: 0,
         noWebsite: 0,
         failed: 0,
+        peopleQueued: 0,
+        peopleFresh: 0,
       };
       for (const companyId of companies) {
         const need = this.research.need(companyId, researchContextOf(id, config), ctx.correlationId);
@@ -313,6 +315,23 @@ export class CampaignService {
         else if (need.kind === 'wait') report.queued++;
         else if (need.reason === 'research.noWebsite') report.noWebsite++;
         else report.failed++;
+      }
+      if (config.researchContacts) {
+        // Each person on their company's site (one without a name is not looked for there).
+        const named = this.db
+          .prepare(
+            `SELECT c.id, c.company_id FROM campaign_enrollments e JOIN contacts c ON c.id = e.contact_id
+             WHERE e.campaign_id = ? AND e.status IN ('active', 'paused') AND c.company_id IS NOT NULL`,
+          )
+          .all(id) as { id: string; company_id: string }[];
+        for (const p of named) {
+          const need = this.research.need(p.company_id, researchContextOf(id, config), ctx.correlationId, {
+            start: true,
+            contactId: p.id,
+          });
+          if (need.kind === 'ready') report.peopleFresh++;
+          else if (need.kind === 'wait') report.peopleQueued++;
+        }
       }
       this.record('campaign.researched', id, ctx, { ...report });
       return report;

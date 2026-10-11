@@ -600,7 +600,7 @@ export const en = {
       hint: 'Researches the company of everyone in the campaign with its goal and ICP. Uses your AI key: about one model call per company.',
       confirm: 'Start research (uses your AI key)',
       report:
-        'Research: {{queued}} started or under way, {{fresh}} already fresh, {{noWebsite}} without a website, {{failed}} failed recently.',
+        'Research: {{queued}} started or under way, {{fresh}} already fresh, {{noWebsite}} without a website, {{failed}} failed recently. People: {{peopleQueued}} started or under way, {{peopleFresh}} already fresh.',
       fitHint: 'How the company fits the campaign’s ICP, by its research',
     },
     targeting: {
@@ -625,6 +625,9 @@ export const en = {
         'All its AI messages, research and dry runs. Empty: only the monthly budget in Settings → AI applies. When it is reached, AI steps wait until you raise it.',
       spend: 'Spent on AI: {{cost}} in {{calls}} calls',
       spendUnknown: 'Spent on AI: {{calls}} calls (some without a price, so the total is unknown)',
+      researchContacts: 'Also research each person on their company’s site',
+      researchContactsHint:
+        'Pages of the company’s own site that name the person (team, news, blog). AI messages then use what they say about them. One more AI call per person; LinkedIn and other sites are not read.',
       maxAge: 'Research is fresh for (days)',
       maxAgeHint: 'Older research is done again before the campaign relies on it.',
     },
@@ -1066,6 +1069,12 @@ export const en = {
       insufficient_data: 'Not enough data',
     },
     reasonToContact: 'Reason to contact',
+    person: {
+      title: 'Research on their company’s site',
+      hint: 'Finds the pages of the company’s own site that name this person (team, news, blog) and keeps facts with verified quotes. LinkedIn and other sites are not read.',
+      start: 'Research this person',
+      noCompany: 'Add the person’s company (with its website) first.',
+    },
     source: {
       show: 'Show in source',
       title: 'Source',
@@ -1424,6 +1433,9 @@ export const en = {
     research: {
       failed: 'Research stopped because of an unexpected error. Try again.',
       noWebsite: 'Add the company’s website to research it.',
+      personNotFound: 'The company’s site does not name this person on the pages read (team, news, blog).',
+      personNameRequired: 'Research about a person needs their first and last name.',
+      notTheirCompany: 'This person is not at this company.',
       noPages: 'No page of the website could be read.',
       notFound: 'This research no longer exists.',
     },

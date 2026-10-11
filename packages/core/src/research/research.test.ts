@@ -406,3 +406,17 @@ describe('locating a quote in its source (FR-RES-005)', () => {
     expect(emoji.slice(e!.start, e!.end)).toBe('we ship robots to Berlin');
   });
 });
+
+describe('finding a person on a page', () => {
+  it('needs first and last name together, in either order, a middle name allowed, accents ignored', async () => {
+    const { namesPerson } = await import('./synthesize-person.js');
+    const p = { first: 'Anna', last: 'Kowalska' };
+    expect(namesPerson('Our COO, Anna Kowalska, said…', p)).toBe(true);
+    expect(namesPerson('KOWALSKA Anna (operations)', p)).toBe(true);
+    expect(namesPerson('Anna Maria Kowalska joined', p)).toBe(true);
+    expect(namesPerson('Anna and Piotr Kowalski', p)).toBe(false);
+    expect(namesPerson('Anna from sales', p)).toBe(false);
+    expect(namesPerson('Иван Петрович Сидоров, директор', { first: 'Иван', last: 'Сидоров' })).toBe(true);
+    expect(namesPerson('José Álvarez leads', { first: 'Jose', last: 'Alvarez' })).toBe(true);
+  });
+});
