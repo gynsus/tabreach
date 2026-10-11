@@ -249,4 +249,27 @@ describe('campaign research', () => {
     expect(draftPrompt).toContain(`Campaign goal (what the sender wants to achieve):\n${GOAL}`);
     expect(h.services.approvals.pending()[0]?.subject).toBe('Your Berlin office');
   });
+
+  it('shows a fact’s captured source with the quote placed in it, and survives retention (FR-RES-005)', async () => {
+    const companyId = acme();
+    h.anthropic.answer(synthesis('match'));
+    const run = h.services.research.start({ companyId }, ctx());
+    await h.run();
+    const fact = h.services.research.get(run.id).facts.find((f) => f.verified)!;
+    const source = h.services.research.factSource(fact.id);
+    expect(source).toMatchObject({
+      url: 'https://acme.test/',
+      extractor: 'static-readability',
+      omittedBefore: 0,
+    });
+    expect(source.text!.slice(source.highlight!.start, source.highlight!.end)).toBe(
+      'In March 2026 we opened our new Berlin office',
+    );
+    h.db.prepare(`UPDATE evidence SET text = ''`).run();
+    expect(h.services.research.factSource(fact.id)).toMatchObject({
+      text: null,
+      highlight: null,
+      quote: fact.quote,
+    });
+  });
 });

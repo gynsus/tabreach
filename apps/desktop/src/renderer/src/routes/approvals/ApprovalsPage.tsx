@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Approval } from '@tabreach/protocol';
 import { useEffect, useRef, useState } from 'react';
+import { FactSourceButton } from '../../components/FactSource';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { formatDateTime } from '../../components/Timeline';
@@ -444,6 +445,7 @@ function FactsUsed({ approval: a }: { approval: Approval }) {
             <span>{f.claim}</span>
             <span className="text-xs text-soft">{t('common.quoted', { text: f.quote })}</span>
             {f.url ? <span className="font-mono text-[11px] break-all text-faint">{f.url}</span> : null}
+            <FactSourceButton factId={f.id} />
           </li>
         ))}
       </ul>

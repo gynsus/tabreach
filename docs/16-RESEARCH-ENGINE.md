@@ -43,6 +43,10 @@ A campaign has a goal, an ICP (`icp`, who fits and who does not) and what resear
 - **"Research companies"** (People section, `campaigns.research`, FR-RES-001) asks `need` for every company of the campaign's people who are still in it, using the launched version's context. It reports companies, people without a company, fresh, queued, without a website and failed recently. Research jobs run two at a time.
 - The People list shows each person's company qualification under the context of their version; nothing is started for it.
 
+## Evidence with the quote highlighted (Phase 8d-7, FR-RES-005)
+
+"Show in source", next to a verified fact on the company page and in an approval, opens the page text as captured. It shows the URL, the capture time, the title, and whether the text was read statically or after rendering, and scrolls to the quote, which is highlighted. `research.factSource` places the quote with the same normalization as verification (case, whitespace, typographic quotes and dashes), applied character by character so the highlight covers the original text. A text longer than 60 000 characters is cut to the part around the quote, with the number of characters left out before and after. When retention has removed the page text, the source and the verified quote are still shown.
+
 ## MVP input
 
 Research begins from existing prospect data:

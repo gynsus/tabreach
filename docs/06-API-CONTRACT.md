@@ -92,6 +92,7 @@ query   ai.usage                       # { month } -> calls, tokens, estimated c
 
 ```text
 command research.start                 # { companyId, criteria? } — needs a website and an AI key
+query   research.factSource            # { factId } -> claim, quote, url, title, capturedAt, extractor, text (around the quote, null after retention), highlight {start,end} (FR-RES-005)
 query   research.list                  # { companyId } -> runs, newest first
 query   research.get                   # run + facts (verified or not) + evidence (url, title, capturedAt)
 ```

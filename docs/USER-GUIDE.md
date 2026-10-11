@@ -40,7 +40,7 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
 - Import a CSV (Contacts → Import). You see a preview and a report of new, updated, skipped and invalid rows; importing the same file again changes nothing.
 - Export contacts as CSV at any time.
 - **Do not contact** — an address, a whole domain, a company or a profile URL. It is checked right before every send, including replies you write yourself.
-- Research (on a company page, needs an AI key) reads the company's website and keeps facts only with a quote that really appears on the page, with its link.
+- Research (on a company page, needs an AI key) reads the company's website and keeps facts only with a quote that really appears on the page, with its link. **Show in source** next to a fact opens the page text as it was read, with the quote highlighted.
 
 ## Campaigns
 
