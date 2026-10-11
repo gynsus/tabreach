@@ -28,7 +28,8 @@ Implemented (`campaignConfigSchema`, packages/protocol/src/campaigns.ts):
 
 Stop-on-reply and per-day/per-period limits come from the contact policy (Settings → Policy), not from the campaign.
 
-- goal, who fits (ICP) and what research looks for, and research freshness in days (Phase 8d-6): research is asked with them, AI messages aim at the goal, and the condition field `research.qualification` gates people by how their company fits; see docs/16 "Campaign context".
+- goal, who fits (ICP) and what research looks for, and research freshness in days (Phase 8d-6): research is asked with them, AI messages aim at the goal, and the condition field `research.qualification` gates people by how their company fits; see docs/16 "Campaign context";
+- an AI budget for the campaign in US dollars (optional, docs/15 "Budgets"): reached, AI steps and research wait until it is raised; spend so far is shown on the campaign page.
 
 A per-campaign webhook is deferred to after the MVP (ADR 030).
 

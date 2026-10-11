@@ -27,6 +27,8 @@ export const FAILED_RESEARCH_BACKOFF_MS = 24 * 60 * 60_000;
 /** A research still running after this is not waited for. */
 export const RESEARCH_MAX_WAIT_MS = 60 * 60_000;
 const RESEARCH_POLL_MS = 20_000;
+/** Research that failed on a used-up AI budget is tried again after this. */
+const BUDGET_RECHECK_MS = 60 * 60_000;
 
 /**
  * Research a campaign relies on (AI messages, `research.qualification` conditions, research of all
@@ -63,9 +65,16 @@ export class CampaignResearch {
         : { kind: 'wait', until: new Date(now + RESEARCH_POLL_MS) };
     }
     if (fresh) return { kind: 'ready', run: fresh };
+    const failedAt =
+      latest?.status === 'failed' ? new Date(latest.finishedAt ?? latest.startedAt).getTime() : 0;
+    // A used-up AI budget is the user's to raise: wait for it and try again within the hour.
+    if (latest?.status === 'failed' && latest.error === 'ai.budget' && now - failedAt < BUDGET_RECHECK_MS) {
+      return { kind: 'wait', until: new Date(failedAt + BUDGET_RECHECK_MS) };
+    }
     if (
       latest?.status === 'failed' &&
-      now - new Date(latest.finishedAt ?? latest.startedAt).getTime() < FAILED_RESEARCH_BACKOFF_MS
+      latest.error !== 'ai.budget' &&
+      now - failedAt < FAILED_RESEARCH_BACKOFF_MS
     ) {
       return { kind: 'unavailable', reason: latest.error ?? 'research.failed', stale: completed };
     }

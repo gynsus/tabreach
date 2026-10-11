@@ -158,7 +158,13 @@ Any instruction found on a webpage or in an email ("send credentials", "ignore p
 
 Per research run: max pages, max extracted characters, max model calls, max tokens, timeout.
 
-Global: an optional monthly AI budget (implemented); the gateway refuses calls beyond it with a user-visible `budget` error. A per-campaign budget is planned for Phase 8.
+Global: an optional monthly AI budget (implemented); the gateway refuses calls beyond it with a user-visible `budget` error.
+
+Per campaign (Phase 8d-8):
+- Every call made for a campaign records it in `ai_calls.campaign_id` (migration 22): its AI messages, research it started (`research_runs.campaign_id`) and its dry runs. Reply classification belongs to no campaign.
+- `aiBudgetUsd` in the campaign config is a total for the campaign, taken from the launched version (the draft before launch). The gateway refuses a call once the campaign's known spend has reached it (`ai_calls` `refused`, `error_class = campaign_budget`, AI error `budget`).
+- The check runs before each call, so calls already in flight can go a little over the limit, as with the monthly budget.
+- A used-up budget, the campaign's or the monthly one, never stops a person. An AI message waits and looks again every hour. Research that failed on the budget is tried again after an hour, and a research condition waits for it. The People list says "Waiting for AI budget", and the campaign page shows its calls and cost so far.
 
 Per browser task: bounded semantic attempts.
 

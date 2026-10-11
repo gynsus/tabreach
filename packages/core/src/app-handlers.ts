@@ -293,6 +293,7 @@ export class AppServices {
       options.aiHttp ?? ((url, init) => fetch(url, init)),
       now,
       logger.child({ component: 'ai' }),
+      (campaignId) => this.campaigns.aiBudget(campaignId),
     );
     this.classifier = new ReplyClassifier({
       db,
@@ -395,6 +396,10 @@ export class AppServices {
       {
         need: (companyId, context, correlationId, o) =>
           this.campaignResearch.need(companyId, context, correlationId, o),
+      },
+      {
+        spend: (campaignId) => this.ai.campaignSpend(campaignId),
+        reached: (campaignId) => this.ai.campaignOverBudget(campaignId) || this.ai.overMonthlyBudget(),
       },
     );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now, this.forms);

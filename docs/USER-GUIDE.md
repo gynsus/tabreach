@@ -50,6 +50,7 @@ TabReach reads the inbox to notice replies and bounces. It only looks at mail fr
    - **Who fits (ICP)** — location, company type, signals, and who to leave out. Research rates each company: fits, may fit, does not fit, or not enough data. The People list shows the rating.
    - **What research looks for** — the facts you need most from the company's site.
    - **Research is fresh for** — after that many days a company is researched again.
+   - **AI budget for this campaign** — the most its AI messages and research may cost in total. When it is reached nobody is stopped: AI steps wait ("Waiting for AI budget") until you raise it. What the campaign spent so far is shown below the field.
 
    A **condition step** with "Research: fits the ICP is Match" lets only fitting companies through; the person waits until the company's research is done. **Research companies** in People researches every company of the campaign at once (it uses your AI key).
 3. Choose the sending hours (or keep the default from Settings) and the approval mode:

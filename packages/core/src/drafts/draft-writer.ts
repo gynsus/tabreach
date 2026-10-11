@@ -88,6 +88,9 @@ export const writeDraft: PromptTemplate<z.infer<typeof input>, WrittenDraft> = {
   }),
 };
 
+/** How often a message held by a used-up AI budget looks again. */
+const BUDGET_RECHECK_MS = 60 * 60_000;
+
 export interface DraftRequest {
   companyId: string | null;
   /** The campaign's goal, ICP and what to look for: the research the message relies on is asked with them. */
@@ -147,10 +150,13 @@ export class DraftWriter {
           previous: req.previous,
           nonce: AiGateway.nonce(),
         },
-        { correlationId, signal },
+        { correlationId, signal, campaignId: req.context.campaignId },
       );
     } catch (error) {
       if (error instanceof AiError) {
+        // A used-up budget is the user's to raise: the message waits for it rather than failing.
+        if (error.kind === 'budget')
+          return { kind: 'wait', until: new Date(this.d.now().getTime() + BUDGET_RECHECK_MS) };
         if (error.retryable) throw new RetryableError(`ai_${error.kind}`);
         return { kind: 'failed', reason: error.kind };
       }

@@ -405,7 +405,7 @@ export class ResearchService {
           })),
           nonce: AiGateway.nonce(),
         },
-        { correlationId: run.correlation_id, signal },
+        { correlationId: run.correlation_id, signal, campaignId: run.campaign_id },
       );
     } catch (error) {
       if (error instanceof AiError) {

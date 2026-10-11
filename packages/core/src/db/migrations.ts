@@ -767,4 +767,14 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX research_runs_context ON research_runs (company_id, context_hash, started_at);
     `,
   },
+  {
+    version: 22,
+    name: 'ai_calls_campaign',
+    sql: `
+      -- The campaign an AI call worked for (its messages, its research, its dry run), for the
+      -- campaign's AI budget and cost (docs/15 "Budgets"). NULL: not for a campaign.
+      ALTER TABLE ai_calls ADD COLUMN campaign_id TEXT;
+      CREATE INDEX ai_calls_campaign ON ai_calls (campaign_id) WHERE campaign_id IS NOT NULL;
+    `,
+  },
 ];
