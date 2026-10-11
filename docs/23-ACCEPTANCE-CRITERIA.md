@@ -71,7 +71,7 @@ The MVP is releasable only when these criteria are demonstrably satisfied on a c
 ## Email
 
 - [ ] Gmail account connects through a user-owned OAuth client (wizard, incl. Workspace Internal path); refresh works beyond 7 days when the client is in production status; the wizard explains scope classes and the unverified-app warning.
-- [ ] IMAP/SMTP account connects.
+- [ ] IMAP/SMTP account connects, with a password or (Outlook.com, Microsoft 365) with Microsoft sign-in through the user's own Entra app (ADR 032).
 - [ ] A crash around email submission never causes an automatic duplicate: the action is reconciled to `completed` or `not_sent` (Message-ID lookup in Sent, with delayed retries), or remains `unknown` and is surfaced; `unknown` is never automatically re-sent.
 - [ ] Provider IDs saved; reply ingested and matched.
 - [ ] Bounce detected and handled.

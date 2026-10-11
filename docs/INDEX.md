@@ -92,6 +92,7 @@ The `adr/` directory contains architectural decisions. Superseded ADRs are kept 
 | 029 | Restoring a backup restarts core onto it; the outside world does not roll back | Accepted |
 | 030 | The webhook step is deferred to after the MVP | Accepted |
 | 031 | Replies written and sent from the inbox | Accepted |
+| 032 | Microsoft sign-in for IMAP/SMTP (XOAUTH2) through the user's own Entra app | Accepted |
 
 ## Recommended first command to Claude Code
 

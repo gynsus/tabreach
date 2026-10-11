@@ -93,7 +93,7 @@ Responsibilities:
 - SMTP send with app-generated `Message-ID`; append to Sent via IMAP if the server doesn't do it. Submission and `APPEND` are separate operations, so a crash between them (or a lost SMTP response after `DATA`) leaves the outcome `unknown` — this is expected and handled by the ledger, never by re-sending;
 - IMAP polling (or IDLE) for replies;
 - reconciliation: IMAP `SEARCH HEADER Message-ID`;
-- auth: OAuth2 (XOAUTH2) where the provider requires it; otherwise app password (e.g. Gmail app passwords require 2-Step Verification);
+- auth: Microsoft sign-in (XOAUTH2, ADR 032) for Outlook.com and Microsoft 365 through the user's own Entra app registration; otherwise an app password (e.g. Gmail app passwords require 2-Step Verification). Gmail with OAuth uses the Gmail API instead;
 - works as the simplest fallback for Gmail and as the path for other providers until dedicated adapters exist.
 
 ### Common email behaviour

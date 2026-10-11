@@ -42,6 +42,10 @@ export const emailAccountSchema = z.object({
   username: z.string().nullable(),
   /** Whether TabReach copies sent mail to the Sent folder itself (the server does not). */
   appendToSent: z.boolean(),
+  /** How TabReach signs in: an (app) password, or OAuth with Google (Gmail API) or Microsoft (ADR 032). */
+  signIn: z.enum(['password', 'google', 'microsoft']),
+  /** The user's own OAuth app, for signing in again; client IDs are not secret. */
+  oauthClient: z.object({ clientId: z.string(), tenant: z.string().nullable() }).nullable(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -90,6 +94,32 @@ export const gmailAccountInputSchema = z.object({
   limits: accountLimitsSchema.optional(),
 });
 export type GmailAccountInput = z.infer<typeof gmailAccountInputSchema>;
+
+/**
+ * A Microsoft mailbox (Outlook.com or Microsoft 365) over IMAP/SMTP with Microsoft sign-in
+ * (XOAUTH2) through the user's own app registration in Microsoft Entra (ADR 032).
+ */
+export const microsoftAccountInputSchema = z.object({
+  address: z.string().trim().min(3).max(320),
+  /** Application (client) ID of the user's app registration. */
+  clientId: z.guid('oauth.microsoftClientIdInvalid'),
+  /**
+   * `common` (any work, school or personal account), `organizations`, `consumers`, or one
+   * directory by its ID or domain, for an app registered for that directory only.
+   */
+  tenant: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(
+      /^(common|organizations|consumers|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[a-z0-9-]+(\.[a-z0-9-]+)+)$/,
+      'oauth.tenantInvalid',
+    )
+    .default('common'),
+  fromName: z.string().trim().max(200).nullish(),
+  limits: accountLimitsSchema.optional(),
+});
+export type MicrosoftAccountInput = z.input<typeof microsoftAccountInputSchema>;
 
 /** Main opens the consent page and waits for the loopback redirect (core -> main). */
 export const oauthLoopbackRequestSchema = z.object({

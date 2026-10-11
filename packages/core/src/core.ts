@@ -81,7 +81,7 @@ export class CoreService {
       // Deferred: the enqueuing transaction must commit before the dispatcher looks.
       onJobEnqueued: () => queueMicrotask(() => this.dispatcher.wake()),
       cipher: this.cipher(),
-      gmail: {
+      oauth: {
         http: (url, init) => fetch(url, init),
         loopback: (authorizeUrl, timeoutMs, state) =>
           this.hostPeer.request(

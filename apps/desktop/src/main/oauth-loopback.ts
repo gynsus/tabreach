@@ -1,8 +1,15 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
-/** Authorization servers the loopback flow may open (ADR 016). */
-const ALLOWED_HOSTS = new Set(['accounts.google.com']);
+/**
+ * Authorization servers the loopback flow may open (ADR 016, ADR 032), with the host name the
+ * redirect address uses. Microsoft Entra accepts an `http` loopback redirect registered in its
+ * portal only as `localhost` (any port); the listener is still bound to 127.0.0.1 alone.
+ */
+const ALLOWED_HOSTS = new Map<string, '127.0.0.1' | 'localhost'>([
+  ['accounts.google.com', '127.0.0.1'],
+  ['login.microsoftonline.com', 'localhost'],
+]);
 
 export interface LoopbackResult {
   redirectUri: string;
@@ -27,7 +34,8 @@ export function runLoopback(options: {
   open: (url: string) => Promise<void>;
 }): Promise<LoopbackResult> {
   const url = new URL(options.authorizeUrl);
-  if (url.protocol !== 'https:' || !ALLOWED_HOSTS.has(url.hostname)) {
+  const redirectHost = ALLOWED_HOSTS.get(url.hostname);
+  if (url.protocol !== 'https:' || !redirectHost) {
     return Promise.reject(new Error('Authorization URL is not allowed'));
   }
   return new Promise<LoopbackResult>((resolve, reject) => {
@@ -69,7 +77,7 @@ export function runLoopback(options: {
     server.on('error', (error) => finish(() => reject(error)));
     server.listen(0, '127.0.0.1', () => {
       const { port } = server.address() as AddressInfo;
-      redirectUri = `http://127.0.0.1:${port}`;
+      redirectUri = `http://${redirectHost}:${port}`;
       url.searchParams.set('redirect_uri', redirectUri);
       timer = setTimeout(() => finish(() => reject(new Error('Authorization timed out'))), options.timeoutMs);
       options.open(url.toString()).catch((error: unknown) => finish(() => reject(error)));

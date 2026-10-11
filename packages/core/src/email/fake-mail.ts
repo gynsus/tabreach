@@ -21,6 +21,8 @@ export class FakeMail implements MailClients {
   attempts = 0;
   sentFolderName: string | null = 'Sent';
   password = 'app-password';
+  /** Whether an OAuth access token is good for a mailbox (XOAUTH2); none are without a provider. */
+  acceptsToken: (user: string, token: string) => boolean = () => false;
   mailboxDown = false;
   /** The inbox as the server has it: UIDs are assigned on arrival. */
   readonly inbox: { uid: number; raw: Buffer }[] = [];
@@ -35,6 +37,12 @@ export class FakeMail implements MailClients {
   }
   private readonly next: SmtpBehaviour[] = [];
 
+  private loginOk(settings: MailSettings): boolean {
+    return settings.accessToken
+      ? this.acceptsToken(settings.username, settings.accessToken)
+      : settings.password === this.password;
+  }
+
   queue(...behaviours: SmtpBehaviour[]): void {
     this.next.push(...behaviours);
   }
@@ -42,7 +50,7 @@ export class FakeMail implements MailClients {
   smtp(settings: MailSettings): SmtpClient {
     return {
       send: async (raw, envelope) => {
-        if (settings.password !== this.password)
+        if (!this.loginOk(settings))
           throw Object.assign(new Error('auth'), { code: 'EAUTH', command: 'AUTH PLAIN', responseCode: 535 });
         const behaviour = this.next.shift() ?? 'accept';
         this.attempts++;
@@ -58,7 +66,7 @@ export class FakeMail implements MailClients {
         return { response: '250 2.0.0 OK queued' };
       },
       verify: async () => {
-        if (settings.password !== this.password)
+        if (!this.loginOk(settings))
           throw Object.assign(new Error('auth'), { code: 'EAUTH', responseCode: 535 });
       },
       close: () => {},
@@ -67,8 +75,7 @@ export class FakeMail implements MailClients {
 
   async mailbox(settings: MailSettings): Promise<MailboxClient> {
     if (this.mailboxDown) throw Object.assign(new Error('down'), { code: 'ECONNREFUSED' });
-    if (settings.password !== this.password)
-      throw Object.assign(new Error('auth'), { authenticationFailed: true });
+    if (!this.loginOk(settings)) throw Object.assign(new Error('auth'), { authenticationFailed: true });
     return {
       sentFolder: async () => this.sentFolderName,
       hasMessage: async (_folder, messageId) => this.sent.includes(messageId),

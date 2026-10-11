@@ -22,7 +22,15 @@ A short setup opens on first launch. Each step can be skipped and done later in 
 
 ## Email accounts (Settings → Email)
 
-- **IMAP / SMTP.** Enter the address; known providers fill in the servers. Use an app password where the provider requires one (iCloud, Yandex, Mail.ru, Gmail with 2-step verification). Sign-in with OAuth for IMAP/SMTP (XOAUTH2) is not supported yet.
+- **IMAP / SMTP.** Enter the address; known providers fill in the servers. Use an app password where the provider requires one (iCloud, Yandex, Mail.ru, Gmail with 2-step verification).
+- **Outlook / Microsoft 365.** Microsoft no longer accepts passwords from mail apps, so TabReach signs in with Microsoft through an app you register once in Microsoft Entra (about 10 minutes):
+  1. Sign in at entra.microsoft.com with an account that has a directory — a Microsoft 365 work account or a free Azure account. A personal Outlook.com account on its own can no longer register apps.
+  2. App registrations → New registration. For an Outlook.com or Hotmail mailbox choose "Any Entra ID tenant + personal Microsoft accounts"; for your own company's mailbox "This organizational directory only" is enough.
+  3. Redirect URI: platform "Public client/native (mobile & desktop)", value `http://localhost`.
+  4. API permissions → Microsoft Graph → Delegated: `IMAP.AccessAsUser.All`, `SMTP.Send`, `offline_access`.
+  5. In TabReach (Settings → Email → Connect Outlook / Microsoft 365) enter the address and the Application (client) ID; for a single-directory app also the Directory (tenant) ID. Sign in with the same address in the browser.
+
+  In Microsoft 365, IMAP and Authenticated SMTP must be allowed for the mailbox (an administrator may have turned them off). When Microsoft asks you to sign in again — after a password change or a new security prompt — the account shows "Needs signing in again"; press **Sign in with Microsoft**. Disconnecting deletes TabReach's token; to remove the app's access on Microsoft's side too, use myaccount.microsoft.com (work) or account.live.com/consent/Manage (personal).
 - **Gmail API.** The wizard explains how to create your own OAuth client in Google Cloud and checks the client ID before opening the browser. While your Google app is in Testing status, Google expires the sign-in after about 7 days; set it to In production to avoid that. An app used only by you may qualify for Google's personal-use exception from verification; you will still see Google's unverified-app warning when you sign in. A Google Workspace account can use an Internal app instead, without the warning.
 
 TabReach reads the inbox to notice replies and bounces. It only looks at mail from people you contacted, from the moment the account was connected.

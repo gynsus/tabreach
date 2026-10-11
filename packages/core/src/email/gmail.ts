@@ -1,5 +1,7 @@
-import { createHash, randomBytes } from 'node:crypto';
 import type { SendResult } from '../channels/channel.js';
+import { OAuthError, tokenRequest, type TokenSet } from './oauth.js';
+
+export { OAuthError, pkce } from './oauth.js';
 
 /** HTTP as core uses it for Google APIs; tests pass a fake. */
 export type Http = (url: string, init: RequestInit) => Promise<Response>;
@@ -14,17 +16,6 @@ export const GMAIL_SCOPES = [
   'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.readonly',
 ];
-
-export class OAuthError extends Error {
-  override name = 'OAuthError';
-  constructor(
-    /** invalid_grant: the refresh token was revoked or expired; the user must sign in again. */
-    readonly kind: 'invalid_grant' | 'invalid_client' | 'network' | 'other',
-    message: string,
-  ) {
-    super(message);
-  }
-}
 
 export class GmailError extends Error {
   override name = 'GmailError';
@@ -73,15 +64,6 @@ export async function revokeToken(http: Http, token: string): Promise<boolean> {
 const base64url = (b: Buffer) =>
   b.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-export function pkce(): { verifier: string; challenge: string; state: string } {
-  const verifier = base64url(randomBytes(32));
-  return {
-    verifier,
-    challenge: base64url(createHash('sha256').update(verifier).digest()),
-    state: base64url(randomBytes(16)),
-  };
-}
-
 /** The consent URL, without `redirect_uri`: main adds its loopback address. */
 export function authorizeUrl(clientId: string, challenge: string, state: string): string {
   const url = new URL(AUTHORIZE);
@@ -97,47 +79,11 @@ export function authorizeUrl(clientId: string, challenge: string, state: string)
   return url.toString();
 }
 
-export interface TokenSet {
-  accessToken: string;
-  expiresAt: number;
-  refreshToken: string | null;
-  scope: string;
-}
-
-async function tokenRequest(http: Http, body: Record<string, string>): Promise<TokenSet> {
-  let res: Response;
-  try {
-    res = await http(TOKEN, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(body).toString(),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-  } catch {
-    throw new OAuthError('network', 'Token endpoint unreachable');
-  }
-  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) {
-    const error = String(json.error ?? 'other');
-    // Only the error code is kept: Google's description may echo request details.
-    throw new OAuthError(
-      error === 'invalid_grant' || error === 'invalid_client' ? error : 'other',
-      `Token request failed: ${error}`,
-    );
-  }
-  return {
-    accessToken: String(json.access_token ?? ''),
-    expiresAt: Date.now() + Number(json.expires_in ?? 3600) * 1000,
-    refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : null,
-    scope: String(json.scope ?? ''),
-  };
-}
-
 export function exchangeCode(
   http: Http,
   o: { clientId: string; clientSecret: string | null; code: string; verifier: string; redirectUri: string },
 ): Promise<TokenSet> {
-  return tokenRequest(http, {
+  return tokenRequest(http, TOKEN, {
     grant_type: 'authorization_code',
     client_id: o.clientId,
     ...(o.clientSecret ? { client_secret: o.clientSecret } : {}),
@@ -151,7 +97,7 @@ export function refreshAccessToken(
   http: Http,
   o: { clientId: string; clientSecret: string | null; refreshToken: string },
 ): Promise<TokenSet> {
-  return tokenRequest(http, {
+  return tokenRequest(http, TOKEN, {
     grant_type: 'refresh_token',
     client_id: o.clientId,
     ...(o.clientSecret ? { client_secret: o.clientSecret } : {}),

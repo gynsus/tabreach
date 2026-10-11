@@ -17,7 +17,7 @@ The app exposes no persistent application HTTP/WebSocket listeners. All inter-pr
 The only listener is the OAuth loopback redirect:
 
 - bound to `127.0.0.1` on an ephemeral port;
-- opened only during an authorization the user started;
+- opened only during an authorization the user started, and only for Google's and Microsoft's sign-in hosts. The redirect address is `http://127.0.0.1:<port>` for Google and `http://localhost:<port>` for Microsoft, because Entra accepts only `localhost` for an `http` loopback redirect. The listener is on `127.0.0.1` either way (ADR 032);
 - accepts one request carrying the expected `state` (others get 400 and are ignored), uses PKCE; core checks `state` again before exchanging the code;
 - closes after the redirect or a short timeout.
 

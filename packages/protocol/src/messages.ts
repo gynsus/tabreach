@@ -60,6 +60,7 @@ import {
   emailAccountSchema,
   gmailAccountInputSchema,
   imapAccountInputSchema,
+  microsoftAccountInputSchema,
   oauthLoopbackRequestSchema,
   oauthLoopbackResultSchema,
 } from './accounts.js';
@@ -602,6 +603,16 @@ export const requests = {
     channel: 'app',
     kind: 'command',
     request: gmailAccountInputSchema,
+    response: emailAccountSchema,
+  },
+  /**
+   * Opens Microsoft's sign-in page in the system browser, waits for the user, then tests IMAP and
+   * SMTP with the token; saves only if both work (ADR 032).
+   */
+  'accounts.connectMicrosoft': {
+    channel: 'app',
+    kind: 'command',
+    request: microsoftAccountInputSchema,
     response: emailAccountSchema,
   },
   'accounts.update': {
