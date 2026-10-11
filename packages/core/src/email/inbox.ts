@@ -11,6 +11,7 @@ import {
 } from '@tabreach/protocol';
 import { z } from 'zod';
 import type { AuditLog } from '../audit/audit-log.js';
+import type { ThreadContinuation } from '../channels/channel.js';
 import type { CampaignEngine, EnrollmentRow } from '../campaigns/engine.js';
 import type { ContactPolicy } from '../campaigns/policy.js';
 import { transaction } from '../db/database.js';
@@ -245,6 +246,73 @@ export class InboxService {
       .run(uuidv7(), conversation.id, rfcId, address, sent.subject, sent.body, ts, ts);
     this.touch(conversation.id, ts, false);
     this.d.changed(['conversation']);
+  }
+
+  /**
+   * The thread a follow-up continues (docs/17 `replyAsThread`): the enrollment's earlier emails
+   * that went out, oldest first. Their Message-IDs come from the ledger (each channel derives its
+   * Message-ID from the ledger key), the subject from the first one as it was sent.
+   */
+  continuation(scopeId: string, beforePosition: number, channel: string): ThreadContinuation | null {
+    if (channel !== 'email') return null;
+    const rows = this.d.db
+      .prepare(
+        `SELECT idempotency_key, channel_account_id, external_refs FROM side_effects
+         WHERE scope_id = ? AND channel = 'email' AND status = 'completed' AND step_position < ?
+         ORDER BY step_position`,
+      )
+      .all(scopeId, beforePosition) as {
+      idempotency_key: string;
+      channel_account_id: string | null;
+      external_refs: string;
+    }[];
+    const sent = rows.flatMap((r) => {
+      const refs = JSON.parse(r.external_refs) as { messageId?: unknown; threadId?: unknown };
+      const address = r.channel_account_id ? this.d.accounts.addressOf(r.channel_account_id) : null;
+      const messageId =
+        typeof refs.messageId === 'string'
+          ? refs.messageId
+          : address
+            ? messageIdFor(r.idempotency_key, address)
+            : null;
+      if (!messageId) return [];
+      return [
+        {
+          key: r.idempotency_key,
+          messageId,
+          threadId: typeof refs.threadId === 'string' ? refs.threadId : null,
+          accountId: r.channel_account_id,
+        },
+      ];
+    });
+    const first = sent[0];
+    const last = sent.at(-1);
+    if (!first || !last) return null;
+    const base =
+      (
+        this.d.db
+          .prepare(
+            `SELECT subject FROM messages WHERE direction = 'outbound' AND rfc_message_id = ? ORDER BY created_at LIMIT 1`,
+          )
+          .get(first.messageId) as { subject: string | null } | undefined
+      )?.subject ??
+      (
+        this.d.db
+          .prepare(
+            `SELECT d.subject FROM message_drafts d JOIN side_effects s ON s.workflow_run_id = d.workflow_run_id
+             WHERE s.idempotency_key = ? ORDER BY d.version DESC LIMIT 1`,
+          )
+          .get(first.key) as { subject: string | null } | undefined
+      )?.subject ??
+      null;
+    const subject = base?.trim() ? (/^re:/i.test(base.trim()) ? base.trim() : `Re: ${base.trim()}`) : null;
+    return {
+      subject,
+      inReplyTo: last.messageId,
+      references: sent.map((m) => m.messageId).join(' '),
+      providerThreadId: last.threadId,
+      accountId: last.accountId,
+    };
   }
 
   // Incoming --------------------------------------------------------------------------------

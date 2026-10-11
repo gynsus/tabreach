@@ -114,10 +114,10 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - website contact forms as a campaign channel: the form found and filled before approval, the approval showing exactly what goes in, sending through the checkpoint, the person pressing Send when a CAPTCHA, a consent or an unknown required field needs them, and AI recognizing unfamiliar fields from a closed list;
 - a LinkedIn adapter behind a switch that is off by default: invitations and messages from a signed-in browser profile, the person pressing Send unless auto is allowed per action class, the profile's identity checked before any click, the conversation read before every message, conservative per-account limits, a `manual` mode where the person writes and sends with the text at hand, and the share of unrecognized pages per pack version on the status screen. The pack (0.5.1) was checked against real LinkedIn pages up to the send button.
 
-- campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, and moving people to a newly launched version;
+- campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, moving people to a newly launched version, and email follow-ups sent as replies in the same thread;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: the rest of Phase 8d (threaded campaign follow-ups, campaign goal/ICP/research instructions, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
+Next: the rest of Phase 8d (campaign goal/ICP/research instructions, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 

@@ -20,7 +20,7 @@ import {
 } from '@tabreach/protocol';
 import { z } from 'zod';
 import type { AuditLog } from '../audit/audit-log.js';
-import type { ChannelResolver, MessageChannel } from '../channels/channel.js';
+import type { ChannelResolver, MessageChannel, ThreadContinuation } from '../channels/channel.js';
 import { transaction } from '../db/database.js';
 import { allPassed, runDraftChecks } from '../drafts/checks.js';
 import { cleanDraftBody, cleanSubject, type DraftRequest, type DraftResult } from '../drafts/draft-writer.js';
@@ -170,6 +170,13 @@ export interface CampaignEngineDeps {
   beforeSend?: (channel: MessageChannel, signal: AbortSignal, correlationId: string) => Promise<void>;
   /** App-wide pause (docs/19): no send starts while it is on; it waits and goes out after. */
   paused?: () => boolean;
+  /**
+   * How a step marked `replyAsThread` continues the person's earlier messages on its channel
+   * (email: the thread of the enrollment's earlier emails); null when nothing went out before.
+   */
+  threads?: {
+    continuation(scopeId: string, beforePosition: number, channel: string): ThreadContinuation | null;
+  };
   /** Writes AI drafts (Phase 4c). Without it, an AI step stops with `draft_failed`. */
   drafter?: { write(req: DraftRequest, signal: AbortSignal, correlationId: string): Promise<DraftResult> };
   /** Website forms (Phase 6): preparing before approval, and what an approval of a form covers. */
@@ -447,8 +454,11 @@ export class CampaignEngine {
             this.stopEnrollment(e, 'missing_data', correlationId, 'system', { fields: missing });
             return 'done';
           }
-          // LinkedIn has no subject line.
-          const shownSubject = step.channel === 'linkedin' ? null : subject.text || null;
+          // LinkedIn has no subject line; a reply in the thread takes the thread's.
+          const shownSubject =
+            step.channel === 'linkedin'
+              ? null
+              : (this.continuation(e, run.step_position, step)?.subject ?? (subject.text || null));
           this.insertDraft(run, e, step.channel, target, shownSubject, body.text, 1, {
             origin: 'template',
           });
@@ -710,6 +720,7 @@ export class CampaignEngine {
     finalCheck: () => void,
   ): Promise<'next' | 'done' | { continueAt: Date }> {
     await this.d.beforeSend?.(channel, ctx.signal, run.correlation_id);
+    const thread = this.continuation(e, run.step_position, step);
     let outcome;
     try {
       outcome = await executeSideEffect({
@@ -724,6 +735,14 @@ export class CampaignEngine {
           subject: draft.subject,
           body: draft.body,
           contentHash: hash,
+          ...(thread
+            ? {
+                inReplyTo: thread.inReplyTo,
+                references: thread.references,
+                // A provider thread only exists in the mailbox it was created in.
+                providerThreadId: thread.accountId === channel.accountId ? thread.providerThreadId : null,
+              }
+            : {}),
         },
         signal: ctx.signal,
         onSendError: (error) =>
@@ -844,6 +863,12 @@ export class CampaignEngine {
       this.d.changed(['enrollment', 'activity']);
       return 'done';
     });
+  }
+
+  /** The earlier conversation a `replyAsThread` step continues, if anything went out before it. */
+  private continuation(e: EnrollmentRow, position: number, step: SendStep): ThreadContinuation | null {
+    if (!step.replyAsThread) return null;
+    return this.d.threads?.continuation(e.id, position, step.channel) ?? null;
   }
 
   // Enrollment transitions -----------------------------------------------------------------
@@ -1567,7 +1592,9 @@ export class CampaignEngine {
         e,
         step.channel,
         target,
-        step.channel === 'linkedin' ? null : cleanSubject(result.draft.subject),
+        step.channel === 'linkedin'
+          ? null
+          : (this.continuation(e, run.step_position, step)?.subject ?? cleanSubject(result.draft.subject)),
         body,
         1,
         {

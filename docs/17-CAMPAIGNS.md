@@ -68,7 +68,7 @@ Execution mode is independent: `approve_campaign` + `assisted` means drafts are 
 
 ## Sequence step config
 
-Two step types exist: `send_message` and `condition`. A pause between steps is the step's `delaySeconds`; research and writing happen inside a `send_message` step with `mode: "ai"`. Example — an AI-written email three days after the previous step:
+Two step types exist: `send_message` and `condition`. A pause between steps is the step's `delaySeconds`; research and writing happen inside a `send_message` step with `mode: "ai"`. Example — an AI-written email three days after the previous step, sent as a reply in the thread of the earlier emails:
 
 ```json
 {
@@ -81,11 +81,12 @@ Two step types exist: `send_message` and `condition`. A pause between steps is t
   "body": "",
   "instructions": "Mention one verified fact about their company and ask for a 15-minute call.",
   "signature": "Ann Sender\nAcme",
-  "linkedinAction": "message"
+  "linkedinAction": "message",
+  "replyAsThread": true
 }
 ```
 
-`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`. A reply always stops the sequence (contact policy). Planned: `replyAsThread` for later email steps (sent in the first message's thread) and a `human_task` step.
+`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`. A reply always stops the sequence (contact policy). An email step may set `replyAsThread`: it then goes as a reply to the person's earlier emails of the same enrollment that went out (completed in the ledger), whatever version or account sent them. The subject becomes `Re: <the first email's subject as sent>`, chosen when the draft is written, so the approval shows it. `In-Reply-To` is the last earlier email's Message-ID and `References` lists them all. With the Gmail API, the email also gets the Gmail `threadId` of the last one if that one went from the same account; a thread deleted in Gmail (404) falls back to a new Gmail thread, which is still threaded by its headers. Without an earlier email, the step's own subject is used and no thread headers are set. The engine only asks for a continuation of the conversation; the email module builds it from the ledger and the sent messages (no channel logic in campaigns, CLAUDE.md §3.2). Planned: a `human_task` step.
 
 ## Contact policy at runtime
 

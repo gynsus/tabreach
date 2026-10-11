@@ -12,6 +12,19 @@ export interface OutgoingMessage {
   /** Email threading: the Message-ID this answers and the thread's References (ADR 031). */
   inReplyTo?: string | null;
   references?: string | null;
+  /** The provider's own thread to add the message to (Gmail `threadId`), when it belongs to this account. */
+  providerThreadId?: string | null;
+}
+
+/** How a message continues the person's earlier conversation on a channel (email: its thread). */
+export interface ThreadContinuation {
+  /** The subject a reply in the thread carries ("Re: …"), or null to keep the step's own. */
+  subject: string | null;
+  inReplyTo: string;
+  references: string;
+  /** The provider's thread (Gmail `threadId`) and the account it belongs to. */
+  providerThreadId: string | null;
+  accountId: string | null;
 }
 
 export type SendResult =
