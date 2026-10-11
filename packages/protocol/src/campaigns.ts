@@ -158,6 +158,11 @@ export const campaignConfigSchema = z.object({
   researchInstructions: z.string().trim().max(2_000).default(''),
   /** Research older than this is run again before the campaign relies on it. */
   researchMaxAgeDays: z.number().int().min(1).max(365).default(30),
+  /**
+   * The most the campaign may spend on AI in all (its messages, research and dry runs), in US
+   * dollars; null: no limit of its own. Reached: AI steps and research wait until it is raised.
+   */
+  aiBudgetUsd: z.number().min(0).max(100_000).nullable().default(null),
 });
 export type CampaignConfig = z.infer<typeof campaignConfigSchema>;
 /** A config as written by a caller: fields with defaults may be left out. */
@@ -177,6 +182,7 @@ export const EMPTY_CAMPAIGN_CONFIG: CampaignConfig = {
   icp: '',
   researchInstructions: '',
   researchMaxAgeDays: 30,
+  aiBudgetUsd: null,
 };
 
 // Campaigns ---------------------------------------------------------------------------------
@@ -197,6 +203,8 @@ export const campaignSchema = z.object({
   pendingApprovals: z.number().int().nonnegative(),
   /** Active or paused people still on an earlier version than the launched one. */
   outdatedEnrollments: z.number().int().nonnegative(),
+  /** What AI cost for this campaign so far; costUsd null when a call had no known price. */
+  aiSpend: z.object({ calls: z.number().int().nonnegative(), costUsd: z.number().nonnegative().nullable() }),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),
 });
@@ -292,7 +300,7 @@ export const enrollmentSchema = z.object({
   nextActionAt: z.iso.datetime().nullable(),
   stopReason: stopReasonSchema.nullable(),
   /** What the current step is waiting for, if anything; `window` — the recipient's sending hours. */
-  waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft']).nullable(),
+  waiting: z.enum(['approval', 'schedule', 'window', 'retry', 'draft', 'budget']).nullable(),
   /** The sending hours and zone that hold it, when `waiting` is `window`. */
   sendingHours: z.object({ timeZone: z.string(), window: activeWindowSchema }).nullable(),
   /** The company's qualification by research with this campaign's goal and ICP, if researched. */

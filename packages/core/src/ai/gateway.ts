@@ -34,6 +34,8 @@ const CALL_TIMEOUT_MS = 120_000;
 export interface AiCallContext {
   correlationId: string;
   signal: AbortSignal;
+  /** The campaign the call works for: counted toward its AI budget and cost. */
+  campaignId?: string | null | undefined;
 }
 
 /**
@@ -52,6 +54,8 @@ export class AiGateway {
     http: Http,
     private readonly now: () => Date,
     private readonly logger: Logger,
+    /** A campaign's own AI budget in US dollars, or null for none. */
+    private readonly campaignBudget: (campaignId: string) => number | null = () => null,
   ) {
     this.providers = {
       anthropic: new AnthropicProvider(http, () => this.apiKey('anthropic')),
@@ -184,6 +188,34 @@ export class AiGateway {
     };
   }
 
+  /** AI calls and cost for one campaign so far; cost null when a call had no known price. */
+  campaignSpend(campaignId: string): { calls: number; costUsd: number | null } {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS calls, COALESCE(SUM(cost_usd), 0) AS cost,
+                SUM(CASE WHEN cost_usd IS NULL AND (input_tokens > 0 OR output_tokens > 0) THEN 1 ELSE 0 END) AS unpriced
+         FROM ai_calls WHERE campaign_id = ? AND status != 'refused'`,
+      )
+      .get(campaignId) as { calls: number; cost: number; unpriced: number | null };
+    return { calls: row.calls, costUsd: (row.unpriced ?? 0) > 0 ? null : row.cost };
+  }
+
+  /** Whether the campaign's own budget is used up (what is known counts, as for the monthly budget). */
+  campaignOverBudget(campaignId: string): boolean {
+    const budget = this.campaignBudget(campaignId);
+    if (budget === null) return false;
+    const { spent } = this.db
+      .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM ai_calls WHERE campaign_id = ?`)
+      .get(campaignId) as { spent: number };
+    return spent >= budget;
+  }
+
+  /** Whether the monthly budget is used up. */
+  overMonthlyBudget(): boolean {
+    const budget = this.config().monthlyBudgetUsd;
+    return budget !== null && this.knownSpend() >= budget;
+  }
+
   private knownSpend(month: string = this.now().toISOString().slice(0, 7)): number {
     const row = this.db
       .prepare(`SELECT COALESCE(SUM(cost_usd), 0) AS spent FROM ai_calls WHERE substr(created_at, 1, 7) = ?`)
@@ -208,6 +240,7 @@ export class AiGateway {
         latencyMs: Date.now() - started,
         errorClass,
         correlationId: ctx.correlationId,
+        campaignId: ctx.campaignId ?? null,
       });
 
     // Unpriced calls cannot be counted, but they must not switch the budget off: what is known counts.
@@ -215,6 +248,10 @@ export class AiGateway {
     if (config.monthlyBudgetUsd !== null && spent >= config.monthlyBudgetUsd) {
       record('refused', { inputTokens: 0, outputTokens: 0 }, Date.now(), 'budget');
       throw new AiError('budget', 'Monthly AI budget reached');
+    }
+    if (ctx.campaignId && this.campaignOverBudget(ctx.campaignId)) {
+      record('refused', { inputTokens: 0, outputTokens: 0 }, Date.now(), 'campaign_budget');
+      throw new AiError('budget', 'Campaign AI budget reached');
     }
     const { system, user } = template.build(input);
     const schema = jsonSchema(template.output);
@@ -281,6 +318,7 @@ export class AiGateway {
     latencyMs: number;
     errorClass: string | null;
     correlationId: string;
+    campaignId: string | null;
   }): void {
     // A price the user entered wins; otherwise what the provider reported (OpenRouter does).
     const price = this.config().prices[r.model];
@@ -290,8 +328,8 @@ export class AiGateway {
     this.db
       .prepare(
         `INSERT INTO ai_calls (id, use_case, provider, model, template_key, template_version, status, input_tokens,
-                               output_tokens, cost_usd, latency_ms, error_class, correlation_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                               output_tokens, cost_usd, latency_ms, error_class, correlation_id, campaign_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         uuidv7(),
@@ -307,6 +345,7 @@ export class AiGateway {
         r.latencyMs,
         r.errorClass,
         r.correlationId,
+        r.campaignId,
         this.now().toISOString(),
       );
     this.logger.info(

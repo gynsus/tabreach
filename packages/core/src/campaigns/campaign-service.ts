@@ -68,7 +68,23 @@ export class CampaignService {
     } | null,
     /** Research asked with the campaign's goal and ICP (docs/16); for "Research companies" and the People list. */
     private readonly research?: CampaignEngineDeps['research'],
+    /** AI spending: the campaign's calls and cost, and whether its or the monthly budget is used up. */
+    private readonly aiSpend: {
+      spend(campaignId: string): Campaign['aiSpend'];
+      reached(campaignId: string): boolean;
+    } = { spend: () => ({ calls: 0, costUsd: 0 }), reached: () => false },
   ) {}
+
+  /** The campaign's own AI budget, from its launched version (or its draft before launch). */
+  aiBudget(id: string): number | null {
+    const row = this.db
+      .prepare('SELECT active_version_id, draft_config FROM campaigns WHERE id = ?')
+      .get(id) as { active_version_id: string | null; draft_config: string } | undefined;
+    if (!row) return null;
+    return row.active_version_id
+      ? this.engine.versionConfig(row.active_version_id).aiBudgetUsd
+      : campaignConfigSchema.parse(JSON.parse(row.draft_config)).aiBudgetUsd;
+  }
 
   list(includeArchived: boolean): Campaign[] {
     const rows = this.db
@@ -588,6 +604,12 @@ export class CampaignService {
     };
     const run = this.engine.openRun(e.id);
     if (run?.status === 'waiting_approval') return { waiting: 'approval', sendingHours: null };
+    // An AI message or a research condition held by a used-up AI budget (docs/15 "Budgets").
+    const step = this.engine.step(e.campaign_version_id, e.current_step_position);
+    const needsAi = run
+      ? run.current_state === 'GENERATE_DRAFT'
+      : step?.type === 'condition' && step.conditions.some((c) => c.field === 'research.qualification');
+    if (needsAi && this.aiSpend.reached(e.campaign_id)) return { waiting: 'budget', sendingHours: null };
     if (run) {
       const job = this.jobs.byDedupeKey(`run:${run.id}`);
       if (job?.type === JOB_RUN && job.status === 'pending') {
@@ -636,6 +658,7 @@ export class CampaignService {
       activeVersion: version,
       enrollments: { active: 0, paused: 0, completed: 0, stopped: 0, ...counts },
       pendingApprovals: pending,
+      aiSpend: this.aiSpend.spend(r.id),
       outdatedEnrollments: r.active_version_id
         ? (
             this.db

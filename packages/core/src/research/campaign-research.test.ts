@@ -272,4 +272,59 @@ describe('campaign research', () => {
       quote: fact.quote,
     });
   });
+
+  it('a campaign’s AI budget counts its research and messages; when it is reached AI steps wait, nobody stops', async () => {
+    const { models, provider, monthlyBudgetUsd } = h.services.ai.settings();
+    // $1 per call of 1000 input tokens: the fake model's usage.
+    h.services.ai.update(
+      {
+        provider,
+        models,
+        monthlyBudgetUsd,
+        prices: {
+          [models.research]: { inputPerMTok: 1000, outputPerMTok: 0 },
+          [models.drafting]: { inputPerMTok: 1000, outputPerMTok: 0 },
+        },
+      },
+      ctx(),
+    );
+    const aiStep = {
+      type: 'send_message' as const,
+      channel: 'test' as const,
+      executionMode: 'auto' as const,
+      delaySeconds: 0,
+      mode: 'ai' as const,
+      subject: '',
+      body: '',
+      instructions: 'Ask for a short call.',
+    };
+    const company = acme();
+    h.anthropic.answer(synthesis('match'), {
+      input: { subject: 'Berlin', body: 'Hello Bob.', usedFacts: ['F1'] },
+    });
+    const id = launch(config({ steps: [aiStep], aiBudgetUsd: 1 }), [
+      person(company, 'Bob'),
+      person(company, 'Ann'),
+    ]);
+    await settle();
+    await settle();
+
+    // The company's research ($1) used the budget; both messages wait for more, nobody is stopped.
+    expect(h.services.campaigns.get(id).aiSpend).toEqual({ calls: 1, costUsd: 1 });
+    expect(people(id).map((p) => [p.status, p.waiting])).toEqual([
+      ['active', 'budget'],
+      ['active', 'budget'],
+    ]);
+    expect(
+      h.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM ai_calls WHERE status = 'refused' AND error_class = 'campaign_budget'`,
+        )
+        .get(),
+    ).toEqual({ n: 2 });
+    // Calls for no campaign are not counted against it.
+    expect(h.db.prepare(`SELECT COUNT(*) AS n FROM ai_calls WHERE campaign_id IS NULL`).get()).toEqual({
+      n: 0,
+    });
+  });
 });

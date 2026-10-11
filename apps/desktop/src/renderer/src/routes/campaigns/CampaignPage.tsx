@@ -199,7 +199,12 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
             </Alert>
           ) : null}
 
-          <TargetingSection config={config} disabled={archived || busy} onChange={edit} />
+          <TargetingSection
+            config={config}
+            spend={campaign.aiSpend}
+            disabled={archived || busy}
+            onChange={edit}
+          />
 
           <section aria-labelledby="sequence-heading" className="grid gap-3">
             <h2 id="sequence-heading" className="text-[15px] font-semibold">
@@ -286,6 +291,7 @@ const textarea =
 /** Goal, ICP and what research looks for (docs/16 "Campaign context", docs/17). */
 function TargetingSection(props: {
   config: CampaignConfig;
+  spend: Campaign['aiSpend'];
   disabled: boolean;
   onChange: (config: CampaignConfig) => void;
 }) {
@@ -318,6 +324,39 @@ function TargetingSection(props: {
       {area('goal', 1_000)}
       {area('icp', 2_000)}
       {area('researchInstructions', 2_000)}
+      <Field
+        label={t('campaigns.targeting.budget')}
+        hint={t('campaigns.targeting.budgetHint')}
+        className="max-w-xs"
+      >
+        {(id, describedBy) => (
+          <Input
+            id={id}
+            type="number"
+            min={0}
+            step="0.5"
+            value={config.aiBudgetUsd ?? ''}
+            disabled={props.disabled}
+            aria-describedby={describedBy}
+            onChange={(e) => {
+              const v = e.target.value.trim();
+              const n = Number(v);
+              props.onChange({ ...config, aiBudgetUsd: v === '' || !Number.isFinite(n) || n < 0 ? null : n });
+            }}
+          />
+        )}
+      </Field>
+      {props.spend.calls > 0 ? (
+        <p className="text-xs text-soft" data-testid="campaign-ai-spend">
+          {props.spend.costUsd === null
+            ? t('campaigns.targeting.spendUnknown', { calls: props.spend.calls })
+            : t('campaigns.targeting.spend', {
+                cost: `$${props.spend.costUsd.toFixed(props.spend.costUsd < 1 ? 4 : 2)}`,
+                calls: props.spend.calls,
+              })}
+          {props.config.aiBudgetUsd !== null ? ` / $${props.config.aiBudgetUsd}` : ''}
+        </p>
+      ) : null}
       <Field
         label={t('campaigns.targeting.maxAge')}
         hint={t('campaigns.targeting.maxAgeHint')}

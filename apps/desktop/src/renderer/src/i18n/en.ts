@@ -611,6 +611,11 @@ export const en = {
       researchInstructionsHint: 'Facts you need most from the company’s site, beyond the usual.',
       researchInstructionsPlaceholder:
         'Open jobs in the warehouse or IT, the order-management system they use, new locations.',
+      budget: 'AI budget for this campaign, $',
+      budgetHint:
+        'All its AI messages, research and dry runs. Empty: only the monthly budget in Settings → AI applies. When it is reached, AI steps wait until you raise it.',
+      spend: 'Spent on AI: {{cost}} in {{calls}} calls',
+      spendUnknown: 'Spent on AI: {{calls}} calls (some without a price, so the total is unknown)',
       maxAge: 'Research is fresh for (days)',
       maxAgeHint: 'Older research is done again before the campaign relies on it.',
     },
@@ -652,6 +657,7 @@ export const en = {
       window: 'Waiting for sending hours',
       retry: 'Retrying after an error',
       draft: 'AI is writing the message',
+      budget: 'Waiting for AI budget: raise it in the campaign or in Settings → AI',
     },
     stopReasons: {
       not_connected: 'Did not accept the LinkedIn invitation in time',

@@ -497,7 +497,7 @@ Index `(conversation_id, created_at)`. A sent reply is also stored in `messages`
 
 ### `ai_calls`
 
-`(id pk, use_case, provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label`, `ai_confidence`, `ai_template` (migration 12).
+`(id pk, use_case, provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, campaign_id null (migration 22), created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label`, `ai_confidence`, `ai_template` (migration 12).
 
 ### `mailbox_cursors`
 

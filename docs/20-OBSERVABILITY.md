@@ -44,7 +44,7 @@ No metrics server. Core computes local counters/aggregates from the database and
 - human intervention count;
 - email send success/failure, bounces;
 - research latency/cost;
-- AI token usage/cost per month and per use case (implemented, Settings → AI); per campaign planned with the per-campaign budget (Phase 8).
+- AI token usage/cost per month and per use case (implemented, Settings → AI); per campaign on the campaign page, with its own budget (Phase 8d-8, docs/15).
 
 ## Action timeline
 
