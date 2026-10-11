@@ -60,7 +60,9 @@ MVP step types, as implemented:
 - `send_message` — one message on a channel: `email`, `web_form` (the company's contact form), `linkedin` (`connect` or `message`); written from a template or by AI from the company's verified research (research runs inside the step when needed); its `delaySeconds` is the wait before it;
 - `condition` — checks contact/company fields and tags; stops the person or skips the next step.
 
-Open in Phase 8d: `human_task` (a step the person does and marks done). A separate `wait` step is not needed: every step carries its delay.
+- `human_task` (Phase 8d-9) — a step the person does themselves (a call, a check) and marks done, skips, or ends by stopping the person; it waits in Tasks.
+
+A separate `wait` step is not needed: every step carries its delay.
 
 The `webhook` step type is deferred to after the MVP (ADR 030); the campaign status CSV export covers handing data to a CRM meanwhile.
 

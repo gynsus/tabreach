@@ -5,6 +5,7 @@ import { createHashRouter, Navigate, RouterProvider } from 'react-router';
 import { AppShell } from './components/AppShell';
 import { ToastProvider } from './components/toast';
 import { setLanguage } from './i18n';
+import { TasksPage } from './routes/tasks/TasksPage';
 import { ActivityPage } from './routes/activity/ActivityPage';
 import { ApprovalsPage } from './routes/approvals/ApprovalsPage';
 import { InboxPage } from './routes/inbox/InboxPage';
@@ -38,6 +39,7 @@ const router = createHashRouter([
       { path: 'campaigns/:id', element: <CampaignPage /> },
       { path: 'approvals', element: <ApprovalsPage /> },
       { path: 'inbox', element: <InboxPage /> },
+      { path: 'tasks', element: <TasksPage /> },
       { path: 'activity', element: <ActivityPage /> },
       { path: 'status', element: <StatusPage /> },
       { path: 'browser', element: <BrowserPage /> },

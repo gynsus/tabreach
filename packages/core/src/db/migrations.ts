@@ -777,4 +777,44 @@ export const migrations: readonly Migration[] = [
       CREATE INDEX ai_calls_campaign ON ai_calls (campaign_id) WHERE campaign_id IS NOT NULL;
     `,
   },
+  {
+    version: 23,
+    name: 'human_task_steps',
+    foreignKeysOff: true,
+    sql: `
+      -- A step the person does and marks done (docs/17 "human_task"): the step type is allowed, and
+      -- each time a person reaches one a task waits in Tasks.
+      CREATE TABLE sequence_steps_new (
+        id                  TEXT PRIMARY KEY,
+        campaign_version_id TEXT NOT NULL REFERENCES campaign_versions (id),
+        position            INTEGER NOT NULL CHECK (position >= 1),
+        step_type           TEXT NOT NULL CHECK (step_type IN ('send_message', 'condition', 'human_task')),
+        execution_mode      TEXT CHECK (execution_mode IN ('auto', 'assisted', 'manual')),
+        delay_seconds       INTEGER NOT NULL CHECK (delay_seconds >= 0),
+        config              TEXT NOT NULL CHECK (json_valid(config)),
+        created_at          TEXT NOT NULL,
+        UNIQUE (campaign_version_id, position)
+      ) STRICT;
+      INSERT INTO sequence_steps_new SELECT * FROM sequence_steps;
+      DROP TABLE sequence_steps;
+      ALTER TABLE sequence_steps_new RENAME TO sequence_steps;
+
+      CREATE TABLE human_tasks (
+        id                    TEXT PRIMARY KEY,
+        campaign_enrollment_id TEXT NOT NULL REFERENCES campaign_enrollments (id),
+        campaign_version_id   TEXT NOT NULL REFERENCES campaign_versions (id),
+        step_position         INTEGER NOT NULL,
+        title                 TEXT NOT NULL,
+        instructions          TEXT NOT NULL DEFAULT '',
+        status                TEXT NOT NULL CHECK (status IN ('open', 'done', 'skipped', 'cancelled')),
+        -- What closed it: the person (done, skipped, stopped the person) or the system (stopped, moved).
+        resolution            TEXT,
+        created_at            TEXT NOT NULL,
+        resolved_at           TEXT
+      ) STRICT;
+      -- One open task per person and step.
+      CREATE UNIQUE INDEX human_tasks_open ON human_tasks (campaign_enrollment_id, step_position) WHERE status = 'open';
+      CREATE INDEX human_tasks_status ON human_tasks (status, created_at);
+    `,
+  },
 ];

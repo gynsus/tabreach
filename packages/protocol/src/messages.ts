@@ -85,6 +85,8 @@ import {
   enrollReportSchema,
   migrateReportSchema,
   researchBatchReportSchema,
+  humanTaskSchema,
+  taskResolveSchema,
   enrollRequestSchema,
   jobSchema,
   draftVersionSchema,
@@ -362,6 +364,19 @@ export const requests = {
   'campaigns.resume': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.archive': { channel: 'app', kind: 'command', request: byId, response: campaignSchema },
   'campaigns.migrate': { channel: 'app', kind: 'command', request: byId, response: migrateReportSchema },
+  /** Tasks for the person from human_task steps (docs/17). */
+  'tasks.list': {
+    channel: 'app',
+    kind: 'query',
+    request: z.object({
+      status: z.enum(['open', 'all']).default('open'),
+      limit: z.number().int().min(1).max(500).default(100),
+      offset: z.number().int().min(0).default(0),
+    }),
+    response: z.object({ items: z.array(humanTaskSchema), total: z.number().int().nonnegative() }),
+  },
+  /** Done or skip moves the person's sequence on; stop takes them out of the campaign. */
+  'tasks.resolve': { channel: 'app', kind: 'command', request: taskResolveSchema, response: ok },
   /** Research for every company of the campaign's people, with its goal and ICP (FR-RES-001). */
   'campaigns.research': {
     channel: 'app',

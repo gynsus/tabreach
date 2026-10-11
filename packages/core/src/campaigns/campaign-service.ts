@@ -12,6 +12,7 @@ import {
   type Enrollment,
   type EnrollmentStatus,
   type EnrollReport,
+  type HumanTask,
   type MigrateReport,
   type Qualification,
   type ResearchBatchReport,
@@ -454,8 +455,74 @@ export class CampaignService {
   }
 
   /** Launch validation (docs/17): field paths map to translatable keys. */
+  /** Tasks for the person (human_task steps), open ones first, newest last (docs/17). */
+  listTasks(
+    status: 'open' | 'all',
+    page: { limit: number; offset: number },
+  ): { items: HumanTask[]; total: number } {
+    const where = status === 'open' ? "WHERE t.status = 'open'" : '';
+    const rows = this.db
+      .prepare(
+        `SELECT t.*, e.campaign_id, e.contact_id, cp.name AS campaign_name, c.first_name, c.last_name, c.full_name,
+                c.email, co.name AS company_name
+         FROM human_tasks t
+         JOIN campaign_enrollments e ON e.id = t.campaign_enrollment_id
+         JOIN campaigns cp ON cp.id = e.campaign_id
+         JOIN contacts c ON c.id = e.contact_id
+         LEFT JOIN companies co ON co.id = c.company_id
+         ${where} ORDER BY CASE t.status WHEN 'open' THEN 0 ELSE 1 END, t.created_at, t.id LIMIT ? OFFSET ?`,
+      )
+      .all(page.limit, page.offset) as unknown as (ContactNameRow & {
+      id: string;
+      campaign_enrollment_id: string;
+      campaign_id: string;
+      contact_id: string;
+      campaign_name: string;
+      company_name: string | null;
+      step_position: number;
+      title: string;
+      instructions: string;
+      status: HumanTask['status'];
+      created_at: string;
+      resolved_at: string | null;
+    })[];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM human_tasks t ${where}`).get() as { n: number })
+      .n;
+    return {
+      total,
+      items: rows.map((r) => ({
+        id: r.id,
+        enrollmentId: r.campaign_enrollment_id,
+        campaignId: r.campaign_id,
+        campaignName: r.campaign_name,
+        contactId: r.contact_id,
+        contactName: displayName(r),
+        email: r.email,
+        companyName: r.company_name,
+        stepPosition: r.step_position,
+        title: r.title,
+        instructions: r.instructions,
+        status: r.status,
+        createdAt: r.created_at,
+        resolvedAt: r.resolved_at,
+      })),
+    };
+  }
+
+  resolveTask(id: string, outcome: 'done' | 'skip' | 'stop', ctx: CommandContext): void {
+    this.engine.resolveTask(id, outcome, ctx.correlationId);
+  }
+
   private validate(config: CampaignConfig): void {
     const fields: Record<string, string> = {};
+    config.steps.forEach((step, i) => {
+      if (step.type !== 'human_task') return;
+      if (!step.title.trim()) fields[`steps.${i}.title`] = 'task.titleRequired';
+      else if (unknownPlaceholders(step.title).length > 0)
+        fields[`steps.${i}.title`] = 'template.unknownField';
+      if (unknownPlaceholders(step.instructions).length > 0)
+        fields[`steps.${i}.instructions`] = 'template.unknownField';
+    });
     config.steps.forEach((step, i) => {
       // A research condition needs research, and research needs an AI key: without one every person would stop.
       if (step.type === 'condition' && step.conditions.some((c) => c.field === 'research.qualification')) {
@@ -610,6 +677,8 @@ export class CampaignService {
       ? run.current_state === 'GENERATE_DRAFT'
       : step?.type === 'condition' && step.conditions.some((c) => c.field === 'research.qualification');
     if (needsAi && this.aiSpend.reached(e.campaign_id)) return { waiting: 'budget', sendingHours: null };
+    if (!run && step?.type === 'human_task' && this.engine.openTask(e.id, e.current_step_position))
+      return { waiting: 'task', sendingHours: null };
     if (run) {
       const job = this.jobs.byDedupeKey(`run:${run.id}`);
       if (job?.type === JOB_RUN && job.status === 'pending') {

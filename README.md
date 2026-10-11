@@ -116,9 +116,10 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 
 - campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, moving people to a newly launched version, and email follow-ups sent as replies in the same thread;
 - campaign goal and ICP: research rates each company against them, a condition can let only fitting companies through, AI messages aim at the goal, and one button researches every company of a campaign; each campaign can have its own AI budget, with its spend shown;
+- task steps the person does themselves (a call, a check), waiting in Tasks until marked done;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: the rest of Phase 8d (contact-level research, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
+Next: the rest of Phase 8d (contact-level research), then 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 
