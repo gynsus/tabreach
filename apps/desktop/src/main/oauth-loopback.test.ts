@@ -28,6 +28,24 @@ describe('runLoopback', () => {
     await expect(fetch(`${redirectUri}/?code=again`)).rejects.toThrow();
   });
 
+  it('gives Microsoft a localhost redirect, still served on 127.0.0.1 only', async () => {
+    const result = await runLoopback({
+      authorizeUrl:
+        'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=x&state=s1-long-enough-state',
+      expectedState: 's1-long-enough-state',
+      timeoutMs: 5_000,
+      open: async (url) => {
+        const redirect = new URL(new URL(url).searchParams.get('redirect_uri') as string);
+        // The listener is bound to the IPv4 loopback address only...
+        await expect(fetch(`http://[::1]:${redirect.port}/`)).rejects.toThrow();
+        // ...and a client given "localhost" still reaches it, whichever address it tries first.
+        await fetch(`${redirect.origin}/?code=abc&state=s1-long-enough-state`);
+      },
+    });
+    expect(result.redirectUri).toMatch(/^http:\/\/localhost:\d+$/);
+    expect(result.params.code).toBe('abc');
+  });
+
   it('returns an error redirect too, and times out when nothing comes back', async () => {
     const denied = await runLoopback({
       authorizeUrl: authorize,

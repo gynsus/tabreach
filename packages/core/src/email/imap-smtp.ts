@@ -32,6 +32,25 @@ function staged(error: unknown, stage: SmtpStage): Error {
   return Object.assign(e, { stage });
 }
 
+/**
+ * SMTP login: the password, or XOAUTH2 with the access token (ADR 032). The token is built into
+ * the AUTH command only; nodemailer masks it in its own logs, which are off anyway.
+ */
+function credentials(s: MailSettings): SMTPConnection.Credentials | SMTPConnection.AuthenticationOAuth2 {
+  if (!s.accessToken) return { user: s.username, pass: s.password };
+  const token = s.accessToken;
+  return {
+    user: s.username,
+    oauth2: {
+      getToken: (_renew: boolean, callback: (err: Error | null, token?: string) => void) =>
+        callback(null, token),
+      buildXOAuth2Token: (accessToken: string) =>
+        Buffer.from(`user=${s.username}\x01auth=Bearer ${accessToken}\x01\x01`, 'utf8').toString('base64'),
+    },
+    // The typings describe nodemailer's own token generator; the connection only calls these two.
+  } as unknown as SMTPConnection.AuthenticationOAuth2;
+}
+
 function smtpClient(s: MailSettings, o: ClientOptions): SmtpClient {
   const plaintext = o.plaintextLoopback && s.smtp.host === '127.0.0.1';
   const options = {
@@ -75,9 +94,7 @@ function smtpClient(s: MailSettings, o: ClientOptions): SmtpClient {
       );
     try {
       await step<void>('connect', (done) => connection.connect((err) => done(err ?? null)));
-      await step<void>('auth', (done) =>
-        connection.login({ user: s.username, pass: s.password }, (err) => done(err)),
-      );
+      await step<void>('auth', (done) => connection.login(credentials(s), (err) => done(err)));
       return submit ? await submit(connection) : undefined;
     } finally {
       connection.quit();
@@ -114,7 +131,9 @@ async function mailboxClient(s: MailSettings, signal: AbortSignal): Promise<Mail
     port: s.imap.port,
     secure: s.imap.security === 'tls',
     doSTARTTLS: s.imap.security === 'starttls' ? true : undefined,
-    auth: { user: s.username, pass: s.password },
+    auth: s.accessToken
+      ? { user: s.username, accessToken: s.accessToken }
+      : { user: s.username, pass: s.password },
     logger: false,
     connectionTimeout: TIMEOUT_MS,
     socketTimeout: TIMEOUT_MS,

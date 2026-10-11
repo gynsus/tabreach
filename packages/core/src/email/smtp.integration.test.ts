@@ -8,16 +8,22 @@ import type { MailSettings } from './transport.js';
 
 type Mode = 'accept' | 'drop_after_data' | 'reject_rcpt' | 'reject_data';
 
-/** A local SMTP server on a random port (no TLS, AUTH PLAIN/LOGIN), behaving as told. */
+/** A local SMTP server on a random port (no TLS, AUTH PLAIN/LOGIN/XOAUTH2), behaving as told. */
 async function startServer(mode: Mode) {
   const received: string[] = [];
   const server = new SMTPServer({
     secure: false,
     allowInsecureAuth: true,
     disabledCommands: ['STARTTLS'],
-    authMethods: ['PLAIN', 'LOGIN'],
+    authMethods: ['PLAIN', 'LOGIN', 'XOAUTH2'],
     logger: false,
     onAuth(auth, _session, callback) {
+      if (auth.method === 'XOAUTH2') {
+        if (auth.username === 'me' && auth.accessToken === 'token-1') callback(null, { user: 'me' });
+        // How a server refuses a token: a JSON status in a 334 challenge, then 535.
+        else callback(null, { data: { status: '401', schemes: 'bearer', scope: 'mail' } });
+        return;
+      }
       if (auth.username === 'me' && auth.password === 'secret') callback(null, { user: 'me' });
       else callback(Object.assign(new Error('Invalid login'), { responseCode: 535 }));
     },
@@ -48,16 +54,17 @@ async function startServer(mode: Mode) {
   return { server, port, received, close: () => new Promise<void>((r) => server.close(() => r())) };
 }
 
-const settings = (port: number, password = 'secret'): MailSettings => ({
+const settings = (port: number, password = 'secret', accessToken?: string): MailSettings => ({
   address: 'me@acme.test',
   username: 'me',
   password,
+  ...(accessToken ? { accessToken } : {}),
   smtp: { host: '127.0.0.1', port, security: 'starttls' },
   imap: { host: '127.0.0.1', port: 1, security: 'tls' },
 });
 
-async function send(port: number, password?: string) {
-  const smtp = createImapSmtpClients({ plaintextLoopback: true }).smtp(settings(port, password));
+async function send(port: number, password?: string, accessToken?: string) {
+  const smtp = createImapSmtpClients({ plaintextLoopback: true }).smtp(settings(port, password, accessToken));
   const raw = await composeMessage({
     from: { address: 'me@acme.test', name: null },
     to: { address: 'bob@beta.test', name: null },
@@ -92,6 +99,22 @@ describe('SMTP through nodemailer against a local server', () => {
     const s = await startServer('accept');
     close = s.close;
     const error = await send(s.port, 'wrong').catch((e: unknown) => e);
+    expect(classifySmtpError(error)).toEqual({ outcome: 'not_sent', errorClass: 'auth_failed' });
+    expect(s.received).toHaveLength(0);
+  });
+
+  it('signs in with XOAUTH2 when the account has an access token (ADR 032)', async () => {
+    const s = await startServer('accept');
+    close = s.close;
+    const result = await send(s.port, '', 'token-1');
+    expect(result.response).toMatch(/^250/);
+    expect(s.received).toHaveLength(1);
+  });
+
+  it('a refused token is not sent (auth_failed)', async () => {
+    const s = await startServer('accept');
+    close = s.close;
+    const error = await send(s.port, '', 'expired-token').catch((e: unknown) => e);
     expect(classifySmtpError(error)).toEqual({ outcome: 'not_sent', errorClass: 'auth_failed' });
     expect(s.received).toHaveLength(0);
   });

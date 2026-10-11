@@ -31,7 +31,7 @@ import { ContactPolicy } from './campaigns/policy.js';
 import type { ChannelResolver, MessageChannel } from './channels/channel.js';
 import { TestChannel } from './channels/test-channel.js';
 import { CommandLog } from './commands/command-log.js';
-import { AccountService, type GmailDeps } from './email/accounts.js';
+import { AccountService, type OAuthDeps } from './email/accounts.js';
 import type { Http } from './email/gmail.js';
 import { InboxService } from './email/inbox.js';
 import { REPLY_ACTION, ReplyService } from './email/replies.js';
@@ -63,8 +63,8 @@ export interface AppServicesOptions {
   cipher?: SecretCipher;
   /** SMTP/IMAP clients; tests replace the real ones. */
   mailClients?: MailClients;
-  /** HTTPS for Google APIs and main's OAuth loopback; tests replace them. */
-  gmail?: GmailDeps;
+  /** HTTPS for Google and Microsoft sign-in and the Gmail API, and main's OAuth loopback; tests replace them. */
+  oauth?: OAuthDeps;
   /** HTTPS for AI providers; tests replace it. */
   aiHttp?: Http;
   /** HTTP for research page fetching; tests replace it. */
@@ -208,7 +208,7 @@ export class AppServices {
       now,
       logger.child({ component: 'email' }),
       (accountId) => this.inbox.schedulePoll(accountId),
-      options.gmail,
+      options.oauth,
     );
     const named = new Map(
       (options.channels ?? [new TestChannel(db, now, 60_000)]).map((c) => [c.channel, c] as const),
@@ -629,6 +629,11 @@ export class AppServices {
       })
       .handle('accounts.connectGmail', async (p, c) => {
         const account = await this.accounts.connectGmail(p, ctx(c));
+        this.changed(['account', 'activity']);
+        return account;
+      })
+      .handle('accounts.connectMicrosoft', async (p, c) => {
+        const account = await this.accounts.connectMicrosoft(p, ctx(c));
         this.changed(['account', 'activity']);
         return account;
       })

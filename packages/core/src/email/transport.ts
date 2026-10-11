@@ -4,7 +4,10 @@ import type { MailServer } from '@tabreach/protocol';
 export interface MailSettings {
   address: string;
   username: string;
+  /** Empty when the account signs in with OAuth. */
   password: string;
+  /** OAuth access token (ADR 032): sign in with XOAUTH2 instead of the password. */
+  accessToken?: string;
   smtp: MailServer;
   imap: MailServer;
 }

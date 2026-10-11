@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { GmailDeps } from './accounts.js';
+import type { OAuthDeps } from './accounts.js';
 
 type SendBehaviour =
   'ok' | 'server_error_after_storing' | 'server_error' | 'unreachable' | 'bad_request' | 'quota' | 'hang';
@@ -52,7 +52,7 @@ export class FakeGoogle {
     this.accessToken = 'expired';
   }
 
-  readonly deps: GmailDeps = {
+  readonly deps: OAuthDeps = {
     loopback: async (authorizeUrl) => {
       const url = new URL(authorizeUrl);
       this.challenge = url.searchParams.get('code_challenge') ?? '';

@@ -11,6 +11,7 @@ import {
   type ImapAccountInput,
   type Logger,
   type MailServer,
+  type MicrosoftAccountInput,
 } from '@tabreach/protocol';
 import type { AuditLog } from '../audit/audit-log.js';
 import { transaction } from '../db/database.js';
@@ -33,6 +34,14 @@ import {
   type Http,
 } from './gmail.js';
 import {
+  grantedMailScopes,
+  MICROSOFT_SERVERS,
+  microsoftAuthorizeUrl,
+  microsoftExchangeCode,
+  microsoftRefresh,
+  type MicrosoftClient,
+} from './microsoft.js';
+import {
   InboxAuthError,
   MAX_WHOLE_MESSAGE_BYTES,
   PARTIAL_MESSAGE_BYTES,
@@ -41,8 +50,8 @@ import {
   type MailSettings,
 } from './transport.js';
 
-/** What Gmail accounts need from the outside: HTTPS, and main's OAuth loopback (ADR 016). */
-export interface GmailDeps {
+/** What OAuth accounts need from the outside: HTTPS, and main's OAuth loopback (ADR 016, ADR 032). */
+export interface OAuthDeps {
   http: Http;
   loopback: (
     authorizeUrl: string,
@@ -52,6 +61,8 @@ export interface GmailDeps {
 }
 
 const OAUTH_TIMEOUT_MS = 10 * 60_000;
+/** An access token this close to expiry is renewed first, so it cannot run out mid-session. */
+const TOKEN_MARGIN_MS = 5 * 60_000;
 
 interface AccountRow {
   id: string;
@@ -75,6 +86,8 @@ interface Metadata {
   /** Gmail API accounts: the user's OAuth client. */
   clientId?: string;
   clientSecretId?: string | null;
+  /** IMAP/SMTP accounts that sign in with Microsoft (XOAUTH2, ADR 032) instead of a password. */
+  oauth?: { provider: 'microsoft'; clientId: string; tenant: string };
 }
 
 const CHECK_TIMEOUT_MS = 30_000;
@@ -109,6 +122,8 @@ function failureReason(error: unknown): string {
 export class AccountService {
   private readonly channels = new Map<string, { updatedAt: string; channel: MessageChannel }>();
   private readonly tokens = new Map<string, { token: string; expiresAt: number }>();
+  /** One Microsoft token refresh at a time per account: each may hand out a new refresh token. */
+  private readonly refreshing = new Map<string, Promise<string>>();
 
   constructor(
     private readonly db: DatabaseSync,
@@ -119,7 +134,7 @@ export class AccountService {
     private readonly logger: Logger,
     /** Told when an account starts working (connected, new password) so its inbox is polled. */
     private readonly onActivated: (accountId: string) => void = () => {},
-    private readonly gmail: GmailDeps = {
+    private readonly oauth: OAuthDeps = {
       http: (url, init) => fetch(url, init),
       loopback: () => Promise.reject(new RpcError('UNAVAILABLE', 'OAuth is not available')),
     },
@@ -210,7 +225,7 @@ export class AccountService {
     const clientSecret = input.clientSecret?.trim() || null;
     let redirect: { redirectUri: string; params: Record<string, string> };
     try {
-      redirect = await this.gmail.loopback(
+      redirect = await this.oauth.loopback(
         authorizeUrl(input.clientId, challenge, state),
         OAUTH_TIMEOUT_MS,
         state,
@@ -230,7 +245,7 @@ export class AccountService {
     }
     let tokens;
     try {
-      tokens = await exchangeCode(this.gmail.http, {
+      tokens = await exchangeCode(this.oauth.http, {
         clientId: input.clientId,
         clientSecret,
         code: params.code,
@@ -250,7 +265,7 @@ export class AccountService {
       throw new RpcError('CONFLICT', 'Not all permissions were granted', 'oauth.scopesMissing');
     }
     if (!tokens.refreshToken) throw new RpcError('CONFLICT', 'No refresh token', 'oauth.noRefreshToken');
-    const api = new GmailApi(this.gmail.http, async () => tokens.accessToken);
+    const api = new GmailApi(this.oauth.http, async () => tokens.accessToken);
     const profile = await api.profile(AbortSignal.timeout(CHECK_TIMEOUT_MS));
     const address = normalizeEmail(profile.emailAddress);
     if (!address) throw new RpcError('CONFLICT', 'Gmail returned no address', 'oauth.exchangeFailed');
@@ -262,7 +277,15 @@ export class AccountService {
     const secretId = clientSecret ? await this.secrets.put('oauth_client_secret', clientSecret) : null;
     if (existing) {
       return this.orDropSecrets([refreshId, secretId], () =>
-        this.renewGmail(existing, { clientId: input.clientId, refreshId, secretId, tokens }, ctx),
+        this.renewOAuth(
+          existing,
+          {
+            refreshId,
+            metadata: (m) => ({ ...m, clientId: input.clientId, clientSecretId: secretId }),
+            tokens,
+          },
+          ctx,
+        ),
       );
     }
     return this.orDropSecrets([refreshId, secretId], () =>
@@ -308,36 +331,157 @@ export class AccountService {
     );
   }
 
-  /** Signing in again to a connected Gmail account (e.g. after the token was revoked): new tokens, same account. */
-  private renewGmail(
+  /**
+   * Signing in again to a connected OAuth account (e.g. after the grant was revoked): new tokens,
+   * same account. The secrets the account held before are deleted.
+   */
+  private renewOAuth(
     row: AccountRow,
     fresh: {
-      clientId: string;
       refreshId: string;
-      secretId: string | null;
+      metadata: (m: Metadata) => Metadata;
       tokens: { accessToken: string; expiresAt: number };
     },
     ctx: CommandContext,
   ): EmailAccount {
     return transaction(this.db, () => {
-      const m = JSON.parse(row.metadata) as Metadata;
-      const old = [row.secret_id, m.clientSecretId].filter((x): x is string => Boolean(x));
+      const current = this.row(row.id);
+      const m = JSON.parse(current.metadata) as Metadata;
+      const old = [current.secret_id, m.clientSecretId].filter((x): x is string => Boolean(x));
+      const next = fresh.metadata(m);
       this.db
         .prepare(
           `UPDATE channel_accounts SET secret_id = ?, metadata = ?, status = 'active', updated_at = ? WHERE id = ?`,
         )
-        .run(
-          fresh.refreshId,
-          JSON.stringify({ ...m, clientId: fresh.clientId, clientSecretId: fresh.secretId }),
-          this.now().toISOString(),
-          row.id,
-        );
-      for (const id of old) this.secrets.delete(id);
+        .run(fresh.refreshId, JSON.stringify(next), this.now().toISOString(), row.id);
+      for (const id of old) if (id !== next.clientSecretId) this.secrets.delete(id);
       this.tokens.set(row.id, { token: fresh.tokens.accessToken, expiresAt: fresh.tokens.expiresAt });
       this.record('account.updated', row.id, ctx, { fields: ['oauth'] });
       this.onActivated(row.id);
       return this.get(row.id);
     });
+  }
+
+  /**
+   * Connects an Outlook.com or Microsoft 365 mailbox over IMAP/SMTP with Microsoft sign-in
+   * (ADR 032): the user's own Entra app registration, PKCE, the loopback redirect through main,
+   * then SMTP and IMAP are tested with the token. Only the refresh token is stored, encrypted;
+   * signing in again to the same address renews the account.
+   */
+  async connectMicrosoft(input: MicrosoftAccountInput, ctx: CommandContext): Promise<EmailAccount> {
+    const address = normalizeEmail(input.address);
+    if (!address) throw RpcError.validation({ address: 'email.invalid' });
+    const existing = this.findActive(address);
+    if (existing && (JSON.parse(existing.metadata) as Metadata).oauth?.provider !== 'microsoft') {
+      throw RpcError.validation({ address: 'account.duplicate' }, 'account.duplicate');
+    }
+    const client: MicrosoftClient = { clientId: input.clientId, tenant: input.tenant ?? 'common' };
+    const { verifier, challenge, state } = pkce();
+    let redirect: { redirectUri: string; params: Record<string, string> };
+    try {
+      redirect = await this.oauth.loopback(
+        microsoftAuthorizeUrl(client, { challenge, state, loginHint: address }),
+        OAUTH_TIMEOUT_MS,
+        state,
+      );
+    } catch (error) {
+      this.logger.warn({ event: 'microsoft.oauth_aborted', err: error }, 'OAuth did not complete');
+      throw new RpcError('CONFLICT', 'Authorization was not completed', 'oauth.notCompleted');
+    }
+    const { params } = redirect;
+    if (params.state !== state) throw new RpcError('CONFLICT', 'OAuth state mismatch', 'oauth.stateMismatch');
+    if (params.error || !params.code) {
+      // The error code only: Microsoft's description may name the account.
+      this.logger.warn({ event: 'microsoft.oauth_refused', error: params.error ?? null }, 'sign-in refused');
+      const key =
+        params.error === 'access_denied'
+          ? 'oauth.denied'
+          : params.error === 'unauthorized_client' || params.error === 'invalid_client'
+            ? 'oauth.microsoftClient'
+            : 'oauth.notCompleted';
+      throw new RpcError('CONFLICT', 'Authorization was not completed', key);
+    }
+    let tokens;
+    try {
+      tokens = await microsoftExchangeCode(this.oauth.http, client, {
+        code: params.code,
+        verifier,
+        redirectUri: redirect.redirectUri,
+      });
+    } catch (error) {
+      const kind = error instanceof OAuthError ? error.kind : 'other';
+      this.logger.warn({ event: 'microsoft.token_exchange_failed', kind }, 'token exchange failed');
+      throw RpcError.validation(
+        kind === 'invalid_client' ? { clientId: 'oauth.microsoftClient' } : {},
+        kind === 'invalid_client' ? 'oauth.microsoftClient' : 'oauth.exchangeFailed',
+      );
+    }
+    if (!grantedMailScopes(tokens.scope)) {
+      throw new RpcError('CONFLICT', 'Not all permissions were granted', 'oauth.scopesMissing');
+    }
+    if (!tokens.refreshToken) throw new RpcError('CONFLICT', 'No refresh token', 'oauth.noRefreshToken');
+    const settings: MailSettings = {
+      address,
+      username: address,
+      password: '',
+      accessToken: tokens.accessToken,
+      ...MICROSOFT_SERVERS,
+    };
+    const check = await this.check(settings);
+    if (!check.smtp.ok || !check.imap.ok) {
+      // Signed in, but a server refused the token: another account was chosen on the sign-in
+      // page, or IMAP / authenticated SMTP is switched off for this mailbox.
+      const refused = check.smtp.error === 'authFailed' || check.imap.error === 'authFailed';
+      throw RpcError.validation(
+        refused ? { address: 'account.oauthRefused' } : {},
+        refused ? 'account.oauthRefused' : 'account.connectionFailed',
+      );
+    }
+    const refreshId = await this.secrets.put('oauth_refresh_token', tokens.refreshToken);
+    const oauth = { provider: 'microsoft' as const, clientId: client.clientId, tenant: client.tenant };
+    if (existing) {
+      return this.orDropSecrets([refreshId], () =>
+        this.renewOAuth(existing, { refreshId, metadata: (m) => ({ ...m, oauth }), tokens }, ctx),
+      );
+    }
+    return this.orDropSecrets([refreshId], () =>
+      transaction(this.db, () => {
+        if (this.findActive(address)) throw RpcError.validation({ address: 'account.duplicate' });
+        const id = uuidv7();
+        const ts = this.now().toISOString();
+        const metadata: Metadata = {
+          fromName: input.fromName?.trim() || null,
+          ...MICROSOFT_SERVERS,
+          username: address,
+          appendToSent: !serverSavesSent(MICROSOFT_SERVERS.smtp.host),
+          oauth,
+        };
+        this.db
+          .prepare(
+            `INSERT INTO channel_accounts (id, channel, provider, display_name, external_account_id, secret_id, limits,
+                                         status, metadata, created_at, updated_at)
+           VALUES (?, 'email', 'imap_smtp', ?, ?, ?, ?, 'active', ?, ?, ?)`,
+          )
+          .run(
+            id,
+            address,
+            address,
+            refreshId,
+            JSON.stringify(input.limits ?? DEFAULT_EMAIL_LIMITS),
+            JSON.stringify(metadata),
+            ts,
+            ts,
+          );
+        this.tokens.set(id, { token: tokens.accessToken, expiresAt: tokens.expiresAt });
+        this.record('account.connected', id, ctx, {
+          provider: 'imap_smtp',
+          signIn: 'microsoft',
+          sentFolder: check.imap.sentFolder !== null,
+        });
+        this.onActivated(id);
+        return this.get(id);
+      }),
+    );
   }
 
   async update(
@@ -353,7 +497,7 @@ export class AccountService {
     const row = this.row(input.id);
     let secretId: string | null = null;
     if (input.password !== undefined) {
-      if (row.provider !== 'imap_smtp')
+      if (row.provider !== 'imap_smtp' || (JSON.parse(row.metadata) as Metadata).oauth)
         throw new RpcError('CONFLICT', 'This account has no password', 'account.noPassword');
       const settings = { ...(await this.settingsOf(row, false)), password: input.password };
       const check = await this.check(settings);
@@ -410,7 +554,16 @@ export class AccountService {
         return { smtp: { ok: false, error: reason }, imap: { ok: false, error: reason, sentFolder: null } };
       }
     }
-    return this.check(await this.settingsOf(row, true));
+    let settings: MailSettings;
+    try {
+      settings = await this.settingsOf(row, true);
+    } catch (error) {
+      if (!(error instanceof OAuthError)) throw error;
+      // Microsoft sign-in could not renew the token: no server was asked.
+      const reason = error.kind === 'invalid_grant' ? 'authFailed' : 'connectionFailed';
+      return { smtp: { ok: false, error: reason }, imap: { ok: false, error: reason, sentFolder: null } };
+    }
+    return this.check(settings);
   }
 
   async disconnect(id: string, ctx: CommandContext): Promise<void> {
@@ -442,7 +595,7 @@ export class AccountService {
     });
     if (refreshToken) {
       // Best effort: the account is disconnected locally either way (audit 3.5).
-      const revoked = await revokeToken(this.gmail.http, refreshToken);
+      const revoked = await revokeToken(this.oauth.http, refreshToken);
       this.logger.info(
         { event: 'gmail.token_revoked', accountId: id, revoked },
         'Google grant revoked on disconnect',
@@ -509,7 +662,11 @@ export class AccountService {
       });
       return gmailInbox(api);
     }
-    const settings = await this.settingsOf(row, true);
+    const settings = await this.settingsOf(row, true).catch((error: unknown) => {
+      throw error instanceof OAuthError && error.kind === 'invalid_grant'
+        ? new InboxAuthError('Microsoft sign-in expired')
+        : error;
+    });
     let box;
     try {
       box = await this.clients.mailbox(settings, signal);
@@ -529,6 +686,7 @@ export class AccountService {
 
   /** The server refused the stored password: stop using the account until the user fixes it. */
   markAuthRequired(id: string): void {
+    this.tokens.delete(id);
     this.db
       .prepare(
         `UPDATE channel_accounts SET status = 'auth_required', updated_at = ? WHERE id = ? AND status = 'active'`,
@@ -563,7 +721,7 @@ export class AccountService {
       const refreshToken = await this.secrets.reveal(refreshId);
       const clientSecret = m.clientSecretId ? await this.secrets.reveal(m.clientSecretId) : null;
       try {
-        const fresh = await refreshAccessToken(this.gmail.http, { clientId, clientSecret, refreshToken });
+        const fresh = await refreshAccessToken(this.oauth.http, { clientId, clientSecret, refreshToken });
         this.tokens.set(row.id, { token: fresh.accessToken, expiresAt: fresh.expiresAt });
         return fresh.accessToken;
       } catch (error) {
@@ -571,7 +729,7 @@ export class AccountService {
         throw error;
       }
     };
-    return new GmailApi(this.gmail.http, token);
+    return new GmailApi(this.oauth.http, token);
   }
 
   private async check(settings: MailSettings): Promise<ConnectionCheck> {
@@ -611,12 +769,74 @@ export class AccountService {
     const m = JSON.parse(row.metadata) as Metadata;
     if (!m.smtp || !m.imap || !m.username)
       throw new RpcError('CONFLICT', 'Account has no mail servers', 'account.notImap');
+    const base = { address: row.external_account_id, username: m.username, smtp: m.smtp, imap: m.imap };
+    if (m.oauth) {
+      return {
+        ...base,
+        password: '',
+        ...(withPassword ? { accessToken: await this.microsoftToken(row.id) } : {}),
+      };
+    }
     let password = '';
     if (withPassword) {
       if (!row.secret_id) throw new RpcError('CONFLICT', 'Account has no password', 'account.noPassword');
       password = await this.secrets.reveal(row.secret_id);
     }
-    return { address: row.external_account_id, username: m.username, password, smtp: m.smtp, imap: m.imap };
+    return { ...base, password };
+  }
+
+  /** A valid Microsoft access token for the account, renewed from the refresh token when due. */
+  private microsoftToken(id: string): Promise<string> {
+    const cached = this.tokens.get(id);
+    if (cached && cached.expiresAt - TOKEN_MARGIN_MS > Date.now()) return Promise.resolve(cached.token);
+    const pending = this.refreshing.get(id);
+    if (pending) return pending;
+    const work = this.refreshMicrosoft(id).finally(() => this.refreshing.delete(id));
+    this.refreshing.set(id, work);
+    return work;
+  }
+
+  private async refreshMicrosoft(id: string): Promise<string> {
+    // The stored refresh token may have been replaced since a channel was built: read it now.
+    const row = this.row(id);
+    const oauth = (JSON.parse(row.metadata) as Metadata).oauth;
+    if (!oauth || !row.secret_id)
+      throw new RpcError('CONFLICT', 'Account has no sign-in', 'account.noPassword');
+    const refreshToken = await this.secrets.reveal(row.secret_id);
+    let fresh;
+    try {
+      fresh = await microsoftRefresh(this.oauth.http, oauth, refreshToken);
+    } catch (error) {
+      if (error instanceof OAuthError && error.kind === 'invalid_grant') this.markAuthRequired(id);
+      this.logger.warn(
+        {
+          event: 'microsoft.token_refresh_failed',
+          accountId: id,
+          kind: error instanceof OAuthError ? error.kind : 'other',
+        },
+        'could not renew the Microsoft token',
+      );
+      throw error;
+    }
+    if (fresh.refreshToken && fresh.refreshToken !== refreshToken) {
+      await this.replaceRefreshToken(id, row.secret_id, fresh.refreshToken);
+    }
+    this.tokens.set(id, { token: fresh.accessToken, expiresAt: fresh.expiresAt });
+    return fresh.accessToken;
+  }
+
+  /**
+   * Microsoft hands out a new refresh token with each renewal; the new one is kept and the old one
+   * deleted. If the account changed meanwhile (signed in again, disconnected), the new one is dropped.
+   */
+  private async replaceRefreshToken(id: string, oldSecretId: string, token: string): Promise<void> {
+    const newId = await this.secrets.put('oauth_refresh_token', token);
+    const { changes } = this.db
+      .prepare(
+        `UPDATE channel_accounts SET secret_id = ? WHERE id = ? AND secret_id = ? AND status != 'disabled'`,
+      )
+      .run(newId, id, oldSecretId);
+    this.secrets.delete(Number(changes) > 0 ? oldSecretId : newId);
   }
 
   private findActive(address: string): AccountRow | undefined {
@@ -667,6 +887,12 @@ function toDto(r: AccountRow): EmailAccount {
     imap: m.imap,
     username: m.username,
     appendToSent: m.appendToSent,
+    signIn: r.provider === 'gmail_api' ? 'google' : m.oauth ? 'microsoft' : 'password',
+    oauthClient: m.oauth
+      ? { clientId: m.oauth.clientId, tenant: m.oauth.tenant }
+      : m.clientId
+        ? { clientId: m.clientId, tenant: null }
+        : null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

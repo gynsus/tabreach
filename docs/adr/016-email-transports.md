@@ -1,6 +1,6 @@
 # ADR 016 — Email transports and staged Gmail OAuth client strategy
 
-**Status:** Accepted (2026-09-28; staged OAuth strategy added in review round 2). Amends ADR 008.
+**Status:** Accepted (2026-09-28; staged OAuth strategy added in review round 2). Amends ADR 008. Amended by ADR 032 (Microsoft sign-in for IMAP/SMTP).
 
 ## Context
 
@@ -39,7 +39,7 @@ Bounce detection, reply matching (with match strength) and classification are tr
 - Core builds the consent URL (PKCE S256, `state`, `access_type=offline`, `prompt=consent`, scopes `gmail.send` + `gmail.readonly`) and asks main over the host channel (`oauth.loopback`). Main opens it with `shell.openExternal`, listens once on `127.0.0.1:<random port>` (Google hosts only, 10-minute limit) and returns the redirect parameters. Core checks `state`, exchanges the code with the verifier, requires both scopes and a refresh token, reads the address from the Gmail profile.
 - Stored: the refresh token (`oauth_refresh_token`) and, if given, the client secret (`oauth_client_secret`), both encrypted via main; the client ID in account metadata. Access tokens live only in memory. `invalid_grant` puts the account in `auth_required`; signing in again renews the same account.
 - Sending uses `users.messages.send` with the same Message-ID rule as SMTP (ADR 023); reconciliation searches `rfc822msgid:`. Replies come from `users.history.list` (INBOX, messageAdded) starting at the profile's history id at connection time; an expired history id restarts from the current one (ADR 024).
-- Microsoft and XOAUTH2 for IMAP/SMTP are not implemented yet.
+- XOAUTH2 for IMAP/SMTP is implemented for Outlook.com and Microsoft 365 (ADR 032); a Microsoft Graph adapter is not.
 
 ## Alternatives
 

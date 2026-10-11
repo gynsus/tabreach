@@ -794,10 +794,40 @@ export const ru: Catalog = {
   accounts: {
     title: 'Почтовые ящики',
     subtitle:
-      'Ящики, с которых кампании отправляют письма. Пароли хранятся зашифрованными в связке ключей macOS.',
+      'Ящики, с которых кампании отправляют письма. Пароли и токены входа хранятся зашифрованными через связку ключей macOS.',
     empty: 'Почтовый ящик пока не подключён.',
     connect: 'Подключить ящик',
     connectGmail: 'Подключить Gmail',
+    connectMicrosoft: 'Подключить Outlook / Microsoft 365',
+    microsoft: {
+      title: 'Подключение Outlook или Microsoft 365 через ваше приложение в Microsoft Entra',
+      intro:
+        'Microsoft больше не принимает пароли в почтовых программах. TabReach входит через Microsoft — с помощью приложения, которое вы регистрируете в Microsoft Entra: у TabReach нет сервера, поэтому приложение ваше. Это около 10 минут, один раз.',
+      steps: {
+        directory:
+          'Откройте entra.microsoft.com и войдите учётной записью с каталогом: рабочей Microsoft 365 или бесплатной учётной записью Azure. Одна личная учётная запись Outlook.com регистрировать приложения больше не может.',
+        register:
+          'Entra ID → App registrations → New registration. Имя: TabReach. Supported account types: «Any Entra ID tenant + personal Microsoft accounts» для ящика Outlook.com или Hotmail; для ящика своей компании хватит «This organizational directory only».',
+        redirect:
+          'Redirect URI: платформа «Public client/native (mobile & desktop)», значение http://localhost. Нажмите Register.',
+        permissions:
+          'API permissions → Add a permission → Microsoft Graph → Delegated: IMAP.AccessAsUser.All, SMTP.Send, offline_access. Нажмите Add.',
+        copy: 'На странице Overview скопируйте Application (client) ID. Для приложения одного каталога — ещё Directory (tenant) ID.',
+        mailbox:
+          'Microsoft 365: для ящика должны быть разрешены IMAP и Authenticated SMTP (центр администрирования → Пользователи → пользователь → Почта → Управление приложениями электронной почты). В Outlook.com они разрешены по умолчанию.',
+      },
+      scopes:
+        'TabReach просит у Microsoft чтение почты по IMAP (чтобы замечать ответы и проверять, ушло ли прерванное письмо), отправку по SMTP и постоянный вход. Хранится только зашифрованный refresh-токен.',
+      clientId: 'Application (client) ID',
+      tenant: 'Directory (tenant) ID',
+      tenantHint:
+        'Оставьте пустым для приложения, принимающего любые учётные записи. Для приложения одного каталога — его ID или домен.',
+      signIn: 'Войти через Microsoft',
+      signInLabel: 'вход через Microsoft',
+      waitingHint:
+        'Ждём до 10 минут. Входите тем же адресом. Окно можно закрыть: ящик появится здесь, когда вы закончите в браузере.',
+      connected: 'Ящик подключён',
+    },
     gmail: {
       title: 'Подключение Gmail через ваш проект Google Cloud',
       intro:
@@ -843,7 +873,12 @@ export const ru: Catalog = {
     dailyLimit: 'Писем в день',
     perDay: 'до {{count}} в день',
     spacing: 'Секунд между письмами',
-    statuses: { active: 'Подключён', auth_required: 'Нужен новый пароль', disabled: 'Отключён' },
+    statuses: {
+      active: 'Подключён',
+      auth_required: 'Нужен новый пароль',
+      signInRequired: 'Нужно войти снова',
+      disabled: 'Отключён',
+    },
     appendToSent: 'TabReach сохраняет копию каждого письма в «Отправленные»',
     serverSaves: 'Сервер сам сохраняет отправленные письма',
     test: 'Проверить подключение',
@@ -1398,14 +1433,19 @@ export const ru: Catalog = {
     },
     oauth: {
       notCompleted: 'Вход не завершён. Попробуйте ещё раз.',
-      denied: 'В Google доступ не был предоставлен.',
+      denied: 'На странице входа доступ не был предоставлен.',
       stateMismatch: 'Ответ из браузера не совпал с этим запросом. Попробуйте ещё раз.',
-      scopesMissing: 'Нужны оба разрешения: оставьте обе галочки на странице Google.',
+      scopesMissing: 'Нужны все запрошенные разрешения: разрешите их все на странице входа.',
       noRefreshToken:
         'Google не выдал долгосрочный токен. Удалите TabReach в сторонних приложениях своего аккаунта Google и попробуйте снова.',
       invalidClient: 'Google не принял Client ID или секрет.',
-      exchangeFailed: 'Google не завершил вход. Проверьте Client ID и секрет.',
+      exchangeFailed: 'Вход не удалось завершить. Проверьте Client ID (и секрет для Google).',
       clientIdInvalid: 'Client ID заканчивается на .apps.googleusercontent.com.',
+      microsoftClient:
+        'Microsoft не принял приложение. Проверьте Application (client) ID, что http://localhost добавлен как Redirect URI в «Mobile and desktop applications» и что типы учётных записей приложения включают этот ящик.',
+      microsoftClientIdInvalid:
+        'Application (client) ID выглядит так: 1b2c3d4e-5f60-… — пять групп букв и цифр.',
+      tenantInvalid: 'Оставьте пустым или укажите Directory (tenant) ID либо домен организации.',
     },
     conversation: { notFound: 'Этой переписки больше нет.' },
     message: { notFound: 'Этого сообщения больше нет.', reviewed: 'Это сообщение уже проверено.' },
@@ -1434,6 +1474,8 @@ export const ru: Catalog = {
       unavailable: 'Ящик не подключён или ему нужен новый пароль.',
       noPassword: 'Для ящика не сохранён пароль.',
       notImap: 'Для ящика не указаны почтовые серверы.',
+      oauthRefused:
+        'Вход выполнен, но почтовый сервер отказал в подключении. Войдите тем же адресом. В Microsoft 365 для ящика должны быть разрешены IMAP и Authenticated SMTP.',
     },
     sideEffect: {
       notUnknown: 'Это сообщение больше не ждёт решения.',

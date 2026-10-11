@@ -59,6 +59,7 @@ export function EmailAccounts() {
   const { t } = useTranslation();
   const [connecting, setConnecting] = useState(false);
   const [gmail, setGmail] = useState(false);
+  const [microsoft, setMicrosoft] = useState(false);
   const accounts = useQuery({ queryKey: ['accounts'], queryFn: () => call('accounts.list', {}) });
   const items = accounts.data?.items ?? [];
   return (
@@ -74,6 +75,10 @@ export function EmailAccounts() {
           <Button onClick={() => setGmail(true)}>
             <Plus size={14} aria-hidden />
             {t('accounts.connectGmail')}
+          </Button>
+          <Button onClick={() => setMicrosoft(true)}>
+            <Plus size={14} aria-hidden />
+            {t('accounts.connectMicrosoft')}
           </Button>
           <Button onClick={() => setConnecting(true)}>
             <Plus size={14} aria-hidden />
@@ -97,6 +102,7 @@ export function EmailAccounts() {
       ) : null}
       {connecting ? <ConnectAccount onClose={() => setConnecting(false)} /> : null}
       {gmail ? <ConnectGmail onClose={() => setGmail(false)} /> : null}
+      {microsoft ? <ConnectMicrosoft onClose={() => setMicrosoft(false)} /> : null}
     </section>
   );
 }
@@ -155,11 +161,16 @@ function AccountRow({ account: a }: { account: EmailAccount }) {
           <span className="font-medium">{a.fromName ? `${a.fromName} <${a.address}>` : a.address}</span>
           <span className="text-xs text-faint">
             {a.smtp ? `${a.smtp.host}:${a.smtp.port}` : 'Gmail API'} ·{' '}
+            {a.signIn === 'microsoft' ? `${t('accounts.microsoft.signInLabel')} · ` : null}
             {t('accounts.perDay', { count: a.limits.dailyLimit })} ·{' '}
             {a.appendToSent ? t('accounts.appendToSent') : t('accounts.serverSaves')}
           </span>
         </span>
-        <Badge tone={a.status === 'active' ? 'ok' : 'warn'}>{t(`accounts.statuses.${a.status}`)}</Badge>
+        <Badge tone={a.status === 'active' ? 'ok' : 'warn'}>
+          {a.status === 'auth_required' && a.signIn !== 'password'
+            ? t('accounts.statuses.signInRequired')
+            : t(`accounts.statuses.${a.status}`)}
+        </Badge>
         <span className="ml-auto flex gap-1">
           <Button size="sm" onClick={() => test.mutate()} disabled={test.isPending}>
             {test.isPending ? t('accounts.connecting') : t('accounts.test')}
@@ -190,7 +201,15 @@ function AccountRow({ account: a }: { account: EmailAccount }) {
           {reauth ? <ConnectGmail onClose={() => setReauth(false)} /> : null}
         </>
       ) : null}
-      {a.status === 'auth_required' && a.provider === 'imap_smtp' ? (
+      {a.status === 'auth_required' && a.signIn === 'microsoft' ? (
+        <>
+          <Button size="sm" variant="primary" className="justify-self-start" onClick={() => setReauth(true)}>
+            {t('accounts.microsoft.signIn')}
+          </Button>
+          {reauth ? <ConnectMicrosoft account={a} onClose={() => setReauth(false)} /> : null}
+        </>
+      ) : null}
+      {a.status === 'auth_required' && a.signIn === 'password' ? (
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(e) => {
@@ -533,6 +552,144 @@ export function ConnectGmail(props: { onClose: () => void }) {
         {busy ? (
           <p role="status" className="text-xs text-soft">
             {t('accounts.gmail.waitingHint')}
+          </p>
+        ) : null}
+      </form>
+    </Modal>
+  );
+}
+
+const MICROSOFT_STEPS = ['directory', 'register', 'redirect', 'permissions', 'copy', 'mailbox'] as const;
+
+/**
+ * Wizard for an Outlook.com or Microsoft 365 mailbox: IMAP/SMTP with Microsoft sign-in through
+ * the user's own app registration in Microsoft Entra (ADR 032). With `account`, signs in again.
+ */
+export function ConnectMicrosoft(props: { account?: EmailAccount; onClose: () => void }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [address, setAddress] = useState(props.account?.address ?? '');
+  const [fromName, setFromName] = useState(props.account?.fromName ?? '');
+  const [clientId, setClientId] = useState(props.account?.oauthClient?.clientId ?? '');
+  const [tenant, setTenant] = useState(
+    props.account?.oauthClient?.tenant === 'common' ? '' : (props.account?.oauthClient?.tenant ?? ''),
+  );
+  const connect = useMutation({
+    mutationFn: () =>
+      call('accounts.connectMicrosoft', {
+        address: address.trim(),
+        clientId: clientId.trim(),
+        tenant: tenant.trim() || 'common',
+        fromName: fromName.trim() || null,
+      }),
+    onSuccess: async () => {
+      toast(t('accounts.microsoft.connected'));
+      await invalidateEntities(qc, ['account', 'activity']);
+      props.onClose();
+    },
+  });
+  const errors = fieldErrors(connect.error);
+  const busy = connect.isPending;
+  const alert = formAlert(t, connect.error, ['address', 'clientId', 'tenant']);
+  return (
+    <Modal
+      open
+      wide
+      onClose={props.onClose}
+      title={t('accounts.microsoft.title')}
+      // Closable while it waits for the browser, as for Gmail: a sign-in finished later still connects.
+      footer={
+        <>
+          <Button variant="ghost" onClick={props.onClose}>
+            {busy ? t('common.close') : t('common.cancel')}
+          </Button>
+          <Button
+            variant="primary"
+            type="submit"
+            form="connect-microsoft"
+            disabled={busy || !address.trim() || !clientId.trim()}
+          >
+            {busy ? t('accounts.gmail.waiting') : t('accounts.microsoft.signIn')}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="connect-microsoft"
+        className="grid gap-4 text-[13px]"
+        onSubmit={(e) => {
+          e.preventDefault();
+          connect.mutate();
+        }}
+      >
+        <p className="text-soft">{t('accounts.microsoft.intro')}</p>
+        <ol className="grid list-decimal gap-1.5 pl-5">
+          {MICROSOFT_STEPS.map((step) => (
+            <li key={step}>{t(`accounts.microsoft.steps.${step}`)}</li>
+          ))}
+        </ol>
+        <p className="rounded-md bg-sunken px-3 py-2 text-soft">{t('accounts.microsoft.scopes')}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t('accounts.address')} errorKey={errors.address}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                type="email"
+                value={address}
+                disabled={busy || Boolean(props.account)}
+                aria-describedby={describedBy}
+                aria-invalid={errors.address ? true : undefined}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('accounts.fromName')} hint={t('accounts.fromNameHint')}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                value={fromName}
+                disabled={busy || Boolean(props.account)}
+                aria-describedby={describedBy}
+                onChange={(e) => setFromName(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label={t('accounts.microsoft.clientId')} errorKey={errors.clientId}>
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                value={clientId}
+                disabled={busy}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                aria-describedby={describedBy}
+                aria-invalid={errors.clientId ? true : undefined}
+                onChange={(e) => setClientId(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field
+            label={t('accounts.microsoft.tenant')}
+            hint={t('accounts.microsoft.tenantHint')}
+            errorKey={errors.tenant}
+          >
+            {(id, describedBy) => (
+              <Input
+                id={id}
+                value={tenant}
+                disabled={busy}
+                placeholder="common"
+                aria-describedby={describedBy}
+                aria-invalid={errors.tenant ? true : undefined}
+                onChange={(e) => setTenant(e.target.value)}
+              />
+            )}
+          </Field>
+        </div>
+        {alert ? <Alert>{alert}</Alert> : null}
+        {busy ? (
+          <p role="status" className="text-xs text-soft">
+            {t('accounts.microsoft.waitingHint')}
           </p>
         ) : null}
       </form>

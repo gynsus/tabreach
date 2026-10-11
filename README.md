@@ -107,7 +107,7 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 
 - prospects, CSV import/export and the do-not-contact list;
 - campaigns with versions, schedules in the recipient's time zone, contact policy and a keyboard approval queue;
-- email through IMAP/SMTP or the Gmail API with the user's own OAuth client, without automatic duplicates, with replies and bounces stopping sequences;
+- email through IMAP/SMTP (with an app password, or Microsoft sign-in for Outlook.com and Microsoft 365) or the Gmail API with the user's own OAuth client, without automatic duplicates, with replies and bounces stopping sequences;
 - the AI gateway with the user's key (Anthropic, OpenRouter, OpenAI), research with verified quotes, reply labels and AI drafts with automated checks and `approve_campaign`;
 - timelines of every contact, company and campaign;
 - managed Chrome profiles, page recognition by adapter packs, challenges handed to the person, the in-page overlay, take/return control, Pause all and Emergency stop, the `about_to_commit` checkpoint for critical browser actions, and JavaScript-only sites rendered for research;
@@ -117,7 +117,7 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - campaign tools: copy, a dry run for one contact, archive with deletion of never-launched campaigns, a status CSV per campaign, waiting for sending hours shown, and moving people to a newly launched version;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: the rest of Phase 8d (XOAUTH2 for IMAP/SMTP, threaded campaign follow-ups, campaign goal/ICP/research instructions, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
+Next: the rest of Phase 8d (threaded campaign follow-ups, campaign goal/ICP/research instructions, evidence quote highlighting, per-campaign AI budget, `human_task` steps), then 8e — signed and notarized release, user documentation, acceptance run.
 
 ## License
 

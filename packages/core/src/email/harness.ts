@@ -20,6 +20,8 @@ import { FakeAnthropic, FakeChatCompletions } from '../ai/fake-anthropic.js';
 import type { Http } from './gmail.js';
 import { FakeGoogle } from './fake-google.js';
 import { FakeMail } from './fake-mail.js';
+import { FakeMicrosoft } from './fake-microsoft.js';
+import type { OAuthDeps } from './accounts.js';
 
 /** Test harness for email: a core without Electron, with fake SMTP/IMAP and a fake Google. */
 export const ctx = () => ({ correlationId: uuidv7() });
@@ -55,6 +57,18 @@ export class Harness {
   readonly clock = fakeClock('2026-09-28T10:00:00.000Z');
   readonly mail = new FakeMail();
   readonly google = new FakeGoogle();
+  readonly microsoft = new FakeMicrosoft();
+  /** Sign-in goes to the fake Google or the fake Microsoft by host, like the real endpoints. */
+  readonly oauthDeps: OAuthDeps = {
+    http: (url, init) =>
+      new URL(url).host === 'login.microsoftonline.com'
+        ? this.microsoft.deps.http(url, init)
+        : this.google.deps.http(url, init),
+    loopback: (authorizeUrl, timeoutMs, state) =>
+      new URL(authorizeUrl).host === 'login.microsoftonline.com'
+        ? this.microsoft.deps.loopback(authorizeUrl, timeoutMs, state)
+        : this.google.deps.loopback(authorizeUrl, timeoutMs, state),
+  };
   readonly anthropic = new FakeAnthropic();
   readonly chat = new FakeChatCompletions();
   /** HTTP for research fetching; tests point it at the fixture site. */
@@ -67,6 +81,7 @@ export class Harness {
   dispatcher!: Dispatcher;
 
   async open(): Promise<this> {
+    this.mail.acceptsToken = (user, token) => this.microsoft.accepts(user, token);
     this.db = openDatabase(join(this.dir, 'app.db'));
     await migrate(this.db, migrations, { backupDir: join(this.dir, 'backups') });
     this.boot();
@@ -78,7 +93,7 @@ export class Harness {
       now: this.clock.now,
       cipher,
       mailClients: this.mail,
-      gmail: this.google.deps,
+      oauth: this.oauthDeps,
       aiHttp: (url, init) =>
         url.startsWith('https://api.anthropic.com')
           ? this.anthropic.http(url, init)

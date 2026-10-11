@@ -761,10 +761,41 @@ export const en = {
   },
   accounts: {
     title: 'Email accounts',
-    subtitle: 'Accounts campaigns send from. Passwords are stored encrypted in the macOS Keychain.',
+    subtitle:
+      'Accounts campaigns send from. Passwords and sign-in tokens are stored encrypted with the macOS Keychain.',
     empty: 'No email account connected yet.',
     connect: 'Connect an account',
     connectGmail: 'Connect Gmail',
+    connectMicrosoft: 'Connect Outlook / Microsoft 365',
+    microsoft: {
+      title: 'Connect Outlook or Microsoft 365 through your own Microsoft Entra app',
+      intro:
+        'Microsoft no longer accepts passwords for mail apps. TabReach signs in with Microsoft instead, through an app that you register in Microsoft Entra — TabReach has no server, so the app is yours. It takes about 10 minutes, once.',
+      steps: {
+        directory:
+          'Open entra.microsoft.com and sign in with an account that has a directory: a Microsoft 365 work account, or a free Azure account. A personal Outlook.com account alone can no longer register apps.',
+        register:
+          'Entra ID → App registrations → New registration. Name: TabReach. Supported account types: “Any Entra ID tenant + personal Microsoft accounts” for an Outlook.com or Hotmail mailbox; “This organizational directory only” is enough for a mailbox of your own company.',
+        redirect:
+          'Redirect URI: platform “Public client/native (mobile & desktop)”, value http://localhost. Register.',
+        permissions:
+          'API permissions → Add a permission → Microsoft Graph → Delegated: IMAP.AccessAsUser.All, SMTP.Send, offline_access. Add.',
+        copy: 'Overview: copy the Application (client) ID. For a single-directory app, also the Directory (tenant) ID.',
+        mailbox:
+          'Microsoft 365: IMAP and Authenticated SMTP must be allowed for the mailbox (admin center → Users → the user → Mail → Manage email apps). Outlook.com allows them by default.',
+      },
+      scopes:
+        'TabReach asks Microsoft for reading mail over IMAP (to notice replies and to check whether an interrupted message was sent), sending over SMTP, and staying signed in. Only an encrypted refresh token is kept.',
+      clientId: 'Application (client) ID',
+      tenant: 'Directory (tenant) ID',
+      tenantHint:
+        'Leave empty for an app that takes any account. For a single-directory app: its ID or domain.',
+      signIn: 'Sign in with Microsoft',
+      signInLabel: 'Microsoft sign-in',
+      waitingHint:
+        'Waiting up to 10 minutes. Sign in with the same address. You can close this window: the mailbox appears here once you finish in the browser.',
+      connected: 'Mailbox connected',
+    },
     gmail: {
       title: 'Connect Gmail through your own Google Cloud project',
       intro:
@@ -810,7 +841,12 @@ export const en = {
     dailyLimit: 'Messages per day',
     perDay: 'up to {{count}} per day',
     spacing: 'Seconds between messages',
-    statuses: { active: 'Connected', auth_required: 'Needs a new password', disabled: 'Disconnected' },
+    statuses: {
+      active: 'Connected',
+      auth_required: 'Needs a new password',
+      signInRequired: 'Needs signing in again',
+      disabled: 'Disconnected',
+    },
     appendToSent: 'TabReach saves a copy of each message to Sent',
     serverSaves: 'The server saves sent mail itself',
     test: 'Test connection',
@@ -1332,14 +1368,19 @@ export const en = {
     },
     oauth: {
       notCompleted: 'Signing in was not completed. Try again.',
-      denied: 'Access was not granted in Google.',
+      denied: 'Access was not granted on the sign-in page.',
       stateMismatch: 'The answer from the browser did not match this request. Try again.',
-      scopesMissing: 'Both permissions are needed: keep both boxes ticked on Google’s page.',
+      scopesMissing: 'All requested permissions are needed: allow them all on the sign-in page.',
       noRefreshToken:
         'Google did not issue a long-term token. Remove TabReach in your Google account’s third-party access and try again.',
       invalidClient: 'Google did not accept the client ID or secret.',
-      exchangeFailed: 'Google did not complete the sign-in. Check the client ID and secret.',
+      exchangeFailed: 'The sign-in could not be completed. Check the client ID (and the secret for Google).',
       clientIdInvalid: 'A client ID ends with .apps.googleusercontent.com.',
+      microsoftClient:
+        'Microsoft did not accept the app. Check the Application (client) ID, that http://localhost is a redirect URI under “Mobile and desktop applications”, and that the app’s supported account types include this mailbox.',
+      microsoftClientIdInvalid:
+        'An Application (client) ID looks like 1b2c3d4e-5f60-…: five groups of letters and digits.',
+      tenantInvalid: 'Leave it empty, or enter the Directory (tenant) ID or the organisation’s domain.',
     },
     conversation: { notFound: 'This conversation no longer exists.' },
     message: { notFound: 'This message no longer exists.', reviewed: 'This message was already reviewed.' },
@@ -1368,6 +1409,8 @@ export const en = {
       unavailable: 'This account is not connected or needs a new password.',
       noPassword: 'The account has no stored password.',
       notImap: 'This account has no mail servers configured.',
+      oauthRefused:
+        'You signed in, but the mail server refused the connection. Sign in with this same address. In Microsoft 365, IMAP and Authenticated SMTP must be allowed for the mailbox.',
     },
     sideEffect: {
       notUnknown: 'This message is no longer waiting for a decision.',
