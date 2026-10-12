@@ -2,7 +2,7 @@ import { microsoftAccountInputSchema, type CampaignConfigInput } from '@tabreach
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ctx, Harness, imapInput } from './harness.js';
 import { grantedMailScopes, MICROSOFT_MAIL_SCOPES, microsoftAuthorizeUrl } from './microsoft.js';
-import { pkce } from './oauth.js';
+import { pkce, tokenRequest } from './oauth.js';
 
 const CLIENT_ID = '11111111-2222-3333-4444-555555555555';
 const ADDRESS = 'me@outlook.test';
@@ -44,6 +44,13 @@ describe('Microsoft sign-in pieces', () => {
     );
     expect(microsoftAccountInputSchema.safeParse({ ...base, tenant: '../evil' }).success).toBe(false);
     expect(microsoftAccountInputSchema.safeParse({ ...base, clientId: 'not-a-guid' }).success).toBe(false);
+  });
+
+  it('a token response without an access token is an error, not an empty token (audit 8d.5)', async () => {
+    const http = () => Promise.resolve(Response.json({ token_type: 'Bearer', expires_in: 3600 }));
+    await expect(tokenRequest(http, 'https://login.test/token', { grant_type: 'x' })).rejects.toMatchObject({
+      kind: 'other',
+    });
   });
 });
 

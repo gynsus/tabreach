@@ -1512,6 +1512,8 @@ export const en = {
       launched: 'A campaign that was launched cannot be deleted, only archived: its history is kept.',
       icpRequired:
         'A research condition needs “Who fits (ICP)” in Goal and audience: research rates companies against it.',
+      qualificationOp:
+        'A research rating can only be checked with “is”, “is not”, “is filled in” or “is empty”: “contains match” would also let in “does not fit”.',
       changed: 'The campaign was changed meanwhile. Try again.',
       draft: 'Launch the campaign first.',
       active: 'The campaign is already running.',

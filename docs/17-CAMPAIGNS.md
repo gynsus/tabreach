@@ -2,7 +2,7 @@
 
 ## Implementation status (Phase 4c, 2026-09-29)
 
-- A message step is `template` (subject and body with placeholders) or `ai`: the user writes instructions (offer, tone, call to action, language) and a signature. AI steps research the company first (research older than 30 days is refreshed; a failed research is not retried for a day and the message is written without facts), then `draft.write` v2 writes subject and body from the verified facts; the signature is appended by TabReach, never by the model. Fact refs such as `(F3)` and a closing line repeating the start of the signature are removed from what the model wrote.
+- A message step is `template` (subject and body with placeholders) or `ai`: the user writes instructions (offer, tone, call to action, language) and a signature. AI steps research the company first (research older than 30 days is refreshed; a failed research is not retried for a day and the message is written without facts), then `draft.write` (v2 at the time, v4 now: goal and person facts, docs/15) writes subject and body from the verified facts; the signature is appended by TabReach, never by the model. Fact refs such as `(F3)` and a closing line repeating the start of the signature are removed from what the model wrote.
 - Every draft version gets the automated checks (ADR 025): grounding, length, forbidden phrases, links, signature, target. They are shown in the approval together with the facts the draft used.
 - `approve_campaign`: after `sampleSize` messages of the campaign version were approved by hand, a template or AI draft that passes every check is approved by the policy (`decided_by = campaign_policy`, `scope = campaign`); any failing draft waits for a person. An edited draft always does.
 - Launch validation: an AI step needs instructions and a stored AI key.
@@ -88,7 +88,7 @@ Three step types exist: `send_message`, `condition` and `human_task`. A pause be
 }
 ```
 
-`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`; the field `research.qualification` waits for the company's research with the campaign's context (docs/16). A reply always stops the sequence (contact policy). An email step may set `replyAsThread`: it then goes as a reply to the person's earlier emails of the same enrollment that went out (completed in the ledger), whatever version or account sent them. The subject becomes `Re: <the first email's subject as sent>`, chosen when the draft is written, so the approval shows it. `In-Reply-To` is the last earlier email's Message-ID and `References` lists them all. With the Gmail API, the email also gets the Gmail `threadId` of the last one if that one went from the same account; a thread deleted in Gmail (404) falls back to a new Gmail thread, which is still threaded by its headers. Without an earlier email, the step's own subject is used and no thread headers are set. The engine only asks for a continuation of the conversation; the email module builds it from the ledger and the sent messages (no channel logic in campaigns, CLAUDE.md §3.2). A `human_task` step has a `title` (required at launch) and `instructions`, both with placeholders. When a person reaches it, a task is created (`human_tasks`, migration 23) with their details filled in, and the sequence waits; nothing is sent and no run is opened.
+`channel` is `email`, `web_form`, `linkedin` or `test`; `linkedinAction` is `connect` or `message` (LinkedIn steps only). A `condition` step has `conditions` (field, operator, value) and `onFalse: stop | skip`; the field `research.qualification` waits for the company's research with the campaign's context (docs/16). A reply always stops the sequence (contact policy). An email step may set `replyAsThread`: it then goes as a reply to the person's earlier emails of the same enrollment that went out (completed in the ledger), whatever version or account sent them. The subject becomes `Re: <the first email's subject as sent>`, chosen when the draft is written, so the approval shows it. `In-Reply-To` is the last earlier email's Message-ID and `References` lists them all. With the Gmail API, the email also gets the Gmail `threadId` of the last one if that one went from the same account; a thread deleted in Gmail (404) falls back to a new Gmail thread, which is still threaded by its headers. Without an earlier email, the step's own subject is used and no thread headers are set. The engine only asks for a continuation of the conversation; the email module builds it from the ledger and the sent messages (no channel logic in campaigns, CLAUDE.md §3.2). A `human_task` step has a `title` (required at launch) and `instructions`, both with placeholders. When a person reaches it, a task is created (`human_tasks`, migration 23) with their details filled in, and the sequence waits; nothing is sent and no run is opened. Before that, the person is checked against do-not-contact and a reply hold (`ContactPolicy.blocked`): a person who must not be approached stops (`suppressed`, `replied`…) instead of appearing in Tasks; the dry run says the same.
 - In Tasks (navigation, with the count of open tasks), **Done** or **Skip** moves the person to the next step, with that step's delay counted from then. **Stop** stops them (`manual`).
 - An open task is cancelled when the person is stopped or completes the campaign, and when they are moved to another version; there the new version's step at their position decides what comes next.
 - A paused person keeps their task. A dry run stops at the first task. The People list says "Waiting for your task".
@@ -155,13 +155,16 @@ At minimum:
 
 ## Stop conditions
 
-- inbound reply (contact; company-level if enabled — strong matches only, domain-only matches need user confirmation);
-- opt-out;
-- bounce;
-- manual stop;
-- invalid target;
-- permanent provider error;
+- inbound reply (`replied`; `company_replied` if enabled — strong matches only, domain-only matches need user confirmation); an opt-out reply is a reply and also adds the sender to do-not-contact;
+- do-not-contact at send time (`suppressed`);
+- bounce (`bounced`);
+- manual stop (`manual`), rejected approval (`rejected`), archived campaign (`campaign_archived`);
+- invalid or missing target data (`invalid_target`, `missing_data`), no contact form (`no_contact_form`);
+- a permanent provider error (`send_failed`) or an AI message that could not be written (`draft_failed`);
+- a condition step (`condition_not_met`); LinkedIn: `not_connected`, `unanswered_message`;
 - campaign pause does not permanently stop.
+
+The codes are `stopReasonSchema` in `packages/protocol/src/campaigns.ts`.
 
 ## Launch validation
 
@@ -192,10 +195,11 @@ Nothing is stored for the campaign: no enrollment, run, draft, approval or ledge
 
 After a re-launch, the People section says how many live (active or paused) people are still on an earlier version and offers "Move to v<N>" (`campaigns.migrate`, report `{ moved, completed, busy }`; audit `enrollment.migrated` per person with `fromVersion`, `toVersion`, `withdrawnApproval`, and `campaign.migrated` with the report). Nothing moves by itself.
 
-- A person between steps moves. Their step number is kept; the time is worked out again: the new step's delay from the end of their last finished step (or from joining), not before now, then into the new version's sending hours. This is how changed sending hours take effect for people already in the campaign.
+- A person between steps moves. Their step number is kept; the time is worked out again: the new step's delay from the end of their last finished step — a completed run, or a task marked Done or Skipped — (or from joining), not before now, then into the new version's sending hours. This is how changed sending hours take effect for people already in the campaign.
 - A person whose message waits for an approval nobody gave yet moves too: the run is cancelled, its approval expires, and the message is written again from the new version (a new approval). No ledger entry exists yet for it, so nothing can be duplicated.
 - A person whose message was approved, is being prepared or sent, waits for a person in the browser, or has a ledger entry stays on their version (`busy`) — moving them could send twice or send something other than what was approved.
 - A person whose step number is past the end of the new version completes.
+- A campaign that was never launched can be deleted even after a dry run wrote an AI message: the research it started stays with the company and its AI calls stay in the month's usage, no longer tied to the campaign.
 
 The intent key of a send stays `(enrollment, step position, channel, action, target)`, so a step already sent is never sent again after a move.
 

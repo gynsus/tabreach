@@ -104,10 +104,14 @@ packages/core           SQLite (node:sqlite), migrations, transactions, CoreServ
                         prospects (companies, contacts, tags, normalization, CSV import/export),
                         suppressions, audit log and timelines, settings, secrets, job queue and dispatcher,
                         side-effect ledger, channel contract and test channel, campaigns (engine, approvals,
-                        policy), email (IMAP/SMTP, Gmail API, inbox, replies), AI gateway and providers,
-                        research, AI drafts and draft checks
-packages/browser-worker Chrome detection, Playwright launch check, BrowserWorker
-packages/adapter-packs  Adapter pack schema (ADR 017)
+                        policy, human tasks), email (IMAP/SMTP, Gmail API, Microsoft sign-in, inbox, replies),
+                        AI gateway and providers, research (company and person), AI drafts and draft checks,
+                        browser profiles and tasks, forms, LinkedIn, app control (pause, emergency stop),
+                        backup and restore, diagnostics bundle, retention, first-run setup
+packages/browser-worker Chrome detection and launch check, profiles and sessions, browser tasks with the
+                        checkpoint, in-page overlay, form finding and filling, research rendering and the
+                        guarded fetch (ADR 027)
+packages/adapter-packs  Adapter pack schema, matcher and the bundled packs (ADR 017)
 fixtures/sites          Local pages for browser tests
 ```
 

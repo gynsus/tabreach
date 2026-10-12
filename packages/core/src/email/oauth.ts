@@ -61,8 +61,11 @@ export async function tokenRequest(http: Http, url: string, body: Record<string,
     const kind = GRANT_GONE.has(error) ? 'invalid_grant' : error === 'invalid_client' ? error : 'other';
     throw new OAuthError(kind, `Token request failed: ${error}`);
   }
+  // A 200 without a token would be cached and fail every login for an hour (audit 8d.5).
+  if (typeof json.access_token !== 'string' || json.access_token === '')
+    throw new OAuthError('other', 'Token response without an access token');
   return {
-    accessToken: String(json.access_token ?? ''),
+    accessToken: json.access_token,
     expiresAt: Date.now() + Number(json.expires_in ?? 3600) * 1000,
     refreshToken: typeof json.refresh_token === 'string' ? json.refresh_token : null,
     scope: String(json.scope ?? ''),

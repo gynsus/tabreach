@@ -120,6 +120,40 @@ describe('task steps', () => {
     expect(tasks().items.map((t) => t.title)).toEqual(['Send a postcard']);
   });
 
+  it('after a move to another version the next delay still counts from Done (audit 8d.5)', async () => {
+    const { campaign } = start();
+    await h.run();
+    h.clock.advance(5 * DAY);
+    h.services.campaigns.resolveTask(tasks().items[0]!.id, 'done', ctx());
+    const doneAt = h.clock.now().getTime();
+    h.clock.advance(DAY);
+    const c = h.services.campaigns.get(campaign);
+    h.services.campaigns.update(
+      {
+        id: campaign,
+        config: {
+          ...c.config,
+          steps: c.config.steps.map((s) => (s.type === 'send_message' ? { ...s, subject: 'Hi again' } : s)),
+        },
+      },
+      ctx(),
+    );
+    h.services.campaigns.launch(campaign, ctx());
+    expect(h.services.campaigns.migrate(campaign, ctx())).toMatchObject({ moved: 1 });
+    // The email is 2 days after Done, not the moment of the move.
+    expect(new Date(person(campaign)!.nextActionAt!).getTime()).toBe(doneAt + 2 * DAY);
+  });
+
+  it('nobody on do-not-contact is put in Tasks: the person stops instead (audit 8d.5)', async () => {
+    const { campaign, contact } = start(config({ goal: 'suppressed' }));
+    // Added after joining, before the task step is reached.
+    const email = h.services.prospects.getContact(contact).email!;
+    h.services.suppressions.add('email', email, ctx());
+    await h.run();
+    expect(tasks().items).toHaveLength(0);
+    expect(person(campaign)).toMatchObject({ status: 'stopped', stopReason: 'suppressed' });
+  });
+
   it('a task needs a title to launch; the dry run stops at it', async () => {
     const { campaigns, prospects } = h.services;
     const noTitle = campaigns.create(

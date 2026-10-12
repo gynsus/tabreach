@@ -51,7 +51,7 @@ query   contacts.list / contacts.get
 command contacts.create / contacts.update
 command imports.prospects.preview      # { csv } -> headers, sample rows, row count, suggested mapping
 command imports.prospects.commit       # { csv, mapping[], onMatch: skip | fill_empty | overwrite }
-command exports.prospects              # -> { filename, csv }; the renderer then calls saveTextFile
+command exports.prospects              # -> { filename, csv, rows }; the renderer then calls saveTextFile
 command exports.campaign               # { campaignId } -> { filename, csv, rows }; campaign status, one row per person
 ```
 
@@ -93,7 +93,7 @@ query   ai.usage                       # { month } -> calls, tokens, estimated c
 ```text
 command research.start                 # { companyId, criteria?, contactId? } — needs a website and an AI key; with contactId: research about that person on the company's site (needs their name)
 query   research.listForContact        # { contactId } -> research runs about the person
-query   research.factSource            # { factId } -> claim, quote, url, title, capturedAt, extractor, text (around the quote, null after retention), highlight {start,end} (FR-RES-005)
+query   research.factSource            # { factId } -> claim, quote, url, title, capturedAt, extractor, factId, text (around the quote, null after retention), omittedBefore, omittedAfter, highlight {start,end} (FR-RES-005)
 query   research.list                  # { companyId } -> runs, newest first
 query   research.get                   # run + facts (verified or not) + evidence (url, title, capturedAt)
 ```
@@ -106,15 +106,15 @@ command campaigns.create / campaigns.update / campaigns.archive
 command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume
 command campaigns.migrate              # { id } -> { moved, completed, busy } — live people to the launched version (docs/17)
-query   tasks.list                     # { status: open|all, limit, offset } -> human_task tasks with contact, company, campaign (docs/17)
+query   tasks.list                     # { status: open|all, limit, offset } -> { items, total }: human_task tasks with contact, company, campaign (docs/17)
 command tasks.resolve                  # { id, outcome: done|skip|stop } — done/skip moves the sequence on, stop stops the person
-command campaigns.research             # { id } -> { companies, withoutCompany, fresh, queued, noWebsite, failed } — research every company of the campaign's people with its goal and ICP (FR-RES-001, docs/16)
+command campaigns.research             # { id } -> { companies, withoutCompany, fresh, queued, noWebsite, failed, peopleQueued, peopleFresh } — research every company of the campaign's people with its goal and ICP (FR-RES-001, docs/16)
 command campaigns.enroll               # { campaignId, contactIds[] } — idempotency key; skips duplicates
 query   enrollments.list               # { campaignId } — step, next action, what it waits for (approval, schedule, window + sendingHours, retry, draft)
 command enrollments.pause / enrollments.resume / enrollments.stop
 command campaigns.clone               # { id, name } -> a new draft with the source's draft config; no versions, no people
 command campaigns.delete              # { id } -> ok; only a never-launched campaign, else CONFLICT campaign.launched
-query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run): target, plannedAt, timeZone, window, heldByWindow, deferredBy, content
+query   campaigns.preview             # { campaignId, contactId, generate } -> the first action for one contact (dry run): { contactName, conditions[], alreadyEnrolled, outcome: none | task {position, title, plannedAt} | stopped {position, reason, rule, fields} | action {target, plannedAt, timeZone, window, heldByWindow, deferredBy, content} }
 ```
 
 Launch validation fails with `VALIDATION_FAILED` and field keys such as `steps.0.body: template.unknownField`;
@@ -159,8 +159,8 @@ command accounts.connectImap           # { address, smtp, imap, username, passwo
 command accounts.update                # name, sender name, limits, new password (tested before saving)
 command accounts.test                  # SMTP + IMAP check, reports the Sent folder
 command accounts.disconnect            # deletes the stored password
-command accounts.connectGmail          # { clientId, clientSecret? } -> consent in the system browser, loopback via main (host: oauth.loopback)
-command accounts.connectMicrosoft      # { address, clientId, tenant='common', fromName? } -> Microsoft sign-in, then SMTP+IMAP tested with the token (XOAUTH2, ADR 032); same address again renews
+command accounts.connectGmail          # { clientId, clientSecret?, limits? } -> consent in the system browser, loopback via main (host: oauth.loopback)
+command accounts.connectMicrosoft      # { address, clientId, tenant='common', fromName?, limits? } -> Microsoft sign-in, then SMTP+IMAP tested with the token (XOAUTH2, ADR 032); same address again renews
 query   sideEffects.uncertain          # sends whose outcome is unknown (or stuck executing), with `checking` while a job still looks
 command sideEffects.resolve            # { id, outcome: completed | not_sent } — refused while a send job for the run is active
 query   contacts.replyHold             # replied | company_replied | null
@@ -214,6 +214,7 @@ query   jobs.needsAttention            # dead/failed jobs
 command jobs.retry / jobs.dismiss
 query   diagnostics.screenshots        # masked screenshots kept for browser tasks (30 days), codes only
 command diagnostics.createBundle       # { screenshots } -> { filename, base64, bytes, contents } (docs/20)
+command browser.launchCheck            # { url } — opens Chrome in a temporary profile and reads the page title (Phase 0 check)
 query   app.health                     # implemented: versions, core/worker/Chrome health for the status screen
 ```
 
@@ -251,7 +252,7 @@ Implemented:
 ```text
 data.changed   { entities: ('company'|'contact'|'suppression'|'activity'|'settings'|
                             'job'|'campaign'|'enrollment'|'approval'|'account'|'conversation'|
-                            'research'|'browser')[] }   # after every mutation
+                            'research'|'browser'|'task')[] }   # after every mutation
 ```
 
 Background work announces its changes the same way: a failed or dead job sends `job`, a new approval sends `approval`, a sent message sends `enrollment`.

@@ -26,8 +26,6 @@ export type ResearchNeed =
 
 /** A failed research is not tried again for every message or condition: it waits a day. */
 export const FAILED_RESEARCH_BACKOFF_MS = 24 * 60 * 60_000;
-/** A research still running after this is not waited for. */
-export const RESEARCH_MAX_WAIT_MS = 60 * 60_000;
 const RESEARCH_POLL_MS = 20_000;
 /** Research that failed on a used-up AI budget is tried again after this. */
 const BUDGET_RECHECK_MS = 60 * 60_000;
@@ -57,12 +55,10 @@ export class CampaignResearch {
       completed?.finishedAt && now - new Date(completed.finishedAt).getTime() < context.maxAgeMs
         ? completed
         : null;
-    if (
-      latest &&
-      (latest.status === 'pending' || latest.status === 'running') &&
-      now - new Date(latest.startedAt).getTime() < RESEARCH_MAX_WAIT_MS
-    ) {
-      // A newer run is on its way; a fresh completed one is still good meanwhile.
+    if (latest && (latest.status === 'pending' || latest.status === 'running')) {
+      // A newer run is on its way, however long it waits in the queue: starting another would pay
+      // for the same research twice (audit 8d.5). Its job is bounded by its own attempts and age, and
+      // a run whose job is gone was failed by resync above. A fresh completed one is good meanwhile.
       return fresh
         ? { kind: 'ready', run: fresh }
         : { kind: 'wait', until: new Date(now + RESEARCH_POLL_MS) };

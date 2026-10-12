@@ -300,6 +300,15 @@ describe('campaign clone, delete and dry run', () => {
       },
     });
     expect(counts()).toEqual(before);
+
+    // The draft can still be deleted: its research stays with the company (audit 8d.5).
+    h.services.campaigns.delete(campaign, ctx());
+    expect(
+      h.db
+        .prepare('SELECT campaign_id FROM research_runs')
+        .all()
+        .map((r) => r.campaign_id),
+    ).toEqual([null]);
   });
 
   it('a clone is a new draft with the same settings and steps, without versions or people', async () => {

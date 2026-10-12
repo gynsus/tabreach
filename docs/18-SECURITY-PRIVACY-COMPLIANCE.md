@@ -87,7 +87,7 @@ The product operates across jurisdictions, so it provides primitives rather than
 
 - suppression/do-not-contact list;
 - per-contact channel eligibility;
-- opt-out detection from replies and optional `List-Unsubscribe` header;
+- opt-out detection from replies (an outbound `List-Unsubscribe` header is post-MVP);
 - sender identity/signature configuration;
 - stop future outreach after opt-out;
 - audit of consent/source fields when supplied by user;
