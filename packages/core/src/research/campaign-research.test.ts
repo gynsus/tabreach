@@ -197,6 +197,10 @@ describe('campaign research', () => {
     // Asking again while it runs starts nothing new.
     expect(h.services.campaigns.researchCompanies(id, ctx())).toMatchObject({ queued: 1 });
     expect(runs()).toHaveLength(1);
+    // Nor after hours in a long queue: the run is still open, so it is waited for (audit 8d.5).
+    h.clock.advance(3 * 60 * 60_000);
+    expect(h.services.campaigns.researchCompanies(id, ctx())).toMatchObject({ queued: 1 });
+    expect(runs()).toHaveLength(1);
     h.anthropic.answer(synthesis('possible_match'));
     await h.run();
     expect(h.services.campaigns.researchCompanies(id, ctx())).toMatchObject({ fresh: 1, queued: 0 });
@@ -209,6 +213,28 @@ describe('campaign research', () => {
     expect(() => campaigns.launch(noIcp, ctx())).toThrow(
       expect.objectContaining({
         problem: expect.objectContaining({ fields: { 'steps.0.conditions': 'campaign.icpRequired' } }),
+      }),
+    );
+    // "contains match" would let possible_match and not_match through (audit 8d.5).
+    const contains = campaigns.create(
+      {
+        name: 'Contains',
+        config: config({
+          steps: [
+            {
+              type: 'condition',
+              delaySeconds: 0,
+              conditions: [{ field: 'research.qualification', op: 'contains', value: 'match' }],
+              onFalse: 'stop',
+            },
+          ],
+        }),
+      },
+      ctx(),
+    ).id;
+    expect(() => campaigns.launch(contains, ctx())).toThrow(
+      expect.objectContaining({
+        problem: expect.objectContaining({ fields: { 'steps.0.conditions': 'campaign.qualificationOp' } }),
       }),
     );
     h.services.ai.removeKey('anthropic', ctx());

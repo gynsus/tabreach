@@ -155,7 +155,7 @@ Order (decided in the 4.5 audit, 2026-09-29), each a working slice:
 
 ## Phase 6 — Website form channel
 
-Also: per-contact channel eligibility (`contact_channel_eligibility`, docs/01, docs/05), needed once a contact can be reached by more than email.
+Also: per-contact channel eligibility (docs/01). Built as a derived check (a form step needs the company's website, a LinkedIn step the profile URL); no `contact_channel_eligibility` table was needed (docs/14).
 
 
 Deliver:
@@ -209,13 +209,13 @@ Exit criteria:
 
 Automated tests use fixture pages only; real LinkedIn is checked manually by the developer.
 
-Exit criteria status (2026-09-30): the adapter is off by default and when its setting cannot be read, and the switch is checked again at the checkpoint (core tests); an unrecognized page or a page about someone else is never clicked (browser tests on fixtures with the bundled pack); a follow-up is not sent when the thread has a new answer (browser and core tests); `auto` needs the per-class opt-in and every attempt is a `browser_tasks` row with its pack version, summarized per version on the status screen. Real pages (2026-10-09): profile recognition, identity, the conversation page, the thread reader, the message composer and the invitation dialog were checked on real LinkedIn up to the press and the pack corrected (0.5.0, docs/14). `manual` (2026-10-09): LinkedIn steps can be `manual` — the page is opened and checked, the text shown in the overlay with a Copy button, and the person confirms the outcome (ADR 015).
+Exit criteria status (2026-09-30): the adapter is off by default and when its setting cannot be read, and the switch is checked again at the checkpoint (core tests); an unrecognized page or a page about someone else is never clicked (browser tests on fixtures with the bundled pack); a follow-up is not sent when the thread has a new answer (browser and core tests); `auto` needs the per-class opt-in and every attempt is a `browser_tasks` row with its pack version, summarized per version on the status screen. Real pages (2026-10-09): profile recognition, identity, the conversation page, the thread reader, the message composer and the invitation dialog were checked on real LinkedIn up to the press and the pack corrected (0.5.0, docs/14; 0.5.1 with `manual`). `manual` (2026-10-09): LinkedIn steps can be `manual` — the page is opened and checked, the text shown in the overlay with a Copy button, and the person confirms the outcome (ADR 015).
 
 ---
 
 ## Phase 8 — Hardening and release
 
-Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18); 8b local recovery backups with restore and the portable export without secrets (done 2026-10-10, ADR 029); 8c first-run setup — language, Chrome, AI key, email account, first profile, each skippable (done 2026-10-10); 8d-1 campaign clone and the dry run for one contact (done 2026-10-10); archived campaigns shown on request and deletion of never-launched campaigns (done 2026-10-10); 8d-2 campaign status CSV export (done 2026-10-10, FR-PROS-007); 8d-3 replies written and sent from the inbox, threaded, through the ledger, with an optional AI suggestion of the text (done 2026-10-10, ADR 031); waiting for the sending hours shown in the People list and the dry run, and live people moved to the launched version on request (done 2026-10-10, docs/17).
+Progress: 8a-1 recovery scenarios from docs/19 each covered by a test, and a guard against two concurrent attempts at one browser send (done 2026-10-09); 8a-2 sanitized diagnostics bundle (done 2026-10-09, docs/20); 8a-3 retention settings and the daily job (done 2026-10-09, docs/18); 8b local recovery backups with restore and the portable export without secrets (done 2026-10-10, ADR 029); 8c first-run setup — language, Chrome, AI key, email account, first profile, each skippable (done 2026-10-10); 8d-1 campaign clone and the dry run for one contact (done 2026-10-10); archived campaigns shown on request and deletion of never-launched campaigns (done 2026-10-10); 8d-2 campaign status CSV export (done 2026-10-10, FR-PROS-007); 8d-3 replies written and sent from the inbox, threaded, through the ledger, with an optional AI suggestion of the text (done 2026-10-10, ADR 031); waiting for the sending hours shown in the People list and the dry run, and live people moved to the launched version on request (done 2026-10-10, docs/17); 8d-4 Microsoft sign-in for IMAP/SMTP (done 2026-10-11, ADR 032); 8d-5 follow-ups in the same thread (done 2026-10-11); 8d-6 to 8d-10 campaign goal and ICP with the qualification condition, "show in source", the per-campaign AI budget, task steps and person research (done 2026-10-11). Audit 8d.5 (2026-10-12): three independent reviews (security, workflow correctness, docs against code); findings fixed and docs corrected.
 
 Deliver:
 
@@ -226,9 +226,12 @@ Deliver:
 - first-run setup wizard (Chrome check, AI key, email account, first profile);
 - MVP items found unassigned by the 4.5 audit (docs/01):
   - done: campaign clone and dry-run preview (FR-CAM-001, FR-CAM-008; 8d-1); campaign status CSV export (FR-PROS-007; 8d-2); replies written from the inbox, threaded, with an AI suggestion (ADR 031; 8d-3); Microsoft sign-in (XOAUTH2) for Outlook.com and Microsoft 365 mailboxes over IMAP/SMTP (ADR 032; 8d-4); email follow-ups sent in the thread of the earlier campaign emails (docs/17 `replyAsThread`, Gmail `threadId`; 8d-5); campaign goal, ICP and research instructions with research freshness, the `research.qualification` condition and research of all a campaign's companies (FR-RES-001, docs/16; 8d-6); evidence text with the quote highlighted (FR-RES-005; 8d-7); per-campaign AI budget and cost (docs/15; 8d-8); the `human_task` step with Tasks (docs/17; 8d-9; a pause between steps is a step's delay; `webhook` is deferred to after the MVP, ADR 030); contact-level research on the company's own site (docs/16; 8d-10). Phase 8d is complete;
-- signing, notarization, DMG;
-- optional: auto-update feed;
-- user docs (a first version: `docs/USER-GUIDE.md`, 2026-10-10; to be completed with installation from the DMG).
+- **8e — release** (next):
+  - signing with a Developer ID Application certificate, hardened runtime, notarization and stapling (the owner creates the certificate and the notarization credentials and keeps them in the Keychain or as CI secrets; nothing secret is committed);
+  - DMG for arm64 and x64;
+  - user docs completed with installation from the DMG (a first version: `docs/USER-GUIDE.md`, 2026-10-10);
+  - the acceptance run of `23-ACCEPTANCE-CRITERIA.md` on a clean Mac with the packaged app;
+- optional: auto-update feed.
 
 Exit criteria:
 

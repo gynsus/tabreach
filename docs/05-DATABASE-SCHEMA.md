@@ -73,17 +73,9 @@ url_normalized
 
 Unique `(channel, url_normalized)`.
 
-### `contact_channel_eligibility` (planned, Phase 6 — not created yet)
+### `contact_channel_eligibility` (not built)
 
-```text
-contact_id fk
-channel
-eligibility check in ('allowed','not_allowed','unknown')
-source
-updated_at
-```
-
-Primary key `(contact_id, channel)`.
+Planned for Phase 6 and dropped: whether a contact can be reached on a channel is derived when a step runs (an email step needs the address, a form step the company's website, a LinkedIn step the profile URL), so no table stores it (docs/14).
 
 ### `tags`, `company_tags`, `contact_tags`
 
@@ -104,52 +96,9 @@ created_at
 
 Unique `(kind, value_normalized)`. Domain entries match the domain and its subdomains at send time (ADR 021 §6).
 
-### `research_runs`
+### Research tables
 
-```text
-id pk
-target_type, target_id
-status
-config_snapshot json
-summary
-qualification check in ('match','possible_match','not_match','insufficient_data') null
-qualification_reason
-model_provider, model_name
-prompt_template_key, prompt_template_version
-usage json                -- tokens, cost estimate
-started_at, completed_at
-error_code, error_message_redacted
-```
-
-### `evidence`
-
-```text
-id pk
-research_run_id fk
-target_type, target_id
-source_url
-source_title
-evidence_type
-captured_text
-structured_payload json
-extractor
-content_hash
-captured_at
-```
-
-Index by `(target_type, target_id)` and `research_run_id`.
-
-### `research_facts`
-
-```text
-id pk
-research_run_id fk
-kind check in ('fact','inference')
-claim
-evidence_ids json         -- array of evidence ids
-quotes json               -- array of {evidenceId, quote, verified}
-confidence real null
-```
+Built in migration 13 (later columns in 21 and 24). The shape is listed under "Research (implemented)" below; an earlier target shape (`target_type/target_id`, `config_snapshot`, `evidence_ids`) was not built.
 
 ### `campaigns`
 
@@ -181,7 +130,7 @@ Unique `(campaign_id, version_number)`. Steps are **not** duplicated inside `con
 id pk
 campaign_version_id fk
 position integer
-step_type
+step_type check in ('send_message','condition','human_task')
 execution_mode check in ('auto','assisted','manual')
 delay_seconds integer
 config json
@@ -207,7 +156,7 @@ created_at, updated_at
 lock_version integer
 ```
 
-Check: company or contact present. Unique `(campaign_id, contact_id)`. Index `(status, next_action_at)`.
+Check: company or contact present. Unique `(campaign_id, contact_id)` where `contact_id` is not null (a partial index). Index `(status, next_action_at)`.
 
 ### `workflow_runs`
 
@@ -315,7 +264,7 @@ A row is created `pending` when a workflow reaches `CHECK_APPROVAL`; a draft edi
 id pk
 idempotency_key unique not null   -- sha256 of v1|scope id|step|channel|action|normalized target (ADR 021 §3)
 scope_id, step_position, channel, action_type, target_normalized   -- readable key parts
-workflow_run_id null fk           -- run that first reserved the key; ON DELETE SET NULL
+workflow_run_id null              -- run that first reserved the key (plain id, no foreign key)
 status check in ('reserved','executing','completed','not_sent','unknown')
 content_hash null
 external_refs json        -- {messageId, providerMessageId, threadId, url, ...}
@@ -344,7 +293,7 @@ id pk
 name
 purpose check in ('channel_identity','research','general')
 channel_account_id null
-status
+status check in ('ready','open','needs_login','unhealthy','archived')
 locale null
 timezone null
 browser_channel           -- 'chrome' (default); 'chromium' for tests
@@ -491,15 +440,17 @@ updated_at
 
 Index `(conversation_id, created_at)`. A sent reply is also stored in `messages` as outgoing, with its `Message-ID`.
 
-### Research (implemented, migration 13)
+### `human_tasks` (migration 23)
 
 `human_tasks (id, campaign_enrollment_id, campaign_version_id, step_position, title, instructions, status open|done|skipped|cancelled, resolution, created_at, resolved_at)` — one open task per person and step (migration 23; `sequence_steps.step_type` also allows `human_task`).
 
-`research_runs (id, company_id, status, error, criteria, goal, instructions, context_hash, campaign_id, contact_id (migration 24), summary, qualification, qualification_reason, reason_to_contact, missing_information json, template, model, pages_fetched, pages_skipped, correlation_id, started_at, finished_at)`; `evidence (id, url, title, content_hash unique, text, extractor, captured_at)`; `research_run_evidence (research_run_id, evidence_id)`; `research_facts (id, research_run_id, position, kind fact|inference, claim, evidence_id, quote, verified 0/1, based_on json, created_at)`. The earlier `research_runs` / `evidence` / `research_facts` sections above describe the target shape; these are what exists.
+### Research (implemented, migration 13)
+
+`research_runs (id, company_id, status, error, criteria, goal, instructions, context_hash, campaign_id, contact_id (migration 24), summary, qualification, qualification_reason, reason_to_contact, missing_information json, template, model, pages_fetched, pages_skipped, correlation_id, started_at, finished_at)`; `evidence (id, url, title, content_hash unique, text, extractor, captured_at)`; `research_run_evidence (research_run_id, evidence_id)`; `research_facts (id, research_run_id, position, kind fact|inference, claim, evidence_id, quote, verified 0/1, based_on json, created_at)`. `status` is `pending|running|completed|failed`; `company_id` is required (person research is a company run with `contact_id`).
 
 ### `ai_calls`
 
-`(id pk, use_case, provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, campaign_id null (migration 22), created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label`, `ai_confidence`, `ai_template` (migration 12).
+`(id pk, use_case check in ('classification','research','drafting'), provider, model, template_key, template_version, status check in ('ok','invalid_output','error','refused'), input_tokens, output_tokens, cost_usd null, latency_ms, error_class, correlation_id, campaign_id null (migration 22), created_at)` — usage and cost per call, no prompts or content. `messages` also has `ai_label` (`interested|not_interested|opt_out|out_of_office|other`), `ai_confidence`, `ai_template` (migration 12).
 
 ### `mailbox_cursors`
 
@@ -511,7 +462,7 @@ Index `(conversation_id, created_at)`. A sent reply is also stored in `messages`
 id pk
 correlation_id
 causation_id null
-actor_type
+actor_type check in ('user','system','ai','browser_worker','channel_adapter')
 action_type
 object_type null
 object_id null
@@ -533,7 +484,6 @@ Payloads hold identifiers, field names, counts, enums and codes only — never n
 id pk
 type
 payload json
-schema_version integer
 status check in ('pending','running','succeeded','failed','dead')
 run_at                    -- earliest execution time
 attempts integer

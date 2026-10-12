@@ -186,9 +186,11 @@ If none are reliable, status is `unknown`.
 
 ## Human control
 
-- `session.takeControl` sets control mode `human`: the worker finishes or aborts the current atomic Playwright call, rejects all further automation for that session, and keeps heartbeating.
-- `session.pause` sets `paused` (automation stops at the next safe point; the user is not necessarily interacting).
-- `session.returnControl` triggers revalidation (`11-HUMAN-TAKEOVER.md`) before control mode returns to `automation`.
+The user acts through `profiles.takeControl` / `profiles.returnControl` (renderer → core); core sets the session's mode on the worker with `session.setMode { controlMode }`, and the worker reports overlay, challenge and emergency-stop changes back with `session.modeChanged`.
+
+- Mode `human`: the worker finishes or aborts the current atomic Playwright call, rejects all further automation for that session, and keeps heartbeating.
+- Mode `paused`: automation stops at the next safe point; the user is not necessarily interacting.
+- Returning control triggers revalidation (`11-HUMAN-TAKEOVER.md`) before the mode returns to `automation`.
 
 ## Profile ownership
 

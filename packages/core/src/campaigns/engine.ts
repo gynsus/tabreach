@@ -394,7 +394,14 @@ export class CampaignEngine {
         }
         if (step.type === 'human_task') {
           // The person does this step: a task waits in Tasks; resolving it moves the sequence on.
-          if (!this.openTask(e.id, e.current_step_position)) this.createTask(e, step, ctx.correlationId);
+          if (this.openTask(e.id, e.current_step_position)) return;
+          // Nobody is put in Tasks who must not be approached: do-not-contact or a reply (audit 8d.5).
+          const blocked = this.d.policy.blocked(e.contact_id, this.contact(e.contact_id)?.company_id ?? null);
+          if (blocked) {
+            this.stopEnrollment(e, blocked.reason, ctx.correlationId, 'system', { rule: blocked.rule });
+            return;
+          }
+          this.createTask(e, step, ctx.correlationId);
           return;
         }
         const runId = uuidv7();
@@ -1027,7 +1034,19 @@ export class CampaignEngine {
            AND status = 'completed' AND step_position < ? ORDER BY updated_at DESC LIMIT 1`,
       )
       .get(e.id, e.current_step_position) as { updated_at: string } | undefined;
-    const base = new Date(last?.updated_at ?? e.created_at);
+    // A task step opens no run: its Done or Skip ends the step (audit 8d.5).
+    const task = this.d.db
+      .prepare(
+        `SELECT MAX(resolved_at) AS at FROM human_tasks WHERE campaign_enrollment_id = ?
+           AND status IN ('done', 'skipped') AND step_position < ?`,
+      )
+      .get(e.id, e.current_step_position) as { at: string | null };
+    const base = new Date(
+      Math.max(
+        new Date(last?.updated_at ?? e.created_at).getTime(),
+        task.at ? new Date(task.at).getTime() : 0,
+      ),
+    );
     const now = this.d.now();
     const due = new Date(Math.max(base.getTime() + step.delaySeconds * 1000, now.getTime()));
     const facts = this.contact(e.contact_id);
@@ -1811,7 +1830,9 @@ export class CampaignEngine {
         continue;
       }
       if (step.type === 'human_task') {
-        // The person's own step comes first: the dry run stops at it.
+        // The person's own step comes first: the dry run stops at it, unless they may not be approached.
+        const blocked = this.d.policy.blocked(contactId, facts.company_id);
+        if (blocked) return stopped(position, blocked.reason, blocked.rule);
         return {
           kind: 'task',
           position,

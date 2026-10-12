@@ -35,6 +35,15 @@ A short setup opens on first launch. Each step can be skipped and done later in 
 
 TabReach reads the inbox to notice replies and bounces. It only looks at mail from people you contacted, from the moment the account was connected.
 
+Each account sends at most 50 emails a day, 60 seconds apart, unless you change its limits.
+
+## AI (Settings → AI)
+
+- Choose the provider (Anthropic, OpenRouter or OpenAI) and paste your key; **Test key** makes one tiny call. Each provider keeps its own key, so switching back does not ask for it again.
+- Models are suggested per provider; you can set one each for reply labels, research and drafts.
+- **Prices** (USD per million tokens) let TabReach estimate cost. OpenRouter reports the cost of every call by itself, so prices are optional there. Without a price, tokens are counted but cost is unknown — and a budget cannot be enforced.
+- **Monthly budget** — once the estimated cost of the month reaches it, no more AI calls are made; AI steps and research wait until you raise it or the month ends. The usage of the month is shown below. A campaign can have a smaller budget of its own (Campaigns → Goal and audience).
+
 ## Contacts and companies
 
 - Import a CSV (Contacts → Import). You see a preview and a report of new, updated, skipped and invalid rows; importing the same file again changes nothing.
@@ -67,6 +76,8 @@ Good to know:
 - Editing a running campaign and launching again creates a new version. People already in the campaign stay on their version until you press **Move to vN** in the People section. A message you already approved still goes as approved.
 - A campaign that was never launched can be deleted; a launched one can only be archived. **Show archived** brings archived campaigns back into view, and any campaign can be copied.
 - **Export CSV** in People saves one row per person with status, step, sends and replies, for your CRM.
+- **Who presses Send** — on website-form and LinkedIn steps: TabReach after your approval (`auto`), you in the browser window (`assisted`, the default), or you do it all with the text at hand (`manual`). A form with a CAPTCHA or a field TabReach cannot fill is always sent by you.
+- When someone replies, no campaign writes to them again — nor, for a strong company match, to their colleagues — until you press **Allow campaigns to write again** on the contact page.
 
 ## Approvals
 
@@ -80,11 +91,19 @@ Replies are matched to the person and campaign and labelled by AI (interested, n
 
 - **Browser** shows the profiles TabReach manages. You can watch any window, **take control** and **return control**. TabReach stops and hands you the window at any CAPTCHA, two-factor prompt or page it does not recognise; it never tries to get around them.
 - **Website forms** (Settings → Website forms): pick a profile and your sender details. The form is found and filled before approval, and the approval shows a picture of exactly what goes in.
-- **LinkedIn** is off until you accept the risk notice in Settings → LinkedIn. It runs **assisted** by default: TabReach opens the profile and puts the text in place, and you press Send. Limits per day are conservative.
+- **LinkedIn** is off until you accept the risk notice in Settings → LinkedIn. It runs **assisted** by default: TabReach opens the profile, checks it is the right person and puts the text in place, and you press Send. In **manual** mode it opens the profile (or the conversation) and shows the text with a **Copy** button; you send it yourself and then tell TabReach whether it went out. **Auto** works only after you allow it in Settings → LinkedIn, separately for invitations and messages.
+- LinkedIn limits default to 15 invitations a day, 80 a week and 30 messages a day, 90 seconds apart. You can lower them freely; raising them above these defaults needs you to accept the higher risk. These are TabReach's cautious defaults, not LinkedIn's rules, and no guarantee against restrictions.
 
 ## Pause all and Emergency stop
 
 **Pause all** (top bar) stops every new send and browser action; reading replies goes on. **Emergency stop** also closes the browser at once. Nothing is lost: when you resume, waiting work continues.
+
+**Keep the Mac awake while campaigns are active** (Status) stops the Mac from sleeping while something is scheduled. Without it, work due while the Mac slept is moved to the next sending window after it wakes, never sent in a burst.
+
+## Activity and Status
+
+- **Activity** lists everything TabReach did and you decided — added to a campaign, written, approved, sent, replied, stopped — and each contact, company and campaign page has its own timeline.
+- **Status** shows whether the app's parts, the database and Chrome are healthy, what needs your attention (failed work, unconfirmed sends), and per adapter pack how often pages were not recognised — a jump there usually means the site changed.
 
 ## Unconfirmed sends
 

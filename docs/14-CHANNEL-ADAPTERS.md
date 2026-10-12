@@ -105,11 +105,11 @@ Implemented in Phase 3c for IMAP accounts (ADR 024): polling every 2 minutes fro
   - `thread` — provider thread ID or `In-Reply-To`/`References` → strong;
   - `contact_address` — exact address of a known contact → strong;
   - `domain_only` — sender domain matches a company → **possible reply**: shown in the inbox for the user to confirm or dismiss; never triggers an automatic company-wide stop.
-  - Not replies at all: auto-replies and bulk mail (`Auto-Submitted`, `Precedence: bulk/list`, `List-Id`, out-of-office), and role/no-reply senders (`noreply@`, `billing@`, `jobs@`, ... configurable list) unless they come in the campaign thread.
+  - Not replies at all: auto-replies and bulk mail (`Auto-Submitted`, `Precedence: bulk/list`, `List-Id`, out-of-office), and role/no-reply senders (`noreply@`, `billing@`, `jobs@`, ... a fixed list in `email/inbox.ts`) unless they come in the campaign thread.
 - **Bounces**: detect DSNs (`multipart/report; report-type=delivery-status`, mailer-daemon senders); hard bounce → contact `email_status=bounced`, suppression entry, stop sequence.
 - **Classification**: interested / not interested / out-of-office / opt-out / bounce / other. Opt-out → suppression (FR-POL-005). Out-of-office does not stop by default; it may delay.
-- **Headers**: optional `List-Unsubscribe` (mailto) configured per account; sender identity/signature per account.
-- **Limits**: per-account daily send cap and minimum spacing between sends.
+- **Headers**: sender name per account, signature per step. An outbound `List-Unsubscribe` header is not implemented yet (post-MVP); the header is read on inbound mail to tell bulk mail apart.
+- **Limits**: per-account daily send cap and minimum spacing between sends (defaults 50 a day, 60 s apart).
 - **Replies from the inbox** (ADR 031): sent through the same channel with `In-Reply-To` / `References` of the answered message and `Re:` subject; guarded by the ledger like any send; only the do-not-contact list applies. Gmail `threadId` is not set for these replies yet.
 - **Campaign follow-ups in the thread** (docs/17 `replyAsThread`): `Re:` subject of the first email, `In-Reply-To` / `References` of the earlier emails; Gmail API sends get the earlier message's `threadId` when it is the same account, and retry without it if Gmail says the thread is gone (404: refused, nothing sent).
 
@@ -211,7 +211,7 @@ LinkedIn's UI changes often. Page states, locators (with UI-language variants), 
 
 ### Implementation status (Phase 7a, 2026-09-29)
 
-The `linkedin` pack 0.2.0 recognizes profile states (can connect, can message, invitation pending), the invitation dialog and its note, the message composer and the confirmation texts, the sign-in wall and the security checkpoint, in English and Russian. Actions: `linkedin.connect` (without a note), `linkedin.connect.note`, `linkedin.message`; each checks the target's identity first — the profile slug after `/in/` and the name in the page's first-level heading (accents and case ignored; the heading may continue after the name) — and again at the checkpoint, runs its non-critical steps (open the dialog, "Add a note", open the composer) each into an expected state, fills, and presses once after the `about_to_commit` checkpoint. The reader `linkedin.thread` opens the conversation and returns only the direction of each message and whether the person answered after our last one (FR-LIN-004). A sign-in wall is `task.loginRequired`; a page about someone else is `task.identityMismatch`; a pending invitation is not a state to act from. Default throttles live in the pack (`limits`: 15 invitations a day, 80 a week, 30 messages and 60 profile visits a day, 90 s apart). The states were built against LinkedIn-like fixtures with own markup (`fixtures/sites/public/li`); real pages are checked by hand before the pack is trusted, and every action records the pack version.
+The `linkedin` pack 0.2.0 (superseded: see "Checked against real LinkedIn" below for what 0.5.x changed, among it the name read from the level-2 heading in `main`) recognizes profile states (can connect, can message, invitation pending), the invitation dialog and its note, the message composer and the confirmation texts, the sign-in wall and the security checkpoint, in English and Russian. Actions: `linkedin.connect` (without a note), `linkedin.connect.note`, `linkedin.message`; each checks the target's identity first — the profile slug after `/in/` and the name in the page's first-level heading (accents and case ignored; the heading may continue after the name) — and again at the checkpoint, runs its non-critical steps (open the dialog, "Add a note", open the composer) each into an expected state, fills, and presses once after the `about_to_commit` checkpoint. The reader `linkedin.thread` opens the conversation and returns only the direction of each message and whether the person answered after our last one (FR-LIN-004). A sign-in wall is `task.loginRequired`; a page about someone else is `task.identityMismatch`; a pending invitation is not a state to act from. Default throttles live in the pack (`limits`: 15 invitations a day, 80 a week, 30 messages and 60 profile visits a day, 90 s apart; the profile-visit limit is in the pack but not enforced yet). The states were built against LinkedIn-like fixtures with own markup (`fixtures/sites/public/li`); real pages are checked by hand before the pack is trusted, and every action records the pack version.
 
 ### Implementation status (Phase 7b, 2026-09-29)
 
@@ -219,7 +219,7 @@ The `linkedin` pack 0.2.0 recognizes profile states (can connect, can message, i
 
 Phase 7c: Status → Adapter packs shows, per pack version over 30 days, the browser tasks, unrecognized pages (their share turns amber above 10 %), requests to the person, unconfirmed outcomes and the last unrecognized page (`packs.health`).
 
-### Checked against real LinkedIn (pack 0.5.0, 2026-10-09)
+### Checked against real LinkedIn (pack 0.5.0, 2026-10-09; now 0.5.1)
 
 A hand check on real pages (English interface) replaced several fixture assumptions:
 

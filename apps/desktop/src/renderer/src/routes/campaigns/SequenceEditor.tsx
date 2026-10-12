@@ -516,11 +516,13 @@ function ConditionFields(props: {
             disabled={props.disabled}
             onChange={(e) => setRule(i, { ...rule, op: conditionOpSchema.parse(e.target.value) })}
           >
-            {conditionOpSchema.options.map((op) => (
-              <option key={op} value={op}>
-                {t(`campaigns.ops.${op}`)}
-              </option>
-            ))}
+            {conditionOpSchema.options
+              .filter((op) => rule.field !== 'research.qualification' || op !== 'contains')
+              .map((op) => (
+                <option key={op} value={op}>
+                  {t(`campaigns.ops.${op}`)}
+                </option>
+              ))}
           </Select>
           {rule.op === 'exists' || rule.op === 'not_exists' ? null : rule.field ===
             'research.qualification' ? (

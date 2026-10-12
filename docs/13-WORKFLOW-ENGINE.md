@@ -25,7 +25,7 @@ Core owns a `jobs` table. There is no external broker.
 - **Enqueue** happens in the same SQLite transaction as the state change that requires it. This removes the dual-write problem (no outbox needed).
 - **Claim**: a single dispatcher loop in core selects due jobs (`status='pending' AND run_at <= now`) ordered by `run_at`, sets `status='running'`, `lease_owner`, `lease_until` in one transaction. Since core is the only writer, no cross-process locking is needed; the lease exists to detect jobs orphaned by a crash.
 - **Wake-up**: the dispatcher sleeps until the earliest `run_at` (bounded, e.g. max 30 s) and is woken immediately on enqueue. No busy polling per enrollment.
-- **Concurrency**: per job type limits (e.g. research ×3, browser tasks ×1 per profile, email sends ×1 per account).
+- **Concurrency**: per job type limits (research ×2, campaign steps ×2, browser tasks ×1 per profile, email sends ×1 per account). Campaign step jobs try up to 6 times within 7 days; research jobs give up after 6 hours.
 - **Completion**: result and next-state persisted, job marked `succeeded`/`failed`, follow-up jobs enqueued — one transaction.
 - **Retry** (jobs own retries, ADR 021 §2): a retryable error → `pending` with `run_at` = backoff; a non-retryable error → `failed`; after `max_attempts` or max age → `dead`, logged as `jobs.dead` and shown in Needs attention.
 - **Leases**: 60 s, renewed every 20 s by long handlers; `lease_owner` is the core instance id.
@@ -130,6 +130,8 @@ Reconciliation sources: provider lookup (email: search Sent for the app-generate
 See `19-ERROR-RECOVERY.md` for the taxonomy. Retries require exponential backoff with jitter, maximum attempts and maximum total age.
 
 ## Example: LinkedIn follow-up message workflow
+
+Illustrative: these are the stages of a LinkedIn send, not persisted states. The run itself stays in the `workflow_runs` statuses above; the stages live inside one browser task (docs/14).
 
 ```text
 OPEN_TARGET

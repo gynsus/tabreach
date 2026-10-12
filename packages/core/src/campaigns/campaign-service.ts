@@ -372,6 +372,10 @@ export class CampaignService {
         .prepare('SELECT 1 FROM campaign_versions WHERE campaign_id = ? LIMIT 1')
         .get(id);
       if (row.active_version_id || launched) throw conflict('campaign.launched');
+      // A dry run that wrote an AI message researched for the campaign: the research stays with
+      // the company, and its calls stay in the month's usage, no longer tied to it (audit 8d.5).
+      this.db.prepare('UPDATE research_runs SET campaign_id = NULL WHERE campaign_id = ?').run(id);
+      this.db.prepare('UPDATE ai_calls SET campaign_id = NULL WHERE campaign_id = ?').run(id);
       this.db.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
       this.record('campaign.deleted', id, ctx, { name: row.name });
     });
@@ -545,7 +549,10 @@ export class CampaignService {
     config.steps.forEach((step, i) => {
       // A research condition needs research, and research needs an AI key: without one every person would stop.
       if (step.type === 'condition' && step.conditions.some((c) => c.field === 'research.qualification')) {
-        if (!this.aiReady()) fields[`steps.${i}.conditions`] = 'ai.keyRequired';
+        // "contains match" would also hold for possible_match and not_match (audit 8d.5).
+        if (step.conditions.some((c) => c.field === 'research.qualification' && c.op === 'contains'))
+          fields[`steps.${i}.conditions`] = 'campaign.qualificationOp';
+        else if (!this.aiReady()) fields[`steps.${i}.conditions`] = 'ai.keyRequired';
         else if (step.conditions.some((c) => c.field === 'research.qualification' && !config.icp.trim()))
           fields[`steps.${i}.conditions`] = 'campaign.icpRequired';
       }

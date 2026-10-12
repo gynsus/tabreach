@@ -49,6 +49,32 @@ export class ContactPolicy {
     private readonly now: () => Date,
   ) {}
 
+  /**
+   * Whether the person may be approached at all, by any channel or by you: an inactive contact,
+   * do-not-contact (email, domain, company, profile) or a reply hold. Caps and sending hours are
+   * left out: they apply to sends. Used before a task step puts the person in Tasks (audit 8d.5).
+   */
+  blocked(contactId: string, companyId: string | null): Extract<PolicyVerdict, { kind: 'stop' }> | null {
+    const contact = this.db
+      .prepare(
+        `SELECT c.email_normalized, c.status, co.domain_normalized
+         FROM contacts c LEFT JOIN companies co ON co.id = ?
+         WHERE c.id = ?`,
+      )
+      .get(companyId, contactId) as
+      { email_normalized: string | null; status: string; domain_normalized: string | null } | undefined;
+    if (!contact || contact.status !== 'active')
+      return { kind: 'stop', reason: 'invalid_target', rule: 'contact.inactive' };
+    const suppressed = this.suppressionRule(
+      { contactId, companyId, websiteHost: null },
+      contact.email_normalized,
+      contact.domain_normalized,
+    );
+    if (suppressed) return { kind: 'stop', reason: 'suppressed', rule: suppressed };
+    const hold = this.replyHold(contactId, companyId);
+    return hold ? { kind: 'stop', reason: hold, rule: `reply.${hold}` } : null;
+  }
+
   current(): PolicySettings {
     return this.settings.get(POLICY_SETTINGS_KEY, policySettingsSchema) ?? DEFAULT_POLICY;
   }
