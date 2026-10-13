@@ -42,7 +42,7 @@ export function ActivityPage() {
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {query.isError ? <Alert>{errorMessage(t, query.error)}</Alert> : null}
         {query.isSuccess && events.length === 0 ? <EmptyState title={t('activity.empty')} /> : null}
-        <ol className="grid max-w-3xl gap-3">
+        <ol className="grid gap-3">
           {events.map((entry) => (
             <ActivityItem
               key={entry.id}

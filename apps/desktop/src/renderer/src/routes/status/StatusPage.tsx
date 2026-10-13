@@ -100,7 +100,7 @@ export function StatusPage() {
           </>
         }
       />
-      <div className="grid max-w-3xl content-start gap-6 overflow-y-auto p-6">
+      <div className="grid min-h-0 flex-1 content-start gap-6 overflow-y-auto p-6">
         {health.isError ? <Alert tone="warn">{errorMessage(t, health.error)}</Alert> : null}
         <ul
           className="divide-y divide-rule rounded-md border border-rule bg-raised"

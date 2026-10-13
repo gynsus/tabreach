@@ -190,7 +190,7 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid max-w-4xl gap-8 p-6">
+        <div className="grid gap-8 p-6">
           {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
           {launch.isError ? (
             // Field problems are shown at their fields; the alert only points to them.

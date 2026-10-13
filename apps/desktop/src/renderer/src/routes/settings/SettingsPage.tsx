@@ -63,7 +63,7 @@ export function SettingsPage() {
         aria-labelledby={`settings-tab-${current}`}
         className="min-h-0 flex-1 overflow-y-auto"
       >
-        <div className="grid max-w-3xl content-start gap-8 p-6">
+        <div className="grid content-start gap-8 p-6">
           {current === 'general' ? <General /> : null}
           {current === 'email' ? <EmailAccounts /> : null}
           {current === 'forms' ? <FormSettings /> : null}

@@ -158,7 +158,7 @@ function Thread({ summary }: { summary: ConversationSummary }) {
   const data = conversation.data;
   if (!data) return <p className="p-6 text-[13px] text-faint">{t('common.loading')}</p>;
   return (
-    <article aria-label={data.title} className="grid max-w-3xl gap-4 p-6">
+    <article aria-label={data.title} className="grid gap-4 p-6">
       <header className="flex flex-wrap items-center gap-3">
         <h2 className="text-[15px] font-semibold">{data.title}</h2>
         {data.contactAddress ? <span className="text-xs text-soft">{data.contactAddress}</span> : null}

@@ -66,7 +66,7 @@ export function SetupPage() {
             <Loading />
           ) : null
         ) : (
-          <ol className="grid max-w-3xl gap-4" aria-label={t('setup.title')}>
+          <ol className="grid gap-4" aria-label={t('setup.title')}>
             <li className="rounded-md border border-rule bg-raised p-4">
               <LanguageField />
             </li>
@@ -128,7 +128,7 @@ export function SetupPage() {
           </ol>
         )}
         {s ? (
-          <div className="mt-6 flex max-w-3xl items-center justify-end gap-2">
+          <div className="mt-6 flex items-center justify-end gap-2">
             {finish.isError ? <Alert>{errorMessage(t, finish.error)}</Alert> : null}
             <span className="mr-auto text-xs text-soft">{t('setup.later')}</span>
             {done.every(Boolean) ? null : (

@@ -58,7 +58,7 @@ export function BrowserPage() {
           <EmptyState title={t('browser.emptyTitle')} body={t('browser.emptyBody')} />
         ) : null}
         {items.length ? (
-          <ul aria-label={t('browser.title')} className="grid max-w-4xl gap-3">
+          <ul aria-label={t('browser.title')} className="grid gap-3">
             {items.map((p) => (
               <ProfileRow key={p.id} profile={p} />
             ))}
