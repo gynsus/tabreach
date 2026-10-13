@@ -12,6 +12,7 @@
     "dev": "pnpm --filter @tabreach/desktop dev",
     "build": "pnpm --filter @tabreach/desktop build",
     "package": "pnpm --filter @tabreach/desktop package",
+    "dist": "pnpm --filter @tabreach/desktop dist",
     "typecheck": "pnpm -r --parallel typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",

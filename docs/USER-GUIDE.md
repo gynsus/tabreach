@@ -1,14 +1,24 @@
 # TabReach — User Guide
 
-This guide is for people using TabReach, not for developers. It describes the app as of Phase 8d; the signed Mac installer comes with Phase 8e.
+This guide is for people using TabReach, not for developers. It describes the app as of Phase 8e.
 
 ## What you need
 
-- A Mac (Apple Silicon or Intel) and Google Chrome installed.
+- A Mac with macOS 13 Ventura or later (Apple Silicon or Intel) and Google Chrome installed.
 - An API key from an AI provider if you want research and AI-written messages: Anthropic, OpenAI or OpenRouter. Templates work without one.
 - An email account to send from: Gmail (through your own Google OAuth client) or any mailbox with IMAP and SMTP.
 
 Everything runs on your Mac. Your data lives in `~/Library/Application Support/TabReach` and logs in `~/Library/Logs/TabReach`. Nothing is sent anywhere except to the sites you work with, your mail server and your AI provider.
+
+## Install, update and remove
+
+1. Download the DMG for your Mac: `TabReach-<version>-arm64.dmg` for Apple Silicon (M1 and later), `TabReach-<version>-x64.dmg` for Intel. Apple menu → About This Mac shows which one you have.
+2. Open the DMG and drag **TabReach** onto **Applications**.
+3. Start TabReach from Applications. A release build is signed and notarized by Apple, so macOS opens it after the usual "downloaded from the internet" question. A test build without Apple's signature is refused the first time: open System Settings → Privacy & Security and press **Open Anyway** next to TabReach.
+
+**Update:** quit TabReach, install the new version the same way and replace the old app. Your data stays where it is; before changing it, the new version makes a backup (see Data below).
+
+**Remove:** quit TabReach and move it from Applications to the Bin. Your data is not deleted with the app. To remove it too, delete `~/Library/Application Support/TabReach` and `~/Library/Logs/TabReach`. The browser profiles are in the first folder, so this also signs you out of every site you used in them. The keys and passwords TabReach stored are in the Keychain under "TabReach Safe Storage".
 
 ## First run
 
