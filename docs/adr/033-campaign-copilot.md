@@ -1,6 +1,6 @@
 # ADR 033 — Campaign copilot: a campaign drafted from the user's own words
 
-**Status:** Proposed (2026-10-13, Phase 9)
+**Status:** Accepted (2026-10-13, Phase 9c)
 
 ## Context
 
@@ -19,7 +19,7 @@ The idea was discussed in a UI and AI review on 2026-10-13. The direction agreed
   - the qualification condition never uses `contains` (audit 8d.5).
 
   A request that breaks a rule is shown as "asked for → not available → replaced with", for example an automatic LinkedIn message replaced by a task.
-- **A plan screen before the editor.** The plan is shown in plain words: goal, audience, what research looks for, the steps with their days, and the safety settings. Each item is marked clear, needs review or missing information; there are no confidence percentages. The dry run (`campaigns.preview`, docs/17) needs a saved campaign. So "Create draft" saves the plan as a never-launched draft, and the plan screen then offers the dry run on a chosen contact. "Discard" deletes the draft, which is allowed after a dry run (audit 8d.5). The copilot never launches a campaign and never enrolls anyone.
+- **A plan screen before the editor.** The plan is shown in plain words: the goal, the audience, what research looks for, the steps with their days, and the safety settings. Next to them are the requests that were replaced, the model's assumptions and warnings, and what the launch checks would still refuse. "Create draft" saves the plan as an ordinary never-launched draft with `campaigns.create` and opens it in the editor, where the dry run (`campaigns.preview`, docs/17) is one click away. Deleting the draft stays allowed after a dry run (audit 8d.5). The copilot never launches a campaign and never enrolls anyone. *Implemented as:* the dry run runs from the editor rather than from the plan screen, because it needs a saved campaign and the draft is saved by the same click.
 - **No contacts yet.** TabReach does not find lists. The plan says which CSV columns this campaign needs (for example the website for research and the first name for personalisation) and offers the import.
 - **Cost.** The calls go through the AI gateway with the monthly budget. They belong to no campaign until one is created, as with the person and company forms (docs/15).
 - **Untrusted text.** The user's description is the user's own words, not page content. Imported data that reaches the prompt, such as tags and company names, is fenced as untrusted (docs/15).
@@ -32,8 +32,9 @@ The idea was discussed in a UI and AI review on 2026-10-13. The direction agreed
 
 ## Consequences
 
-- New prompts `campaign.intent` v1 and `campaign.plan` v1 (docs/15), new protocol messages `copilot.intent` and `copilot.plan`, and a "Build with AI" entry on the Campaigns page next to "New campaign".
-- The plan screen reuses the dry run and draft deletion; the editor gains nothing new.
+- New prompts `campaign.intent` v1 and `campaign.plan` v1 (docs/15) and new protocol messages `copilot.intent` and `copilot.plan`. A "Build with AI" button sits on the Campaigns page next to "New campaign" and opens `#/campaigns/copilot`.
+- Without an AI key the copilot refuses before any call (`ai.no_key`), so no failed call is logged.
+- `CampaignService.problems(config)` exposes the launch checks without throwing; launch still refuses through them.
 - Tests run the validation and the fixed rules against hand-written proposals, including hostile ones, without calling a model.
 
 ## Migration impact

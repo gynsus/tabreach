@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { uuidv7, type Campaign, type CampaignStatus } from '@tabreach/protocol';
-import { Plus } from 'lucide-react';
+import { Plus, Sparkles } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router';
@@ -27,6 +27,7 @@ export const statusTone: Record<CampaignStatus, 'neutral' | 'ok' | 'warn' | 'acc
 
 export function CampaignsPage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const campaigns = useQuery({
@@ -50,6 +51,10 @@ export function CampaignsPage() {
               />
               {t('campaigns.showArchived')}
             </label>
+            <Button onClick={() => void navigate('/campaigns/copilot')}>
+              <Sparkles size={14} aria-hidden />
+              {t('copilot.action')}
+            </Button>
             <Button variant="primary" onClick={() => setCreating(true)}>
               <Plus size={14} aria-hidden />
               {t('campaigns.new')}

@@ -537,6 +537,15 @@ export class CampaignService {
   }
 
   private validate(config: CampaignConfig): void {
+    const fields = this.problems(config);
+    if (Object.keys(fields).length > 0) throw RpcError.validation(fields, 'campaign.invalid');
+  }
+
+  /**
+   * What a launch would refuse in this config, as field → error key; empty when it would launch.
+   * The campaign copilot shows the same problems on its plan (ADR 033).
+   */
+  problems(config: CampaignConfig): Record<string, string> {
     const fields: Record<string, string> = {};
     config.steps.forEach((step, i) => {
       if (step.type !== 'human_task') return;
@@ -595,7 +604,7 @@ export class CampaignService {
         fields[`steps.${i}.subject`] = 'template.unknownField';
       if (unknownPlaceholders(step.body).length > 0) fields[`steps.${i}.body`] = 'template.unknownField';
     });
-    if (Object.keys(fields).length > 0) throw RpcError.validation(fields, 'campaign.invalid');
+    return fields;
   }
 
   private setStatus(

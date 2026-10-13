@@ -9,6 +9,7 @@ export * from './events.js';
 export * from './redact.js';
 export * from './audit.js';
 export * from './campaigns.js';
+export * from './copilot.js';
 export * from './accounts.js';
 export * from './inbox.js';
 export * from './ai.js';
