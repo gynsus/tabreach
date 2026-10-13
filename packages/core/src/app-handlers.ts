@@ -26,6 +26,7 @@ import { CampaignResearch } from './research/campaign-research.js';
 import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
+import { CampaignCopilot } from './campaigns/copilot.js';
 import { CampaignService } from './campaigns/campaign-service.js';
 import { CampaignEngine } from './campaigns/engine.js';
 import { ContactPolicy } from './campaigns/policy.js';
@@ -114,6 +115,8 @@ export class AppServices {
   readonly policy: ContactPolicy;
   readonly engine: CampaignEngine;
   readonly campaigns: CampaignService;
+  /** The campaign copilot (ADR 033). */
+  readonly copilot: CampaignCopilot;
   readonly approvals: ApprovalService;
   readonly secrets: SecretStore;
   readonly accounts: AccountService;
@@ -403,6 +406,12 @@ export class AppServices {
       },
     );
     this.approvals = new ApprovalService(db, this.audit, this.engine, this.ledger, now, this.forms);
+    this.copilot = new CampaignCopilot({
+      ai: this.ai,
+      problems: (config) => this.campaigns.problems(config),
+      emailAccount: () => this.accounts.list().find((a) => a.status === 'active')?.id ?? null,
+      aiReady: () => this.ai.settings().keySet,
+    });
   }
 
   /** Registers every app-channel handler except those owned by CoreService itself (health, browser). */
@@ -414,345 +423,359 @@ export class AppServices {
       this.changed([...entities, 'activity']);
       return result;
     };
-    return peer
-      .handle('settings.ui.get', () => this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI)
-      .handle('settings.ui.update', (s) =>
-        mutate(['settings'], () => {
-          this.settings.set(UI_SETTINGS_KEY, s);
-          return s;
-        }),
-      )
-      .handle('companies.list', (p) => this.prospects.listCompanies(p))
-      .handle('companies.get', ({ id }) => this.prospects.getCompany(id))
-      .handle('companies.create', (p, c) =>
-        mutate(['company'], () =>
-          this.commands.once(c.idempotencyKey, 'companies.create', () =>
-            this.prospects.createCompany(p, ctx(c)),
+    return (
+      peer
+        .handle('settings.ui.get', () => this.settings.get(UI_SETTINGS_KEY, uiSettingsSchema) ?? DEFAULT_UI)
+        .handle('settings.ui.update', (s) =>
+          mutate(['settings'], () => {
+            this.settings.set(UI_SETTINGS_KEY, s);
+            return s;
+          }),
+        )
+        .handle('companies.list', (p) => this.prospects.listCompanies(p))
+        .handle('companies.get', ({ id }) => this.prospects.getCompany(id))
+        .handle('companies.create', (p, c) =>
+          mutate(['company'], () =>
+            this.commands.once(c.idempotencyKey, 'companies.create', () =>
+              this.prospects.createCompany(p, ctx(c)),
+            ),
           ),
-        ),
-      )
-      .handle('companies.update', (p, c) =>
-        mutate(['company'], () => this.prospects.updateCompany(p, ctx(c))),
-      )
-      .handle('contacts.list', (p) => this.prospects.listContacts(p))
-      .handle('contacts.get', ({ id }) => this.prospects.getContact(id))
-      .handle('contacts.create', (p, c) =>
-        mutate(['contact', 'company'], () =>
-          this.commands.once(c.idempotencyKey, 'contacts.create', () =>
-            this.prospects.createContact(p, ctx(c)),
+        )
+        .handle('companies.update', (p, c) =>
+          mutate(['company'], () => this.prospects.updateCompany(p, ctx(c))),
+        )
+        .handle('contacts.list', (p) => this.prospects.listContacts(p))
+        .handle('contacts.get', ({ id }) => this.prospects.getContact(id))
+        .handle('contacts.create', (p, c) =>
+          mutate(['contact', 'company'], () =>
+            this.commands.once(c.idempotencyKey, 'contacts.create', () =>
+              this.prospects.createContact(p, ctx(c)),
+            ),
           ),
-        ),
-      )
-      .handle('contacts.update', (p, c) =>
-        mutate(['contact', 'company'], () => this.prospects.updateContact(p, ctx(c))),
-      )
-      .handle('imports.prospects.preview', ({ csv }) => this.imports.preview(csv))
-      .handle('imports.prospects.commit', (p, c) =>
-        mutate(['company', 'contact'], () =>
-          this.commands.once(c.idempotencyKey, 'imports.prospects.commit', () =>
-            this.imports.commit(p.csv, p.mapping, p.onMatch, ctx(c)),
+        )
+        .handle('contacts.update', (p, c) =>
+          mutate(['contact', 'company'], () => this.prospects.updateContact(p, ctx(c))),
+        )
+        .handle('imports.prospects.preview', ({ csv }) => this.imports.preview(csv))
+        .handle('imports.prospects.commit', (p, c) =>
+          mutate(['company', 'contact'], () =>
+            this.commands.once(c.idempotencyKey, 'imports.prospects.commit', () =>
+              this.imports.commit(p.csv, p.mapping, p.onMatch, ctx(c)),
+            ),
           ),
-        ),
-      )
-      .handle('exports.prospects', (_p, c) => mutate([], () => this.exports.exportProspects(ctx(c))))
-      .handle('exports.campaign', (p, c) =>
-        mutate([], () => this.exports.exportCampaign(p.campaignId, ctx(c))),
-      )
-      .handle('suppressions.list', (p) => this.suppressions.list(p))
-      .handle('suppressions.add', (p, c) =>
-        mutate(['suppression'], () => this.suppressions.add(p.kind, p.value, ctx(c))),
-      )
-      .handle('suppressions.remove', ({ id }, c) =>
-        mutate(['suppression'], () => ({ removed: this.suppressions.remove(id, ctx(c)) })),
-      )
-      .handle('suppressions.import', ({ csv }, c) =>
-        mutate(['suppression'], () =>
-          this.commands.once(c.idempotencyKey, 'suppressions.import', () =>
-            this.suppressions.importCsv(csv, ctx(c)),
+        )
+        .handle('exports.prospects', (_p, c) => mutate([], () => this.exports.exportProspects(ctx(c))))
+        .handle('exports.campaign', (p, c) =>
+          mutate([], () => this.exports.exportCampaign(p.campaignId, ctx(c))),
+        )
+        .handle('suppressions.list', (p) => this.suppressions.list(p))
+        .handle('suppressions.add', (p, c) =>
+          mutate(['suppression'], () => this.suppressions.add(p.kind, p.value, ctx(c))),
+        )
+        .handle('suppressions.remove', ({ id }, c) =>
+          mutate(['suppression'], () => ({ removed: this.suppressions.remove(id, ctx(c)) })),
+        )
+        .handle('suppressions.import', ({ csv }, c) =>
+          mutate(['suppression'], () =>
+            this.commands.once(c.idempotencyKey, 'suppressions.import', () =>
+              this.suppressions.importCsv(csv, ctx(c)),
+            ),
           ),
-        ),
-      )
-      .handle('campaigns.list', ({ includeArchived }) => ({ items: this.campaigns.list(includeArchived) }))
-      .handle('campaigns.get', ({ id }) => this.campaigns.get(id))
-      .handle('campaigns.create', (p, c) =>
-        mutate(['campaign'], () =>
-          this.commands.once(c.idempotencyKey, 'campaigns.create', () => this.campaigns.create(p, ctx(c))),
-        ),
-      )
-      .handle('campaigns.clone', (p, c) =>
-        mutate(['campaign'], () =>
-          this.commands.once(c.idempotencyKey, 'campaigns.clone', () => this.campaigns.clone(p, ctx(c))),
-        ),
-      )
-      .handle('campaigns.preview', (p, c) =>
-        // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
-        this.campaigns.preview(p, AbortSignal.timeout(140_000), c.correlationId),
-      )
-      .handle('campaigns.update', (p, c) => mutate(['campaign'], () => this.campaigns.update(p, ctx(c))))
-      .handle('campaigns.launch', ({ id }, c) =>
-        mutate(['campaign', 'enrollment'], () => this.campaigns.launch(id, ctx(c))),
-      )
-      .handle('campaigns.pause', ({ id }, c) =>
-        mutate(['campaign', 'enrollment'], () => this.campaigns.pause(id, ctx(c))),
-      )
-      .handle('campaigns.resume', ({ id }, c) =>
-        mutate(['campaign', 'enrollment'], () => this.campaigns.resume(id, ctx(c))),
-      )
-      .handle('campaigns.archive', ({ id }, c) =>
-        mutate(['campaign', 'enrollment', 'approval'], () => this.campaigns.archive(id, ctx(c))),
-      )
-      .handle('campaigns.migrate', ({ id }, c) =>
-        mutate(['campaign', 'enrollment', 'approval', 'activity'], () => this.campaigns.migrate(id, ctx(c))),
-      )
-      .handle('tasks.list', ({ status, limit, offset }) =>
-        this.campaigns.listTasks(status, { limit, offset }),
-      )
-      .handle('tasks.resolve', ({ id, outcome }, c) =>
-        mutate(['task', 'enrollment', 'campaign', 'activity'], () => {
-          this.campaigns.resolveTask(id, outcome, ctx(c));
-          return { ok: true as const };
-        }),
-      )
-      .handle('campaigns.research', ({ id }, c) =>
-        mutate(['research', 'enrollment', 'activity'], () => this.campaigns.researchCompanies(id, ctx(c))),
-      )
-      .handle('campaigns.delete', ({ id }, c) =>
-        mutate(['campaign'], () => {
-          this.campaigns.delete(id, ctx(c));
-          return { ok: true as const };
-        }),
-      )
-      .handle('campaigns.enroll', (p, c) =>
-        mutate(['campaign', 'enrollment'], () =>
-          this.commands.once(c.idempotencyKey, 'campaigns.enroll', () =>
-            this.campaigns.enroll(p.campaignId, p.contactIds, ctx(c)),
+        )
+        .handle('campaigns.list', ({ includeArchived }) => ({ items: this.campaigns.list(includeArchived) }))
+        .handle('campaigns.get', ({ id }) => this.campaigns.get(id))
+        .handle('campaigns.create', (p, c) =>
+          mutate(['campaign'], () =>
+            this.commands.once(c.idempotencyKey, 'campaigns.create', () => this.campaigns.create(p, ctx(c))),
           ),
-        ),
-      )
-      .handle('enrollments.list', (p) => this.campaigns.listEnrollments(p.campaignId, p))
-      .handle('enrollments.pause', ({ id }, c) =>
-        mutate(['enrollment', 'campaign'], () => this.campaigns.pauseEnrollment(id, ctx(c))),
-      )
-      .handle('enrollments.resume', ({ id }, c) =>
-        mutate(['enrollment', 'campaign'], () => this.campaigns.resumeEnrollment(id, ctx(c))),
-      )
-      .handle('enrollments.stop', ({ id }, c) =>
-        mutate(['enrollment', 'campaign', 'approval'], () => this.campaigns.stopEnrollment(id, ctx(c))),
-      )
-      .handle('approvals.pending', ({ campaignId }) => ({ items: this.approvals.pending(campaignId) }))
-      .handle('approvals.approve', (p, c) =>
-        mutate(['approval', 'enrollment', 'campaign'], () => {
-          this.approvals.approve(p.approvalId, p.contentHash, ctx(c));
+        )
+        .handle('campaigns.clone', (p, c) =>
+          mutate(['campaign'], () =>
+            this.commands.once(c.idempotencyKey, 'campaigns.clone', () => this.campaigns.clone(p, ctx(c))),
+          ),
+        )
+        .handle('campaigns.preview', (p, c) =>
+          // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
+          this.campaigns.preview(p, AbortSignal.timeout(140_000), c.correlationId),
+        )
+        .handle('campaigns.update', (p, c) => mutate(['campaign'], () => this.campaigns.update(p, ctx(c))))
+        .handle('campaigns.launch', ({ id }, c) =>
+          mutate(['campaign', 'enrollment'], () => this.campaigns.launch(id, ctx(c))),
+        )
+        .handle('campaigns.pause', ({ id }, c) =>
+          mutate(['campaign', 'enrollment'], () => this.campaigns.pause(id, ctx(c))),
+        )
+        .handle('campaigns.resume', ({ id }, c) =>
+          mutate(['campaign', 'enrollment'], () => this.campaigns.resume(id, ctx(c))),
+        )
+        .handle('campaigns.archive', ({ id }, c) =>
+          mutate(['campaign', 'enrollment', 'approval'], () => this.campaigns.archive(id, ctx(c))),
+        )
+        .handle('campaigns.migrate', ({ id }, c) =>
+          mutate(['campaign', 'enrollment', 'approval', 'activity'], () =>
+            this.campaigns.migrate(id, ctx(c)),
+          ),
+        )
+        .handle('tasks.list', ({ status, limit, offset }) =>
+          this.campaigns.listTasks(status, { limit, offset }),
+        )
+        .handle('tasks.resolve', ({ id, outcome }, c) =>
+          mutate(['task', 'enrollment', 'campaign', 'activity'], () => {
+            this.campaigns.resolveTask(id, outcome, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('campaigns.research', ({ id }, c) =>
+          mutate(['research', 'enrollment', 'activity'], () => this.campaigns.researchCompanies(id, ctx(c))),
+        )
+        .handle('campaigns.delete', ({ id }, c) =>
+          mutate(['campaign'], () => {
+            this.campaigns.delete(id, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('campaigns.enroll', (p, c) =>
+          mutate(['campaign', 'enrollment'], () =>
+            this.commands.once(c.idempotencyKey, 'campaigns.enroll', () =>
+              this.campaigns.enroll(p.campaignId, p.contactIds, ctx(c)),
+            ),
+          ),
+        )
+        .handle('enrollments.list', (p) => this.campaigns.listEnrollments(p.campaignId, p))
+        .handle('enrollments.pause', ({ id }, c) =>
+          mutate(['enrollment', 'campaign'], () => this.campaigns.pauseEnrollment(id, ctx(c))),
+        )
+        .handle('enrollments.resume', ({ id }, c) =>
+          mutate(['enrollment', 'campaign'], () => this.campaigns.resumeEnrollment(id, ctx(c))),
+        )
+        .handle('enrollments.stop', ({ id }, c) =>
+          mutate(['enrollment', 'campaign', 'approval'], () => this.campaigns.stopEnrollment(id, ctx(c))),
+        )
+        .handle('approvals.pending', ({ campaignId }) => ({ items: this.approvals.pending(campaignId) }))
+        .handle('approvals.approve', (p, c) =>
+          mutate(['approval', 'enrollment', 'campaign'], () => {
+            this.approvals.approve(p.approvalId, p.contentHash, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('approvals.reject', (p, c) =>
+          mutate(['approval', 'enrollment', 'campaign'], () => {
+            this.approvals.reject(p.approvalId, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('approvals.skip', (p, c) =>
+          mutate(['approval', 'enrollment', 'campaign'], () => {
+            this.approvals.skip(p.approvalId, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('drafts.history', (p) => ({ items: this.approvals.history(p.draftId) }))
+        .handle('drafts.revise', (p, c) =>
+          mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
+        )
+        .handle('packs.health', () => ({ items: this.browser.packHealth() }))
+        .handle('linkedin.settings.get', () => this.linkedin.settings())
+        .handle('linkedin.settings.update', (p, c) =>
+          mutate(['settings', 'activity'], () => this.linkedin.update(p, ctx(c))),
+        )
+        .handle('forms.sender.get', () => this.forms.sender())
+        .handle('forms.sender.update', (p, c) =>
+          mutate(['settings', 'activity', 'approval'], () => {
+            const sender = this.forms.updateSender(p, ctx(c));
+            this.engine.reprepareForms(c.correlationId);
+            return sender;
+          }),
+        )
+        .handle('forms.screenshot', ({ approvalId }) => ({ png: this.forms.screenshotOf(approvalId) }))
+        .handle('retention.get', () => ({
+          settings: this.retention.settings(),
+          lastRun: this.retention.lastRun(),
+        }))
+        .handle('retention.update', (p, c) =>
+          mutate(['settings'], () => {
+            const settings = this.retention.update(p, ctx(c));
+            return { settings, lastRun: this.retention.lastRun() };
+          }),
+        )
+        .handle('policy.settings.get', () => this.policy.current())
+        .handle('policy.settings.update', (p, c) =>
+          mutate(['settings'], () => {
+            this.policy.update(p);
+            this.audit.record({
+              actorType: 'user',
+              actionType: 'policy.updated',
+              objectType: 'settings',
+              correlationId: c.correlationId,
+            });
+            return p;
+          }),
+        )
+        .handle('jobs.needsAttention', () => ({
+          items: this.jobs.needsAttention().map((j) => ({
+            id: j.id,
+            type: j.type,
+            status: j.status,
+            attempts: j.attempts,
+            lastErrorClass: j.last_error_class,
+            lastError: j.last_error_redacted,
+            updatedAt: j.updated_at,
+          })),
+        }))
+        .handle('conversations.list', (p) => this.inbox.list(p.filter, p))
+        .handle('conversations.get', ({ id }) => ({
+          ...this.inbox.get(id),
+          ...this.replies.forConversation(id),
+        }))
+        .handle('conversations.markRead', ({ id }) =>
+          mutate(['conversation'], () => {
+            this.inbox.markRead(id);
+            return { ok: true as const };
+          }),
+        )
+        .handle('conversations.review', (p, c) =>
+          mutate(['conversation', 'enrollment', 'campaign'], () => {
+            this.inbox.review(p.messageId, p.decision, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('conversations.reply', (p, c) =>
+          mutate(['conversation'], () =>
+            this.commands.once(c.idempotencyKey, 'conversations.reply', () => this.replies.send(p, ctx(c))),
+          ),
+        )
+        .handle('conversations.draftReply', (p, c) =>
+          // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
+          this.replies.suggest(
+            p.conversationId,
+            p.instructions,
+            AbortSignal.timeout(110_000),
+            c.correlationId,
+          ),
+        )
+        // Bounded below the renderer's wait (bridge.ts), like the reply suggestion.
+        .handle('copilot.intent', (p, c) =>
+          this.copilot.intent(p, AbortSignal.timeout(110_000), c.correlationId),
+        )
+        .handle('copilot.plan', (p, c) => this.copilot.plan(p, AbortSignal.timeout(140_000), c.correlationId))
+        .handle('conversations.retryReply', ({ id }, c) =>
+          mutate(['conversation'], () => this.replies.retry(id, ctx(c))),
+        )
+        .handle('research.start', (p, c) => mutate(['research'], () => this.research.start(p, ctx(c))))
+        .handle('research.list', ({ companyId }) => ({ items: this.research.list(companyId) }))
+        .handle('research.listForContact', ({ contactId }) => ({
+          items: this.research.listForContact(contactId),
+        }))
+        .handle('research.get', ({ id }) => this.research.get(id))
+        .handle('research.factSource', ({ factId }) => this.research.factSource(factId))
+        .handle('ai.settings.get', () => this.ai.settings())
+        .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
+        .handle('ai.setKey', async ({ provider, apiKey }, c) => {
+          await this.ai.setKey(provider, apiKey, ctx(c));
+          this.changed(['settings', 'activity']);
           return { ok: true as const };
-        }),
-      )
-      .handle('approvals.reject', (p, c) =>
-        mutate(['approval', 'enrollment', 'campaign'], () => {
-          this.approvals.reject(p.approvalId, ctx(c));
+        })
+        .handle('ai.removeKey', ({ provider }, c) =>
+          mutate(['settings'], () => {
+            this.ai.removeKey(provider, ctx(c));
+            return { ok: true as const };
+          }),
+        )
+        .handle('ai.testKey', (_p, c) => this.ai.testKey(c.correlationId))
+        .handle('ai.usage', ({ month }) => this.ai.usage(month))
+        .handle('accounts.list', () => ({ items: this.accounts.list() }))
+        .handle('accounts.connectImap', async (p, c) => {
+          const account = await this.accounts.connectImap(p, ctx(c));
+          this.changed(['account', 'activity']);
+          return account;
+        })
+        .handle('accounts.connectGmail', async (p, c) => {
+          const account = await this.accounts.connectGmail(p, ctx(c));
+          this.changed(['account', 'activity']);
+          return account;
+        })
+        .handle('accounts.connectMicrosoft', async (p, c) => {
+          const account = await this.accounts.connectMicrosoft(p, ctx(c));
+          this.changed(['account', 'activity']);
+          return account;
+        })
+        .handle('accounts.update', async (p, c) => {
+          const account = await this.accounts.update(p, ctx(c));
+          this.changed(['account', 'activity']);
+          return account;
+        })
+        .handle('accounts.test', ({ id }) => this.accounts.test(id))
+        .handle('accounts.disconnect', async ({ id }, c) => {
+          await this.accounts.disconnect(id, ctx(c));
+          this.changed(['account', 'activity']);
           return { ok: true as const };
-        }),
-      )
-      .handle('approvals.skip', (p, c) =>
-        mutate(['approval', 'enrollment', 'campaign'], () => {
-          this.approvals.skip(p.approvalId, ctx(c));
+        })
+        .handle('contacts.replyHold', ({ id }) => {
+          const contact = this.prospects.getContact(id);
+          return { hold: this.policy.replyHold(id, contact.companyId) };
+        })
+        .handle('contacts.releaseReplyHold', ({ id }, c) =>
+          mutate(['contact'], () => {
+            this.prospects.getContact(id);
+            this.db
+              .prepare('UPDATE contacts SET reply_hold_released_at = ?, updated_at = ? WHERE id = ?')
+              .run(this.now().toISOString(), this.now().toISOString(), id);
+            this.audit.record({
+              actorType: 'user',
+              actionType: 'contact.reply_hold_released',
+              objectType: 'contact',
+              objectId: id,
+              correlationId: c.correlationId,
+            });
+            return { ok: true as const };
+          }),
+        )
+        .handle('sideEffects.uncertain', () => ({ items: this.uncertainSends() }))
+        .handle('sideEffects.resolve', ({ id, outcome }, c) =>
+          mutate(['job', 'enrollment', 'conversation'], () =>
+            this.resolveSideEffect(id, outcome, c.correlationId),
+          ),
+        )
+        .handle('jobs.retry', ({ id }, c) =>
+          mutate(['job', 'enrollment'], () => this.jobAction(id, 'retry', c.correlationId)),
+        )
+        .handle('jobs.dismiss', ({ id }, c) =>
+          mutate(['job'], () => this.jobAction(id, 'dismiss', c.correlationId)),
+        )
+        .handle('activity.list', (p) => this.timeline.list(p))
+        .handle('profiles.list', (p) => ({ items: this.browser.list(p.includeArchived) }))
+        .handle('profiles.create', (p, c) => this.browser.create(p, ctx(c)))
+        .handle('profiles.update', (p, c) => this.browser.rename(p.id, p.name, ctx(c)))
+        .handle('profiles.archive', (p, c) => {
+          this.requireNotFormSender(p.id);
+          return this.browser.archive(p.id, ctx(c));
+        })
+        .handle('profiles.delete', async (p, c) => {
+          this.requireNotFormSender(p.id);
+          await this.browser.delete(p.id, p.confirmName, ctx(c));
           return { ok: true as const };
-        }),
-      )
-      .handle('drafts.history', (p) => ({ items: this.approvals.history(p.draftId) }))
-      .handle('drafts.revise', (p, c) =>
-        mutate(['approval'], () => this.approvals.revise(p.draftId, p.subject, p.body, ctx(c))),
-      )
-      .handle('packs.health', () => ({ items: this.browser.packHealth() }))
-      .handle('linkedin.settings.get', () => this.linkedin.settings())
-      .handle('linkedin.settings.update', (p, c) =>
-        mutate(['settings', 'activity'], () => this.linkedin.update(p, ctx(c))),
-      )
-      .handle('forms.sender.get', () => this.forms.sender())
-      .handle('forms.sender.update', (p, c) =>
-        mutate(['settings', 'activity', 'approval'], () => {
-          const sender = this.forms.updateSender(p, ctx(c));
-          this.engine.reprepareForms(c.correlationId);
-          return sender;
-        }),
-      )
-      .handle('forms.screenshot', ({ approvalId }) => ({ png: this.forms.screenshotOf(approvalId) }))
-      .handle('retention.get', () => ({
-        settings: this.retention.settings(),
-        lastRun: this.retention.lastRun(),
-      }))
-      .handle('retention.update', (p, c) =>
-        mutate(['settings'], () => {
-          const settings = this.retention.update(p, ctx(c));
-          return { settings, lastRun: this.retention.lastRun() };
-        }),
-      )
-      .handle('policy.settings.get', () => this.policy.current())
-      .handle('policy.settings.update', (p, c) =>
-        mutate(['settings'], () => {
-          this.policy.update(p);
-          this.audit.record({
-            actorType: 'user',
-            actionType: 'policy.updated',
-            objectType: 'settings',
-            correlationId: c.correlationId,
-          });
-          return p;
-        }),
-      )
-      .handle('jobs.needsAttention', () => ({
-        items: this.jobs.needsAttention().map((j) => ({
-          id: j.id,
-          type: j.type,
-          status: j.status,
-          attempts: j.attempts,
-          lastErrorClass: j.last_error_class,
-          lastError: j.last_error_redacted,
-          updatedAt: j.updated_at,
-        })),
-      }))
-      .handle('conversations.list', (p) => this.inbox.list(p.filter, p))
-      .handle('conversations.get', ({ id }) => ({
-        ...this.inbox.get(id),
-        ...this.replies.forConversation(id),
-      }))
-      .handle('conversations.markRead', ({ id }) =>
-        mutate(['conversation'], () => {
-          this.inbox.markRead(id);
+        })
+        .handle('profiles.open', (p, c) => this.browser.open(p.id, p.startUrl, ctx(c)))
+        .handle('profiles.close', (p, c) => this.browser.close(p.id, ctx(c)))
+        .handle('profiles.focus', async (p) => {
+          await this.browser.focus(p.id);
           return { ok: true as const };
-        }),
-      )
-      .handle('conversations.review', (p, c) =>
-        mutate(['conversation', 'enrollment', 'campaign'], () => {
-          this.inbox.review(p.messageId, p.decision, ctx(c));
+        })
+        .handle('profiles.check', (p) => this.browser.check(p.id))
+        .handle('profiles.takeControl', (p, c) => this.signInChecks.takeControl(p.id, ctx(c)))
+        .handle('profiles.returnControl', (p, c) => this.signInChecks.returnControl(p.id, ctx(c)))
+        .handle('app.control.get', () => this.appControl.get())
+        .handle('app.pauseAll', (_p, c) => this.appControl.pauseAll(ctx(c)))
+        .handle('app.resumeAll', (_p, c) => this.appControl.resumeAll(ctx(c)))
+        .handle('app.emergencyStop', (_p, c) => this.appControl.emergencyStop(ctx(c)))
+        .handle('app.setKeepAwake', (p, c) => this.appControl.setKeepAwake(p.keepAwake, ctx(c)))
+        .handle('profiles.checkSignIn', (p, c) => this.signInChecks.start(p.id, p.packId, ctx(c)))
+        .handle('interventions.list', () => ({ items: this.signInChecks.interventions() }))
+        .handle('interventions.resolve', async (p, c) => {
+          await this.signInChecks.resolve(p.id, p.outcome, ctx(c));
           return { ok: true as const };
-        }),
-      )
-      .handle('conversations.reply', (p, c) =>
-        mutate(['conversation'], () =>
-          this.commands.once(c.idempotencyKey, 'conversations.reply', () => this.replies.send(p, ctx(c))),
-        ),
-      )
-      .handle('conversations.draftReply', (p, c) =>
-        // Bounded below the renderer's wait (bridge.ts), so a slow AI call ends here first.
-        this.replies.suggest(p.conversationId, p.instructions, AbortSignal.timeout(110_000), c.correlationId),
-      )
-      .handle('conversations.retryReply', ({ id }, c) =>
-        mutate(['conversation'], () => this.replies.retry(id, ctx(c))),
-      )
-      .handle('research.start', (p, c) => mutate(['research'], () => this.research.start(p, ctx(c))))
-      .handle('research.list', ({ companyId }) => ({ items: this.research.list(companyId) }))
-      .handle('research.listForContact', ({ contactId }) => ({
-        items: this.research.listForContact(contactId),
-      }))
-      .handle('research.get', ({ id }) => this.research.get(id))
-      .handle('research.factSource', ({ factId }) => this.research.factSource(factId))
-      .handle('ai.settings.get', () => this.ai.settings())
-      .handle('ai.settings.update', (p, c) => mutate(['settings'], () => this.ai.update(p, ctx(c))))
-      .handle('ai.setKey', async ({ provider, apiKey }, c) => {
-        await this.ai.setKey(provider, apiKey, ctx(c));
-        this.changed(['settings', 'activity']);
-        return { ok: true as const };
-      })
-      .handle('ai.removeKey', ({ provider }, c) =>
-        mutate(['settings'], () => {
-          this.ai.removeKey(provider, ctx(c));
-          return { ok: true as const };
-        }),
-      )
-      .handle('ai.testKey', (_p, c) => this.ai.testKey(c.correlationId))
-      .handle('ai.usage', ({ month }) => this.ai.usage(month))
-      .handle('accounts.list', () => ({ items: this.accounts.list() }))
-      .handle('accounts.connectImap', async (p, c) => {
-        const account = await this.accounts.connectImap(p, ctx(c));
-        this.changed(['account', 'activity']);
-        return account;
-      })
-      .handle('accounts.connectGmail', async (p, c) => {
-        const account = await this.accounts.connectGmail(p, ctx(c));
-        this.changed(['account', 'activity']);
-        return account;
-      })
-      .handle('accounts.connectMicrosoft', async (p, c) => {
-        const account = await this.accounts.connectMicrosoft(p, ctx(c));
-        this.changed(['account', 'activity']);
-        return account;
-      })
-      .handle('accounts.update', async (p, c) => {
-        const account = await this.accounts.update(p, ctx(c));
-        this.changed(['account', 'activity']);
-        return account;
-      })
-      .handle('accounts.test', ({ id }) => this.accounts.test(id))
-      .handle('accounts.disconnect', async ({ id }, c) => {
-        await this.accounts.disconnect(id, ctx(c));
-        this.changed(['account', 'activity']);
-        return { ok: true as const };
-      })
-      .handle('contacts.replyHold', ({ id }) => {
-        const contact = this.prospects.getContact(id);
-        return { hold: this.policy.replyHold(id, contact.companyId) };
-      })
-      .handle('contacts.releaseReplyHold', ({ id }, c) =>
-        mutate(['contact'], () => {
-          this.prospects.getContact(id);
-          this.db
-            .prepare('UPDATE contacts SET reply_hold_released_at = ?, updated_at = ? WHERE id = ?')
-            .run(this.now().toISOString(), this.now().toISOString(), id);
-          this.audit.record({
-            actorType: 'user',
-            actionType: 'contact.reply_hold_released',
-            objectType: 'contact',
-            objectId: id,
-            correlationId: c.correlationId,
-          });
-          return { ok: true as const };
-        }),
-      )
-      .handle('sideEffects.uncertain', () => ({ items: this.uncertainSends() }))
-      .handle('sideEffects.resolve', ({ id, outcome }, c) =>
-        mutate(['job', 'enrollment', 'conversation'], () =>
-          this.resolveSideEffect(id, outcome, c.correlationId),
-        ),
-      )
-      .handle('jobs.retry', ({ id }, c) =>
-        mutate(['job', 'enrollment'], () => this.jobAction(id, 'retry', c.correlationId)),
-      )
-      .handle('jobs.dismiss', ({ id }, c) =>
-        mutate(['job'], () => this.jobAction(id, 'dismiss', c.correlationId)),
-      )
-      .handle('activity.list', (p) => this.timeline.list(p))
-      .handle('profiles.list', (p) => ({ items: this.browser.list(p.includeArchived) }))
-      .handle('profiles.create', (p, c) => this.browser.create(p, ctx(c)))
-      .handle('profiles.update', (p, c) => this.browser.rename(p.id, p.name, ctx(c)))
-      .handle('profiles.archive', (p, c) => {
-        this.requireNotFormSender(p.id);
-        return this.browser.archive(p.id, ctx(c));
-      })
-      .handle('profiles.delete', async (p, c) => {
-        this.requireNotFormSender(p.id);
-        await this.browser.delete(p.id, p.confirmName, ctx(c));
-        return { ok: true as const };
-      })
-      .handle('profiles.open', (p, c) => this.browser.open(p.id, p.startUrl, ctx(c)))
-      .handle('profiles.close', (p, c) => this.browser.close(p.id, ctx(c)))
-      .handle('profiles.focus', async (p) => {
-        await this.browser.focus(p.id);
-        return { ok: true as const };
-      })
-      .handle('profiles.check', (p) => this.browser.check(p.id))
-      .handle('profiles.takeControl', (p, c) => this.signInChecks.takeControl(p.id, ctx(c)))
-      .handle('profiles.returnControl', (p, c) => this.signInChecks.returnControl(p.id, ctx(c)))
-      .handle('app.control.get', () => this.appControl.get())
-      .handle('app.pauseAll', (_p, c) => this.appControl.pauseAll(ctx(c)))
-      .handle('app.resumeAll', (_p, c) => this.appControl.resumeAll(ctx(c)))
-      .handle('app.emergencyStop', (_p, c) => this.appControl.emergencyStop(ctx(c)))
-      .handle('app.setKeepAwake', (p, c) => this.appControl.setKeepAwake(p.keepAwake, ctx(c)))
-      .handle('profiles.checkSignIn', (p, c) => this.signInChecks.start(p.id, p.packId, ctx(c)))
-      .handle('interventions.list', () => ({ items: this.signInChecks.interventions() }))
-      .handle('interventions.resolve', async (p, c) => {
-        await this.signInChecks.resolve(p.id, p.outcome, ctx(c));
-        return { ok: true as const };
-      });
+        })
+    );
   }
 
   private jobAction(id: string, action: 'retry' | 'dismiss', correlationId: string): { ok: true } {

@@ -411,6 +411,22 @@ test('a dry run shows the first message for one contact without sending; a copy 
   await expect(page.getByRole('link', { name: /E2E campaign/ })).toContainText('Archived');
 });
 
+test('the campaign copilot starts from a description and needs an AI key', async () => {
+  await go('#/campaigns');
+  await page.getByRole('button', { name: 'Build with AI' }).click();
+  await expect(page.getByRole('heading', { name: 'Build a campaign with AI', level: 1 })).toBeVisible();
+  const continueButton = page.getByRole('button', { name: 'Continue' });
+  await expect(continueButton).toBeDisabled();
+  await page
+    .getByLabel('What do you want to achieve, and with whom?')
+    .fill('Offer warehouse software to logistics companies in Germany.');
+  await continueButton.click();
+  // No AI key in this run: the copilot says so and nothing is created.
+  await expect(page.getByRole('alert')).toHaveText('Add an AI provider key in Settings → AI.');
+  await go('#/campaigns');
+  await expect(page.getByRole('link', { name: /warehouse/ })).toHaveCount(0);
+});
+
 test('connecting an email account fills in known servers and reports a wrong server', async () => {
   await go('#/settings/email');
   await page.getByRole('button', { name: 'Connect an account' }).click();

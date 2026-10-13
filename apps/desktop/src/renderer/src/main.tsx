@@ -12,6 +12,7 @@ import { ApprovalsPage } from './routes/approvals/ApprovalsPage';
 import { InboxPage } from './routes/inbox/InboxPage';
 import { CampaignPage } from './routes/campaigns/CampaignPage';
 import { CampaignsPage } from './routes/campaigns/CampaignsPage';
+import { CopilotPage } from './routes/campaigns/CopilotPage';
 import { CompaniesPage } from './routes/companies/CompaniesPage';
 import { CompanyPage } from './routes/companies/CompanyPage';
 import { ContactPage } from './routes/contacts/ContactPage';
@@ -38,6 +39,7 @@ const router = createHashRouter([
       { path: 'companies/:id', element: <CompanyPage /> },
       { path: 'suppressions', element: <SuppressionsPage /> },
       { path: 'campaigns', element: <CampaignsPage /> },
+      { path: 'campaigns/copilot', element: <CopilotPage /> },
       { path: 'campaigns/:id', element: <CampaignPage /> },
       { path: 'approvals', element: <ApprovalsPage /> },
       { path: 'inbox', element: <InboxPage /> },

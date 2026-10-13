@@ -1,5 +1,11 @@
 import { z } from 'zod';
 import {
+  copilotIntentRequestSchema,
+  copilotIntentSchema,
+  copilotPlanRequestSchema,
+  copilotPlanSchema,
+} from './copilot.js';
+import {
   browserProfileSchema,
   profileCreateSchema,
   profileDeleteSchema,
@@ -353,6 +359,20 @@ export const requests = {
     response: campaignSchema,
   },
   /** A dry run: nothing is stored or sent; an AI message is written only with `generate`. */
+  /** Campaign copilot (ADR 033): the description understood, and the questions it still needs. */
+  'copilot.intent': {
+    channel: 'app',
+    kind: 'query',
+    request: copilotIntentRequestSchema,
+    response: copilotIntentSchema,
+  },
+  /** Campaign copilot: a plan checked like the editor's; nothing is saved. */
+  'copilot.plan': {
+    channel: 'app',
+    kind: 'query',
+    request: copilotPlanRequestSchema,
+    response: copilotPlanSchema,
+  },
   'campaigns.preview': {
     channel: 'app',
     kind: 'query',
