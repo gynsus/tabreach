@@ -165,6 +165,11 @@ describe('campaign engine', () => {
     expect(h.channel.deliveries()).toHaveLength(6);
     expect(h.enrollments(campaign).map((e) => e.status)).toEqual(['completed', 'completed', 'completed']);
     expect(h.services.campaigns.get(campaign).enrollments.completed).toBe(3);
+    expect(h.services.campaigns.get(campaign).results).toEqual({ sent: 6, replied: 0 });
+    h.db
+      .prepare('UPDATE campaign_enrollments SET last_reply_at = ? WHERE contact_id = ?')
+      .run(new Date().toISOString(), bob);
+    expect(h.services.campaigns.get(campaign).results).toEqual({ sent: 6, replied: 1 });
   });
 
   it('resumes after a restart', async () => {

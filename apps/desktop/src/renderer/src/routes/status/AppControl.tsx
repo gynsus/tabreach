@@ -49,9 +49,7 @@ export function AppControlSection() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const control = useAppControl();
-  const act = useControlAction();
   const toast = useToast();
-  const [confirmStop, setConfirmStop] = useState(false);
   const keepAwake = useMutation({
     mutationFn: (value: boolean) => call('app.setKeepAwake', { keepAwake: value }),
     onSuccess: () => invalidateEntities(qc, ['settings']),
@@ -68,38 +66,7 @@ export function AppControlSection() {
         {t('control.title')}
       </h2>
       <p className="text-soft">{t('control.hint')}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        {c?.paused ? (
-          <Button variant="primary" onClick={() => act.mutate('app.resumeAll')} disabled={act.isPending}>
-            {t('control.resume')}
-          </Button>
-        ) : (
-          <Button onClick={() => act.mutate('app.pauseAll')} disabled={act.isPending}>
-            {t('control.pauseAll')}
-          </Button>
-        )}
-        {confirmStop ? (
-          <span className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              onClick={() => {
-                setConfirmStop(false);
-                act.mutate('app.emergencyStop');
-              }}
-              autoFocus
-            >
-              {t('control.confirmEmergency')}
-            </Button>
-            <Button variant="ghost" onClick={() => setConfirmStop(false)}>
-              {t('common.cancel')}
-            </Button>
-          </span>
-        ) : (
-          <Button variant="danger" onClick={() => setConfirmStop(true)} disabled={act.isPending}>
-            {t('control.emergencyStop')}
-          </Button>
-        )}
-      </div>
+      <AppControlButtons />
       <p className="text-xs text-soft">{t('control.emergencyHint')}</p>
       {control.isError ? <Alert>{errorMessage(t, control.error)}</Alert> : null}
       {c ? (
@@ -114,5 +81,48 @@ export function AppControlSection() {
         </label>
       ) : null}
     </section>
+  );
+}
+
+/** Pause or resume all, and Emergency stop behind a confirmation; also in the menu's status popover. */
+export function AppControlButtons() {
+  const { t } = useTranslation();
+  const control = useAppControl();
+  const act = useControlAction();
+  const [confirmStop, setConfirmStop] = useState(false);
+  const c = control.data;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {c?.paused ? (
+        <Button variant="primary" onClick={() => act.mutate('app.resumeAll')} disabled={act.isPending}>
+          {t('control.resume')}
+        </Button>
+      ) : (
+        <Button onClick={() => act.mutate('app.pauseAll')} disabled={act.isPending}>
+          {t('control.pauseAll')}
+        </Button>
+      )}
+      {confirmStop ? (
+        <span className="flex items-center gap-2">
+          <Button
+            variant="danger"
+            onClick={() => {
+              setConfirmStop(false);
+              act.mutate('app.emergencyStop');
+            }}
+            autoFocus
+          >
+            {t('control.confirmEmergency')}
+          </Button>
+          <Button variant="ghost" onClick={() => setConfirmStop(false)}>
+            {t('common.cancel')}
+          </Button>
+        </span>
+      ) : (
+        <Button variant="danger" onClick={() => setConfirmStop(true)} disabled={act.isPending}>
+          {t('control.emergencyStop')}
+        </Button>
+      )}
+    </div>
   );
 }

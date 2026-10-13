@@ -224,6 +224,11 @@ export const campaignSchema = z.object({
   pendingApprovals: z.number().int().nonnegative(),
   /** Active or paused people still on an earlier version than the launched one. */
   outdatedEnrollments: z.number().int().nonnegative(),
+  /**
+   * Messages this campaign sent (ledger entries completed, all channels) and people who replied
+   * (Today, docs/22 9a). Uncertain sends are not counted until reconciled.
+   */
+  results: z.object({ sent: z.number().int().nonnegative(), replied: z.number().int().nonnegative() }),
   /** What AI cost for this campaign so far; costUsd null when a call had no known price. */
   aiSpend: z.object({ calls: z.number().int().nonnegative(), costUsd: z.number().nonnegative().nullable() }),
   createdAt: z.iso.datetime(),

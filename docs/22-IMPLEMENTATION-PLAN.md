@@ -245,9 +245,11 @@ After the MVP release (8e). It comes from a UI and AI review on 2026-10-13. It c
 
 Deliver:
 
+Progress: 9a Today and the new menu (done 2026-10-13).
+
 - **9a — Today and navigation:**
   - a Today home screen showing what needs the user now: replies (interested first), messages to review, tasks due, running campaigns with sent and replied counts, and system health. No charts.
-  - Menu: Today, Prospects (people, companies, do not contact), Campaigns, Inbox, Review (the renamed Approvals), Tasks; Activity lower.
+  - Menu: Today, then the daily screens (Campaigns, Inbox, Review — the renamed Approvals — and Tasks), then Prospects (contacts, companies, do not contact); Activity, Browser profiles and Settings at the foot.
   - Status becomes an indicator at the foot of the menu with pause and emergency stop in a popover. The full Status page stays behind "Details".
 - **9b — campaign workspace:**
   - the campaign page split into tabs: Overview, Audience, Sequence, People, Settings;

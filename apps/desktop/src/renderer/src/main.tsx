@@ -6,6 +6,7 @@ import { AppShell } from './components/AppShell';
 import { ToastProvider } from './components/toast';
 import { setLanguage } from './i18n';
 import { TasksPage } from './routes/tasks/TasksPage';
+import { TodayPage } from './routes/today/TodayPage';
 import { ActivityPage } from './routes/activity/ActivityPage';
 import { ApprovalsPage } from './routes/approvals/ApprovalsPage';
 import { InboxPage } from './routes/inbox/InboxPage';
@@ -29,6 +30,7 @@ const router = createHashRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <StartPage /> },
+      { path: 'today', element: <TodayPage /> },
       { path: 'setup', element: <SetupPage /> },
       { path: 'contacts', element: <ContactsPage /> },
       { path: 'contacts/:id', element: <ContactPage /> },

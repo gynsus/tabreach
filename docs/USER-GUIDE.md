@@ -89,9 +89,15 @@ Good to know:
 - **Who presses Send** — on website-form and LinkedIn steps: TabReach after your approval (`auto`), you in the browser window (`assisted`, the default), or you do it all with the text at hand (`manual`). A form with a CAPTCHA or a field TabReach cannot fill is always sent by you.
 - When someone replies, no campaign writes to them again — nor, for a strong company match, to their colleagues — until you press **Allow campaigns to write again** on the contact page.
 
-## Approvals
+## Today
 
-The queue shows exactly what will go out, to whom and when, with the checks and the research facts used. Keyboard: **A** approve, **E** edit, **S** skip, **R** reject (press twice), **J / K** next and previous.
+TabReach opens on **Today**: unread replies (interested ones first), messages waiting for your review, open tasks and anything under Needs attention, then each running campaign with how many messages it sent, how many people replied and how many are still in progress. Each number opens its screen.
+
+The line at the foot of the menu says whether TabReach is fine. It reads "Everything is working", says what needs you, names a broken part, or shows that outreach is paused. Click it for **Pause all** and **Emergency stop**, or open the full **Status** page from there.
+
+## Review
+
+The queue (called Approvals before) shows exactly what will go out, to whom and when, with the checks and the research facts used. Keyboard: **A** approve, **E** edit, **S** skip, **R** reject (press twice), **J / K** next and previous.
 
 ## Inbox
 
@@ -106,14 +112,14 @@ Replies are matched to the person and campaign and labelled by AI (interested, n
 
 ## Pause all and Emergency stop
 
-**Pause all** (top bar) stops every new send and browser action; reading replies goes on. **Emergency stop** also closes the browser at once. Nothing is lost: when you resume, waiting work continues.
+**Pause all** (the status line at the foot of the menu, or the Status page) stops every new send and browser action; reading replies goes on. **Emergency stop** also closes the browser at once. Nothing is lost: when you resume, waiting work continues.
 
 **Keep the Mac awake while campaigns are active** (Status) stops the Mac from sleeping while something is scheduled. Without it, work due while the Mac slept is moved to the next sending window after it wakes, never sent in a burst.
 
 ## Activity and Status
 
 - **Activity** lists everything TabReach did and you decided — added to a campaign, written, approved, sent, replied, stopped — and each contact, company and campaign page has its own timeline.
-- **Status** shows whether the app's parts, the database and Chrome are healthy, what needs your attention (failed work, unconfirmed sends), and per adapter pack how often pages were not recognised — a jump there usually means the site changed.
+- **Status** (from the status line at the foot of the menu) shows whether the app's parts, the database and Chrome are healthy, what needs your attention (failed work, unconfirmed sends), and per adapter pack how often pages were not recognised — a jump there usually means the site changed.
 
 ## Unconfirmed sends
 

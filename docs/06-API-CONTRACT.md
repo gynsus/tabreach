@@ -101,7 +101,7 @@ query   research.get                   # run + facts (verified or not) + evidenc
 ## Campaigns
 
 ```text
-query   campaigns.list / campaigns.get
+query   campaigns.list / campaigns.get   # Campaign: … enrollments by status, pendingApprovals, outdatedEnrollments, results { sent, replied } (completed ledger entries; people who replied), aiSpend
 command campaigns.create / campaigns.update / campaigns.archive
 command campaigns.launch               # creates immutable version, validates channels/templates/timezone
 command campaigns.pause / campaigns.resume

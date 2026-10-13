@@ -3,8 +3,8 @@ import {
   Building2,
   CheckCheck,
   ClipboardCheck,
-  Gauge,
   Globe,
+  House,
   Inbox,
   Megaphone,
   Settings,
@@ -19,7 +19,7 @@ import { cn } from '../lib/cn';
 import { usePendingApprovals } from '../routes/approvals/ApprovalsPage';
 import { useInboxCounts } from '../routes/inbox/InboxPage';
 import { PausedBanner } from '../routes/status/AppControl';
-import { useInterventions } from '../routes/status/Interventions';
+import { SystemIndicator } from '../routes/status/SystemIndicator';
 import { useOpenTasks } from '../routes/tasks/TasksPage';
 
 function NavItem(props: { to: string; icon: LucideIcon; label: string; count?: number }) {
@@ -81,44 +81,49 @@ export function AppShell() {
   const tasks = useOpenTasks();
   const pending = usePendingApprovals();
   const inbox = useInboxCounts();
-  const interventions = useInterventions();
   return (
     <div className="flex h-full">
       <nav
         aria-label="TabReach"
-        className="relative flex w-56 shrink-0 flex-col gap-5 border-r border-rule bg-sunken px-3 pt-5 pb-4"
+        className="relative flex w-56 shrink-0 flex-col gap-4 border-r border-rule bg-sunken px-3 pt-5 pb-4"
       >
         <p className="px-2.5 font-mono text-[11px] font-medium tracking-[0.14em] text-accent uppercase">
           TabReach
         </p>
-        <NavGroup label={t('nav.prospects')}>
-          <NavItem to="/contacts" icon={Users} label={t('nav.contacts')} />
-          <NavItem to="/companies" icon={Building2} label={t('nav.companies')} />
-          <NavItem to="/suppressions" icon={ShieldBan} label={t('nav.suppressions')} />
-        </NavGroup>
-        <NavGroup label={t('nav.outreach')}>
-          <NavItem to="/campaigns" icon={Megaphone} label={t('nav.campaigns')} />
-          <NavItem to="/inbox" icon={Inbox} label={t('nav.inbox')} count={inbox.data?.unread ?? 0} />
-          <NavItem
-            to="/approvals"
-            icon={CheckCheck}
-            label={t('nav.approvals')}
-            count={pending.data?.items.length ?? 0}
-          />
-          <NavItem to="/tasks" icon={ClipboardCheck} label={t('nav.tasks')} count={tasks.data?.total ?? 0} />
-          <NavItem to="/activity" icon={Activity} label={t('nav.activity')} />
-        </NavGroup>
-        <div className="mt-auto">
-          <NavGroup label={t('nav.system')}>
-            <NavItem to="/browser" icon={Globe} label={t('nav.browser')} />
+        {/* The screens scroll on a short window; the foot with the status line stays in view. */}
+        <div className="-mx-3 flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-3">
+          <div className="grid gap-0.5">
+            <NavItem to="/today" icon={House} label={t('nav.today')} />
+          </div>
+          <NavGroup label={t('nav.outreach')}>
+            <NavItem to="/campaigns" icon={Megaphone} label={t('nav.campaigns')} />
+            <NavItem to="/inbox" icon={Inbox} label={t('nav.inbox')} count={inbox.data?.unread ?? 0} />
             <NavItem
-              to="/status"
-              icon={Gauge}
-              label={t('nav.status')}
-              count={interventions.data?.items.length ?? 0}
+              to="/approvals"
+              icon={CheckCheck}
+              label={t('nav.approvals')}
+              count={pending.data?.items.length ?? 0}
             />
-            <NavItem to="/settings" icon={Settings} label={t('nav.settings')} />
+            <NavItem
+              to="/tasks"
+              icon={ClipboardCheck}
+              label={t('nav.tasks')}
+              count={tasks.data?.total ?? 0}
+            />
           </NavGroup>
+          <NavGroup label={t('nav.prospects')}>
+            <NavItem to="/contacts" icon={Users} label={t('nav.contacts')} />
+            <NavItem to="/companies" icon={Building2} label={t('nav.companies')} />
+            <NavItem to="/suppressions" icon={ShieldBan} label={t('nav.suppressions')} />
+          </NavGroup>
+        </div>
+        <div className="grid gap-0.5">
+          <NavItem to="/activity" icon={Activity} label={t('nav.activity')} />
+          <NavItem to="/browser" icon={Globe} label={t('nav.browser')} />
+          <NavItem to="/settings" icon={Settings} label={t('nav.settings')} />
+          <div className="mt-2 border-t border-rule pt-2">
+            <SystemIndicator />
+          </div>
         </div>
       </nav>
       {/*
