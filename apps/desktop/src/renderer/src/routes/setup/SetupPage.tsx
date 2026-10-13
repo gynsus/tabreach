@@ -32,8 +32,8 @@ export function isFreshInstall(s: SetupState): boolean {
 export function StartPage() {
   const setup = useSetupState();
   if (setup.isPending) return <Loading />;
-  // If core cannot answer, the shell already says so; contacts is the safe default.
-  return <Navigate to={setup.data && isFreshInstall(setup.data) ? '/setup' : '/contacts'} replace />;
+  // If core cannot answer, the shell already says so; Today is the home screen (docs/22 9a).
+  return <Navigate to={setup.data && isFreshInstall(setup.data) ? '/setup' : '/today'} replace />;
 }
 
 /**
@@ -50,7 +50,7 @@ export function SetupPage() {
     mutationFn: () => call('setup.complete', {}),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: SETUP_KEY });
-      await navigate('/contacts');
+      await navigate('/today');
     },
   });
   const s = setup.data;

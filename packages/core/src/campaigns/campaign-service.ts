@@ -754,6 +754,15 @@ export class CampaignService {
       enrollments: { active: 0, paused: 0, completed: 0, stopped: 0, ...counts },
       pendingApprovals: pending,
       aiSpend: this.aiSpend.spend(r.id),
+      results: this.db
+        .prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM side_effects s JOIN campaign_enrollments e ON e.id = s.scope_id
+               WHERE e.campaign_id = ? AND s.status = 'completed') AS sent,
+             (SELECT COUNT(*) FROM campaign_enrollments
+               WHERE campaign_id = ? AND last_reply_at IS NOT NULL) AS replied`,
+        )
+        .get(r.id, r.id) as Campaign['results'],
       outdatedEnrollments: r.active_version_id
         ? (
             this.db
