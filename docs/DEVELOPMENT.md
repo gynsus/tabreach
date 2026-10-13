@@ -61,24 +61,30 @@ pnpm --filter @tabreach/fixture-sites serve
 ## Package
 
 ```bash
-pnpm package
+pnpm package   # apps/desktop/release/mac-arm64/TabReach.app — quick local build, what CI checks
+pnpm dist      # TabReach-<version>-arm64.dmg and -x64.dmg in apps/desktop/release/
 ```
 
-Produces `apps/desktop/release/mac-arm64/TabReach.app`: ad-hoc signed, Electron fuses applied
-(`RunAsNode` off, Node inspector off, ASAR integrity on). Developer ID signing and notarization come
-in Phase 8. The packaged app stores data in `~/Library/Application Support/TabReach/` and logs in
-`~/Library/Logs/TabReach/`.
+The configuration is `apps/desktop/electron-builder.config.cjs`. Every build gets the Electron fuses (`RunAsNode` off, Node inspector off, ASAR integrity on), the hardened runtime and the icon from `apps/desktop/build/icon.svg`; after changing the SVG, run `pnpm --filter @tabreach/desktop make-icon` and commit `icon.icns`. The packaged app stores data in `~/Library/Application Support/TabReach/` and logs in `~/Library/Logs/TabReach/`; it needs macOS 13 or later.
 
-### Signing and notarization (Phase 8)
+Without signing credentials a build is **ad-hoc signed**: it runs on the Mac that built it. On another Mac, Gatekeeper refuses it until the user allows it in Privacy & Security. Ad-hoc builds carry `entitlements.adhoc.plist`. It adds `disable-library-validation`, without which the app cannot load Electron's framework (parts signed ad hoc have no Team ID).
 
-Distribution to other Macs needs, in addition to the current ad-hoc build:
+### Signing and notarization
 
-- an Apple Developer Program membership and a **Developer ID Application** certificate in the build machine's keychain (`mac.identity` in `electron-builder.yml`);
-- notarization credentials for `notarytool`: an App Store Connect API key (key id, issuer id, `.p8`) or an Apple ID with an app-specific password, provided to electron-builder through environment variables in CI;
-- hardened runtime (already on) with an entitlements file. Electron needs `com.apple.security.cs.allow-jit`; `com.apple.security.cs.allow-unsigned-executable-memory` only if a crash report shows it is required. No camera, microphone or other entitlements.
-- a DMG target and stapling of the notarization ticket.
+The signing mode is chosen from the environment; nothing secret is in the repository:
 
-Not yet verified: a first launch on a clean macOS user account (Gatekeeper path). That check belongs to Phase 8 together with signing.
+| Variable | Meaning |
+| --- | --- |
+| `CSC_LINK` + `CSC_KEY_PASSWORD` | the Developer ID Application certificate as a base64 `.p12` and its password (CI) |
+| `CSC_NAME` | or the name of the certificate already in the keychain (a local build) |
+| `APPLE_API_KEY` (path to the `.p8`), `APPLE_API_KEY_ID`, `APPLE_API_ISSUER` | notarization with an App Store Connect API key |
+| `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID` | or with an Apple ID |
+| `APPLE_KEYCHAIN_PROFILE` | or a profile saved with `xcrun notarytool store-credentials` |
+| `TABREACH_RELEASE=1` | refuse to build unless a certificate and notarization credentials are both present |
+
+With a certificate the app is signed with `entitlements.mac.plist`, which grants only `com.apple.security.cs.allow-jit`. With notarization credentials it is also notarized and stapled. The DMG is signed too.
+
+**Release.** Pushing a tag `v<version>` (or starting the Release workflow by hand) runs `.github/workflows/release.yml` on macOS. It builds both DMGs with `TABREACH_RELEASE=1`, then notarizes and staples the DMGs. It checks every app with `codesign --verify`, `spctl --assess` and `stapler validate`, runs the self-check, and attaches the DMGs to a draft GitHub release. The repository secrets it needs are `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY_P8` (the contents of the `.p8`), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. Set the version in `apps/desktop/package.json` before tagging.
 
 ### Self-check
 

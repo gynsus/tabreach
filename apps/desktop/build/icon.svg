@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- macOS app icon grid: an 824 px rounded square on a 1024 px canvas. Same mark as site/favicon.svg. -->
+  <rect x="100" y="100" width="824" height="824" rx="186" fill="#2f5d50"/>
+  <g transform="translate(100 100) scale(25.75)">
+    <path d="M7 11.5a2.5 2.5 0 0 1 2.5-2.5h5l2 2.5h6a2.5 2.5 0 0 1 2.5 2.5V21a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 7 21z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+    <path d="M13 17.5h6m-2.5-2.5 2.5 2.5-2.5 2.5" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
