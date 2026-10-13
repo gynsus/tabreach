@@ -39,7 +39,7 @@ export function TasksPage() {
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid max-w-4xl gap-3 p-6">
+        <div className="grid gap-3 p-6">
           {list.isError ? <Alert>{errorMessage(t, list.error)}</Alert> : null}
           {list.isSuccess && items.length === 0 ? (
             <p className="text-[13px] text-soft">{t('tasks.empty')}</p>

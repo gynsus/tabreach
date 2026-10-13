@@ -184,7 +184,7 @@ function ApprovalDetail(props: {
     onSuccess: props.onRevised,
   });
   return (
-    <article aria-label={a.contactName} className="grid max-w-3xl gap-5">
+    <article aria-label={a.contactName} className="grid gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="font-mono text-[11px] text-faint">{props.position}</p>
         <p className="text-xs text-faint">{t('approvals.keys')}</p>

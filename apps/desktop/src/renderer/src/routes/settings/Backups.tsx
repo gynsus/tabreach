@@ -80,7 +80,7 @@ export function BackupsSection() {
         <p className="text-[13px] text-soft">{t('settings.backups.none')}</p>
       ) : null}
       {data && data.items.length > 0 ? (
-        <table className="w-full max-w-2xl text-[13px]">
+        <table className="w-full text-[13px]">
           <thead>
             <tr className="text-left text-xs text-soft">
               <th className="py-1 font-medium">{t('settings.backups.when')}</th>
