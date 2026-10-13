@@ -38,6 +38,10 @@ const focusApp = () =>
 
 const go = (path: string) => page.evaluate((p) => (window.location.hash = p), path);
 
+/** Opens a tab of the campaign page (docs/22 9b); a tab with errors has a longer name. */
+const campaignTab = (name: 'Overview' | 'Audience' | 'Sequence' | 'People' | 'Settings') =>
+  page.getByRole('tab', { name: new RegExp(`^${name}`) }).click();
+
 /**
  * The window itself never scrolls, only a page's own area does: a scrolled window leaves a blank
  * strip under the app. Checked with every inner area scrolled to its end, after every test and
@@ -253,11 +257,14 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await create.getByLabel('Name').fill('E2E campaign');
   await create.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('heading', { name: 'E2E campaign' })).toBeVisible();
+  // A new campaign opens on its overview, which lists what to set up before launch.
+  await expect(page.getByTestId('setup-sequence')).toHaveAttribute('data-done', 'false');
 
-  // An empty campaign cannot be launched, and says why.
+  // An empty campaign cannot be launched, says why, and opens the tab with the problem.
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(page.getByRole('alert')).toHaveText('Fix the highlighted fields before launching.');
   await expect(page.getByText('Add at least one step.')).toBeVisible();
+  await expect(page.getByRole('tab', { name: /^Sequence/ })).toHaveAttribute('aria-selected', 'true');
 
   await page.getByRole('button', { name: 'Add message' }).click();
   const step = page.getByRole('region', { name: 'Message 1' });
@@ -274,6 +281,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await expect(step.getByLabel('Message', { exact: true })).toHaveValue(
     'Hi {{firstName|there}}, this is a test.',
   );
+  await campaignTab('Settings');
   await page.getByLabel('Approval', { exact: true }).selectOption('approve_campaign');
   await expect(page.getByText(/You approve the first 5 messages yourself/)).toBeVisible();
   await page.getByLabel('Approval', { exact: true }).selectOption('approve_each');
@@ -294,6 +302,7 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Campaign launched: version 1' })).toBeVisible();
 
+  await campaignTab('People');
   await page.getByRole('button', { name: 'Add contacts' }).click();
   const add = page.getByRole('dialog', { name: 'Add contacts' });
   await add.getByRole('searchbox', { name: 'Search contacts' }).fill('jane.again');
@@ -314,9 +323,12 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
 
   await page.getByRole('link', { name: 'Campaigns' }).click();
   await page.getByRole('link', { name: /E2E campaign/ }).click();
+  await expect(page.getByTestId('campaign-results')).toContainText('Messages sent1');
+  await campaignTab('People');
   await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
     timeout: 15_000,
   });
+  await campaignTab('Overview');
   // The campaign's history names the contact; the activity log says who got what, and shows it.
   await expect(page.getByTestId('timeline').getByRole('link', { name: 'Jane Again' }).first()).toBeVisible();
   await page.getByRole('link', { name: 'Activity' }).click();
@@ -333,6 +345,7 @@ test('a dry run shows the first message for one contact without sending; a copy 
   await go('#/campaigns');
   await page.getByRole('link', { name: /E2E campaign/ }).click();
   // Jane is in the campaign from the test before; the dry run adds no one.
+  await campaignTab('People');
   await expect(page.getByTestId('enrollment')).toHaveCount(1);
 
   await page.getByRole('button', { name: 'Dry run' }).click();
@@ -372,9 +385,11 @@ test('a dry run shows the first message for one contact without sending; a copy 
   await copy.getByRole('button', { name: 'Create copy' }).click();
   await expect(page.getByRole('heading', { name: 'E2E campaign (copy)' })).toBeVisible();
   await expect(page.getByText('not launched')).toBeVisible();
+  await campaignTab('Sequence');
   await expect(
     page.getByRole('region', { name: 'Message 1' }).getByLabel('Message', { exact: true }),
   ).toHaveValue('Hi {{firstName|there}}, this is a test.');
+  await campaignTab('People');
   await expect(page.getByTestId('enrollment')).toHaveCount(0);
 
   // A copy that was never launched can be deleted; there is nothing to archive.
@@ -581,12 +596,14 @@ test('a campaign writes through a website contact form: prepared, approved as sh
   const dialog = page.getByRole('dialog', { name: 'New campaign' });
   await dialog.getByLabel('Name').fill('Form campaign');
   await dialog.getByRole('button', { name: 'Create' }).click();
+  await campaignTab('Sequence');
   await page.getByRole('button', { name: 'Add message' }).click();
   const step = page.getByRole('region', { name: 'Message 1' });
   await step.getByLabel('Channel').selectOption('web_form');
   await expect(step.getByLabel('Who presses Send')).toHaveValue('auto');
   await step.getByLabel('Subject', { exact: true }).fill('Hello {{companyName}}');
   await step.getByLabel('Message', { exact: true }).fill('We build robots for {{companyName}}.');
+  await campaignTab('Settings');
   await page.getByLabel('Fallback time zone').fill('UTC');
   await page.getByLabel('Use the default sending hours from Settings').uncheck();
   await page.getByRole('button', { name: 'Sat' }).click();
@@ -595,6 +612,7 @@ test('a campaign writes through a website contact form: prepared, approved as sh
   await page.getByLabel('Until', { exact: true }).fill('23:59');
   await page.getByRole('button', { name: 'Launch', exact: true }).click();
   await expect(page.getByTestId('toast').filter({ hasText: 'Campaign launched: version 1' })).toBeVisible();
+  await campaignTab('People');
   await page.getByRole('button', { name: 'Add contacts' }).click();
   const add = page.getByRole('dialog', { name: 'Add contacts' });
   await add.getByRole('searchbox', { name: 'Search contacts' }).fill('Fiona');
@@ -619,6 +637,7 @@ test('a campaign writes through a website contact form: prepared, approved as sh
 
   await go('#/campaigns');
   await page.getByRole('link', { name: /Form campaign/ }).click();
+  await campaignTab('People');
   await expect(page.getByTestId('enrollment')).toHaveAttribute('data-status', 'completed', {
     timeout: 90_000,
   });
@@ -647,6 +666,7 @@ test('LinkedIn stays off until the risk is accepted; a LinkedIn step starts assi
   const dialog = page.getByRole('dialog', { name: 'New campaign' });
   await dialog.getByLabel('Name').fill('LinkedIn campaign');
   await dialog.getByRole('button', { name: 'Create' }).click();
+  await campaignTab('Sequence');
   await page.getByRole('button', { name: 'Add message' }).click();
   const step = page.getByRole('region', { name: 'Message 1' });
   await step.getByLabel('Channel').selectOption('linkedin');
