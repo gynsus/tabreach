@@ -176,6 +176,8 @@ command conversations.markRead
 command conversations.review           # { messageId, decision: confirm | dismiss } for a possible (domain-only) reply
 command conversations.reply            # { conversationId, messageId, subject, body } + idempotency key -> ManualReply; sent by a job through the ledger (ADR 031)
 command conversations.retryReply       # { id } -> ManualReply; only a failed reply, same intent
+query   copilot.intent                 # { description, language } -> { understanding { goal, audience, offer }, questions[] (≤5), warnings[] }; one AI call (ADR 033)
+query   copilot.plan                   # { description, answers[], language } -> { name, config, changes[], assumptions[], warnings[], problems }; nothing saved — the renderer creates the draft with campaigns.create
 query   conversations.draftReply       # { conversationId, instructions } -> { body }; one AI call, nothing stored or sent (ADR 031)
 ```
 

@@ -245,7 +245,7 @@ After the MVP release (8e). It comes from a UI and AI review on 2026-10-13. It c
 
 Deliver:
 
-Progress: 9a Today and the new menu (done 2026-10-13); 9b the campaign page in tabs, with each step's earliest day (done 2026-10-13).
+Progress: 9a Today and the new menu (done 2026-10-13); 9b the campaign page in tabs, with each step's earliest day (done 2026-10-13); 9c the campaign copilot (done 2026-10-13, ADR 033).
 
 - **9a — Today and navigation:**
   - a Today home screen showing what needs the user now: replies (interested first), messages to review, tasks due, running campaigns with sent and replied counts, and system health. No charts.

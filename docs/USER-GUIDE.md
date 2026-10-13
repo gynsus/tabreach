@@ -73,6 +73,8 @@ A campaign page has five tabs:
 
 If a launch finds a problem, the tab with the problem opens, and every tab that has one is marked.
 
+**Build with AI** (Campaigns) sets a campaign up from your own words, and needs an AI key. You describe whom you want to reach and why, and answer the few questions it still has. You then get a plan: the goal, who fits, what research looks for, the steps by day and the safety settings. The plan also lists what it does differently from what you asked (for example, LinkedIn is always assisted), what it assumed, and what still needs fixing before launch. **Create draft** saves the plan as an ordinary draft and opens it; nothing is sent until you launch it and add people.
+
 1. Create a campaign and add steps (Sequence). A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A **task** step is something you do yourself, such as a call: when a person reaches it, it appears in **Tasks** with their details, and their sequence goes on when you press **Done** or **Skip** (or **Stop the person**). A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
 2. Fill in **Audience** (optional, but it makes research and AI messages much better):
    - **Goal** — what the campaign should achieve; AI messages aim at it.
