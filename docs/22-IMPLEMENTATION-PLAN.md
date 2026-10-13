@@ -239,6 +239,32 @@ All `23-ACCEPTANCE-CRITERIA.md` pass on a clean installation of the packaged app
 
 ---
 
+## Phase 9 — Daily workflow and AI copilot
+
+After the MVP release (8e). It comes from a UI and AI review on 2026-10-13. It changes no safety rule: AI prepares more, and external actions stay exactly as gated as before.
+
+Deliver:
+
+- **9a — Today and navigation:**
+  - a Today home screen showing what needs the user now: replies (interested first), messages to review, tasks due, running campaigns with sent and replied counts, and system health. No charts.
+  - Menu: Today, Prospects (people, companies, do not contact), Campaigns, Inbox, Review (the renamed Approvals), Tasks; Activity lower.
+  - Status becomes an indicator at the foot of the menu with pause and emergency stop in a popover. The full Status page stays behind "Details".
+- **9b — campaign workspace:**
+  - the campaign page split into tabs: Overview, Audience, Sequence, People, Settings;
+  - the sequence shown as a vertical timeline of steps with days, each step expandable to edit.
+- **9c — campaign copilot** (ADR 033): describe the goal, answer a few questions, get a plan validated by the same checks as the editor, try it with the dry run, save it as a draft.
+- **9d — message check before approval:** an AI pass flags claims in a drafted message that the research facts do not support, with a suggested rewording. It never changes a message itself. The deterministic checks (forbidden phrases, links, length) stay as they are.
+- Later, if the above proves useful: a campaign summary of what works (marked low confidence on small samples); ICP suggestions from who replied (recommendation only); message variants.
+
+Not planned: finding or buying prospect lists (docs/24), autonomous replies.
+
+Exit criteria:
+
+- A first-time user goes from a description in their own words to a draft campaign they understand, without reading the editor's help.
+- The copilot cannot produce a config the editor would refuse or a setting outside the fixed rules of ADR 033; this is shown by tests with hostile proposals.
+
+---
+
 ## Post-MVP candidates
 
 - publisher-owned verified Gmail OAuth client (ADR 016, option C) — research verification/assessment cost first;
