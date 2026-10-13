@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DEFAULT_POLICY, type Campaign, type CampaignConfig } from '@tabreach/protocol';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 import { useToast } from '../../components/toast';
 import {
   Alert,
@@ -15,6 +15,7 @@ import {
   Select,
   UnsavedChangesPrompt,
 } from '../../components/ui';
+import { Tabs } from '../../components/Tabs';
 import { WindowEditor } from '../../components/WindowEditor';
 import { call, errorMessage, fieldErrors } from '../../lib/api';
 import { invalidateEntities } from '../../lib/live';
@@ -24,6 +25,21 @@ import { ApprovalSection } from './ApprovalSection';
 import { CloneModal, DryRunModal } from './DryRun';
 import { PeopleSection } from './PeopleSection';
 import { SequenceEditor } from './SequenceEditor';
+
+const TABS = ['overview', 'audience', 'sequence', 'people', 'settings'] as const;
+type Tab = (typeof TABS)[number];
+
+/** Which tab shows the field a launch error names (field keys from core's campaign validation). */
+function tabOf(field: string): Tab {
+  if (field.startsWith('steps')) return 'sequence';
+  if (
+    ['goal', 'icp', 'researchInstructions', 'researchContacts', 'aiBudgetUsd', 'researchMaxAgeDays'].includes(
+      field,
+    )
+  )
+    return 'audience';
+  return 'settings';
+}
 
 export function CampaignPage() {
   const { id = '' } = useParams();
@@ -51,6 +67,9 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dialog, setDialog] = useState<'dryRun' | 'clone' | null>(null);
   const archived = campaign.status === 'archived';
+  const [search, setSearch] = useSearchParams();
+  const tab: Tab = TABS.includes(search.get('tab') as Tab) ? (search.get('tab') as Tab) : 'overview';
+  const selectTab = (next: Tab) => setSearch(next === 'overview' ? {} : { tab: next }, { replace: true });
 
   // Take the server's copy when it changes and nothing local is pending.
   useEffect(() => {
@@ -79,6 +98,10 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
       setDirty(false);
       toast(t('campaigns.launched', { version: c.activeVersion }));
       await refresh();
+    },
+    onError: (error) => {
+      const first = Object.keys(fieldErrors(error))[0];
+      if (first) selectTab(tabOf(first));
     },
   });
   const status = useMutation({
@@ -189,7 +212,24 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
           )
         }
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <Tabs
+        label={campaign.name}
+        idPrefix="campaign"
+        current={tab}
+        onSelect={selectTab}
+        markedLabel={t('campaigns.tabs.hasErrors')}
+        tabs={TABS.map((id) => ({
+          id,
+          label: t(`campaigns.tabs.${id}`),
+          marked: Object.keys(errors).some((f) => tabOf(f) === id),
+        }))}
+      />
+      <div
+        role="tabpanel"
+        id={`campaign-panel-${tab}`}
+        aria-labelledby={`campaign-tab-${tab}`}
+        className="min-h-0 flex-1 overflow-y-auto"
+      >
         <div className="grid gap-8 p-6">
           {save.isError ? <Alert>{errorMessage(t, save.error)}</Alert> : null}
           {launch.isError ? (
@@ -199,80 +239,91 @@ function CampaignView({ campaign }: { campaign: Campaign }) {
             </Alert>
           ) : null}
 
-          <TargetingSection
-            config={config}
-            spend={campaign.aiSpend}
-            disabled={archived || busy}
-            onChange={edit}
-          />
+          {tab === 'overview' ? <Overview campaign={campaign} config={config} onSelect={selectTab} /> : null}
 
-          <section aria-labelledby="sequence-heading" className="grid gap-3">
-            <h2 id="sequence-heading" className="text-[15px] font-semibold">
-              {t('campaigns.sequence')}
-            </h2>
-            <SequenceEditor
-              steps={config.steps}
-              onChange={(steps) => edit({ ...config, steps })}
-              errors={errors}
+          {tab === 'audience' ? (
+            <TargetingSection
+              config={config}
+              spend={campaign.aiSpend}
               disabled={archived || busy}
-            />
-          </section>
-
-          {config.steps.some((s) => s.type === 'send_message' && s.channel === 'email') ? (
-            <SendingSection
-              value={config.emailAccountId}
-              errorKey={errors.emailAccountId}
-              disabled={archived || busy}
-              onChange={(emailAccountId) => edit({ ...config, emailAccountId })}
+              onChange={edit}
             />
           ) : null}
 
-          <section aria-labelledby="schedule-heading" className="grid gap-3">
-            <h2 id="schedule-heading" className="text-[15px] font-semibold">
-              {t('campaigns.schedule')}
-            </h2>
-            <Field
-              label={t('campaigns.timezone')}
-              hint={t('campaigns.timezoneHint')}
-              errorKey={errors.timezone}
-              className="max-w-sm"
-            >
-              {(id, describedBy) => (
-                <Input
-                  id={id}
-                  value={config.timezone ?? ''}
-                  placeholder="Europe/Berlin"
-                  disabled={archived || busy}
-                  aria-describedby={describedBy}
-                  aria-invalid={errors.timezone ? true : undefined}
-                  onChange={(e) => edit({ ...config, timezone: e.target.value.trim() || null })}
-                />
-              )}
-            </Field>
-            <label className="flex items-center gap-2 text-[13px]">
-              <input
-                type="checkbox"
-                checked={!windowOverride}
+          {tab === 'sequence' ? (
+            <section aria-labelledby="sequence-heading" className="grid gap-3">
+              <h2 id="sequence-heading" className="text-[15px] font-semibold">
+                {t('campaigns.sequence')}
+              </h2>
+              <SequenceEditor
+                steps={config.steps}
+                onChange={(steps) => edit({ ...config, steps })}
+                errors={errors}
                 disabled={archived || busy}
-                onChange={(e) => edit({ ...config, window: e.target.checked ? null : DEFAULT_POLICY.window })}
               />
-              {t('campaigns.useDefaultWindow')}
-            </label>
-            {config.window ? (
-              <WindowEditor
-                value={config.window}
-                disabled={archived || busy}
-                onChange={(window) => edit({ ...config, window })}
-              />
-            ) : null}
-          </section>
+            </section>
+          ) : null}
 
-          <ApprovalSection config={config} disabled={archived || busy} onChange={edit} />
+          {tab === 'people' ? <PeopleSection campaign={campaign} /> : null}
+
+          {tab === 'settings' ? (
+            <>
+              {config.steps.some((s) => s.type === 'send_message' && s.channel === 'email') ? (
+                <SendingSection
+                  value={config.emailAccountId}
+                  errorKey={errors.emailAccountId}
+                  disabled={archived || busy}
+                  onChange={(emailAccountId) => edit({ ...config, emailAccountId })}
+                />
+              ) : null}
+
+              <section aria-labelledby="schedule-heading" className="grid gap-3">
+                <h2 id="schedule-heading" className="text-[15px] font-semibold">
+                  {t('campaigns.schedule')}
+                </h2>
+                <Field
+                  label={t('campaigns.timezone')}
+                  hint={t('campaigns.timezoneHint')}
+                  errorKey={errors.timezone}
+                  className="max-w-sm"
+                >
+                  {(id, describedBy) => (
+                    <Input
+                      id={id}
+                      value={config.timezone ?? ''}
+                      placeholder="Europe/Berlin"
+                      disabled={archived || busy}
+                      aria-describedby={describedBy}
+                      aria-invalid={errors.timezone ? true : undefined}
+                      onChange={(e) => edit({ ...config, timezone: e.target.value.trim() || null })}
+                    />
+                  )}
+                </Field>
+                <label className="flex items-center gap-2 text-[13px]">
+                  <input
+                    type="checkbox"
+                    checked={!windowOverride}
+                    disabled={archived || busy}
+                    onChange={(e) =>
+                      edit({ ...config, window: e.target.checked ? null : DEFAULT_POLICY.window })
+                    }
+                  />
+                  {t('campaigns.useDefaultWindow')}
+                </label>
+                {config.window ? (
+                  <WindowEditor
+                    value={config.window}
+                    disabled={archived || busy}
+                    onChange={(window) => edit({ ...config, window })}
+                  />
+                ) : null}
+              </section>
+
+              <ApprovalSection config={config} disabled={archived || busy} onChange={edit} />
+            </>
+          ) : null}
 
           <UnsavedChangesPrompt when={dirty && !save.isPending && !launch.isPending} />
-          <PeopleSection campaign={campaign} />
-
-          <Timeline scope={{ campaignId: campaign.id }} refs={['contact']} />
         </div>
       </div>
       {dialog === 'dryRun' ? (
@@ -436,5 +487,117 @@ function SendingSection(props: {
         </Link>
       ) : null}
     </section>
+  );
+}
+
+/**
+ * The first tab (docs/22 9b): for a draft, what is still to set up before launch; once launched,
+ * how the campaign is doing and its history.
+ */
+function Overview(props: { campaign: Campaign; config: CampaignConfig; onSelect: (tab: Tab) => void }) {
+  const { t } = useTranslation();
+  const { campaign: c, config } = props;
+  const e = c.enrollments;
+  const emailSteps = config.steps.some((s) => s.type === 'send_message' && s.channel === 'email');
+  const setup: { tab: Tab; done: boolean; text: string }[] = [
+    {
+      tab: 'audience',
+      done: config.goal.trim() !== '' || config.icp.trim() !== '',
+      text: t('campaigns.overview.audience'),
+    },
+    {
+      tab: 'sequence',
+      done: config.steps.length > 0,
+      text: t('campaigns.overview.sequence', { count: config.steps.length }),
+    },
+    {
+      tab: 'settings',
+      done: !emailSteps || config.emailAccountId !== null,
+      text: emailSteps ? t('campaigns.overview.mailbox') : t('campaigns.overview.settings'),
+    },
+  ];
+  const stats = [
+    { label: t('campaigns.overview.sent'), value: c.results.sent },
+    { label: t('campaigns.overview.replied'), value: c.results.replied },
+    { label: t('campaigns.overview.active'), value: (e.active ?? 0) + (e.paused ?? 0) },
+    { label: t('campaigns.overview.completed'), value: e.completed ?? 0 },
+    { label: t('campaigns.overview.stopped'), value: e.stopped ?? 0 },
+  ];
+  return (
+    <>
+      {c.activeVersion === null ? (
+        <section aria-labelledby="setup-heading" className="grid gap-3">
+          <div className="grid gap-1">
+            <h2 id="setup-heading" className="text-[15px] font-semibold">
+              {t('campaigns.overview.setupTitle')}
+            </h2>
+            <p className="text-[13px] text-soft">{t('campaigns.overview.setupHint')}</p>
+          </div>
+          <ol className="divide-y divide-rule rounded-md border border-rule bg-raised">
+            {setup.map((item) => (
+              <li key={item.tab}>
+                <button
+                  type="button"
+                  onClick={() => props.onSelect(item.tab)}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left text-[13px] hover:bg-sunken"
+                  data-testid={`setup-${item.tab}`}
+                  data-done={item.done}
+                >
+                  <Badge tone={item.done ? 'ok' : 'neutral'}>
+                    {item.done ? t('campaigns.overview.done') : t('campaigns.overview.todo')}
+                  </Badge>
+                  <span className="flex-1">{item.text}</span>
+                  <span className="text-accent">{t(`campaigns.tabs.${item.tab}`)}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : (
+        <section aria-labelledby="results-heading" className="grid gap-3">
+          <h2 id="results-heading" className="text-[15px] font-semibold">
+            {t('campaigns.overview.resultsTitle')}
+          </h2>
+          <dl
+            className="grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))] gap-3"
+            data-testid="campaign-results"
+          >
+            {stats.map((s) => (
+              <div key={s.label} className="grid gap-1 rounded-md border border-rule bg-raised p-3">
+                <dt className="text-xs text-soft">{s.label}</dt>
+                <dd className="font-mono text-xl leading-none">{s.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-[13px]">
+            {c.pendingApprovals ? (
+              <Link to="/approvals" className="text-accent hover:underline">
+                {t('campaigns.overview.toReview', { count: c.pendingApprovals })}
+              </Link>
+            ) : null}
+            {c.outdatedEnrollments ? (
+              <button
+                type="button"
+                className="text-accent hover:underline"
+                onClick={() => props.onSelect('people')}
+              >
+                {t('campaigns.overview.outdated', { count: c.outdatedEnrollments })}
+              </button>
+            ) : null}
+            {c.aiSpend.calls > 0 ? (
+              <span className="text-soft">
+                {c.aiSpend.costUsd === null
+                  ? t('campaigns.targeting.spendUnknown', { calls: c.aiSpend.calls })
+                  : t('campaigns.targeting.spend', {
+                      cost: `$${c.aiSpend.costUsd.toFixed(c.aiSpend.costUsd < 1 ? 4 : 2)}`,
+                      calls: c.aiSpend.calls,
+                    })}
+              </span>
+            ) : null}
+          </p>
+        </section>
+      )}
+      <Timeline scope={{ campaignId: c.id }} refs={['contact']} />
+    </>
   );
 }

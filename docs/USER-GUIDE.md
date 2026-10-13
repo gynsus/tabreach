@@ -64,8 +64,17 @@ Each account sends at most 50 emails a day, 60 seconds apart, unless you change 
 
 ## Campaigns
 
-1. Create a campaign and add steps. A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A **task** step is something you do yourself, such as a call: when a person reaches it, it appears in **Tasks** with their details, and their sequence goes on when you press **Done** or **Skip** (or **Stop the person**). A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
-2. Fill in **Goal and audience** (optional, but it makes research and AI messages much better):
+A campaign page has five tabs:
+- **Overview** — before launch, what is still to set up; afterwards, how many messages went out, how many people replied, who is in progress, and the history.
+- **Audience** — goal, who fits, and research.
+- **Sequence** — the steps, each marked with the earliest day it can happen.
+- **People** — who is in the campaign.
+- **Settings** — mailbox, sending hours and approval.
+
+If a launch finds a problem, the tab with the problem opens, and every tab that has one is marked.
+
+1. Create a campaign and add steps (Sequence). A step sends one message on a channel — email, the company's website contact form, or LinkedIn — written from a template (with `{{firstName}}`, `{{companyName|fallback}}` and so on) or by AI from the company's research. Each step has a delay before it. A condition step can stop a person or skip the next step. A **task** step is something you do yourself, such as a call: when a person reaches it, it appears in **Tasks** with their details, and their sequence goes on when you press **Done** or **Skip** (or **Stop the person**). A later email step can be sent **as a reply in the same thread**: it gets the subject "Re: …" of the first email and appears in the same conversation in the recipient's mail.
+2. Fill in **Audience** (optional, but it makes research and AI messages much better):
    - **Goal** — what the campaign should achieve; AI messages aim at it.
    - **Who fits (ICP)** — location, company type, signals, and who to leave out. Research rates each company: fits, may fit, does not fit, or not enough data. The People list shows the rating.
    - **What research looks for** — the facts you need most from the company's site.
@@ -73,7 +82,7 @@ Each account sends at most 50 emails a day, 60 seconds apart, unless you change 
    - **AI budget for this campaign** — the most its AI messages and research may cost in total. When it is reached nobody is stopped: AI steps wait ("Waiting for AI budget") until you raise it. What the campaign spent so far is shown below the field.
 
    A **condition step** with "Research: fits the ICP is Match" lets only fitting companies through; the person waits until the company's research is done. **Research companies** in People researches every company of the campaign at once (it uses your AI key).
-3. Choose the sending hours (or keep the default from Settings) and the approval mode:
+3. In **Settings**, choose the sending hours (or keep the default from Settings) and the approval mode:
    - **Approve each** (default) — every message waits for you;
    - **Approve campaign** — after a sample you approved by hand, AI messages that pass every check go on their own.
 4. **Dry run** — pick a contact to see the first message, where and when it would go, or why it would not. Nothing is stored or sent.

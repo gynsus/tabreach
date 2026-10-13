@@ -62,96 +62,115 @@ export function SequenceEditor(props: {
     if (step) next.splice(i + by, 0, step);
     onChange(next);
   };
+  let elapsed = 0;
+  const earliestDay = steps.map((step) => {
+    elapsed += step.delaySeconds;
+    return Math.floor(elapsed / 86_400) + 1;
+  });
   return (
     <div className="grid gap-3">
       {steps.length === 0 ? <p className="text-[13px] text-soft">{t('campaigns.noSteps')}</p> : null}
       {steps.map((step, i) => (
-        <section
-          key={i}
-          aria-label={t(`campaigns.stepTitle.${step.type}`, { n: i + 1 })}
-          className="grid gap-3 rounded-md border border-rule bg-raised p-4"
-        >
-          <header className="flex items-center justify-between gap-2">
-            <h3 className="flex items-center gap-2 text-[13px] font-semibold">
-              {step.type === 'send_message' ? (
-                <Mail size={14} aria-hidden />
-              ) : step.type === 'human_task' ? (
-                <ClipboardCheck size={14} aria-hidden />
-              ) : (
-                <Split size={14} aria-hidden />
-              )}
-              {t(`campaigns.stepTitle.${step.type}`, { n: i + 1 })}
-            </h3>
-            <span className="flex gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={props.disabled || i === 0}
-                onClick={() => move(i, -1)}
-                aria-label={t('campaigns.moveUp')}
-              >
-                <ArrowUp size={14} aria-hidden />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={props.disabled || i === steps.length - 1}
-                onClick={() => move(i, 1)}
-                aria-label={t('campaigns.moveDown')}
-              >
-                <ArrowDown size={14} aria-hidden />
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={props.disabled}
-                onClick={() => onChange(steps.filter((_, j) => j !== i))}
-                aria-label={t('campaigns.removeStep')}
-              >
-                <Trash2 size={14} aria-hidden />
-              </Button>
+        // A timeline: each step at the earliest day it can happen, counted from adding the person.
+        <div key={i} className="grid grid-cols-[4.5rem_1fr] gap-3">
+          <div className="relative flex justify-end pt-4">
+            <span
+              className="font-mono text-[11px] whitespace-nowrap text-soft"
+              title={t('campaigns.dayHint')}
+              data-testid="step-day"
+            >
+              {t('campaigns.day', { n: earliestDay[i] })}
             </span>
-          </header>
-          <Field label={t('campaigns.delayDays')} hint={t('campaigns.delayHint')} className="max-w-xs">
-            {(id, describedBy) => (
-              <NumberInput
-                id={id}
-                min={0}
-                max={365}
-                aria-describedby={describedBy}
+            {i < steps.length - 1 ? (
+              <span aria-hidden className="absolute top-9 right-2 bottom-[-0.75rem] w-px bg-rule" />
+            ) : null}
+          </div>
+          <section
+            aria-label={t(`campaigns.stepTitle.${step.type}`, { n: i + 1 })}
+            className="grid gap-3 rounded-md border border-rule bg-raised p-4"
+          >
+            <header className="flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-[13px] font-semibold">
+                {step.type === 'send_message' ? (
+                  <Mail size={14} aria-hidden />
+                ) : step.type === 'human_task' ? (
+                  <ClipboardCheck size={14} aria-hidden />
+                ) : (
+                  <Split size={14} aria-hidden />
+                )}
+                {t(`campaigns.stepTitle.${step.type}`, { n: i + 1 })}
+              </h3>
+              <span className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={props.disabled || i === 0}
+                  onClick={() => move(i, -1)}
+                  aria-label={t('campaigns.moveUp')}
+                >
+                  <ArrowUp size={14} aria-hidden />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={props.disabled || i === steps.length - 1}
+                  onClick={() => move(i, 1)}
+                  aria-label={t('campaigns.moveDown')}
+                >
+                  <ArrowDown size={14} aria-hidden />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={props.disabled}
+                  onClick={() => onChange(steps.filter((_, j) => j !== i))}
+                  aria-label={t('campaigns.removeStep')}
+                >
+                  <Trash2 size={14} aria-hidden />
+                </Button>
+              </span>
+            </header>
+            <Field label={t('campaigns.delayDays')} hint={t('campaigns.delayHint')} className="max-w-xs">
+              {(id, describedBy) => (
+                <NumberInput
+                  id={id}
+                  min={0}
+                  max={365}
+                  aria-describedby={describedBy}
+                  disabled={props.disabled}
+                  value={Math.round(step.delaySeconds / DAY_SECONDS)}
+                  onCommit={(days) => update(i, { ...step, delaySeconds: days * DAY_SECONDS })}
+                />
+              )}
+            </Field>
+            {step.type === 'send_message' ? (
+              <MessageFields
+                step={step}
+                index={i}
+                // A reply in the thread needs an email step before it.
+                threadable={steps.slice(0, i).some((s) => s.type === 'send_message' && s.channel === 'email')}
+                errors={props.errors}
                 disabled={props.disabled}
-                value={Math.round(step.delaySeconds / DAY_SECONDS)}
-                onCommit={(days) => update(i, { ...step, delaySeconds: days * DAY_SECONDS })}
+                onChange={(s) => update(i, s)}
+              />
+            ) : step.type === 'human_task' ? (
+              <TaskFields
+                step={step}
+                index={i}
+                errors={props.errors}
+                disabled={props.disabled}
+                onChange={(s) => update(i, s)}
+              />
+            ) : (
+              <ConditionFields
+                step={step}
+                errorKey={props.errors[`steps.${i}.conditions`]}
+                disabled={props.disabled}
+                onChange={(s) => update(i, s)}
               />
             )}
-          </Field>
-          {step.type === 'send_message' ? (
-            <MessageFields
-              step={step}
-              index={i}
-              // A reply in the thread needs an email step before it.
-              threadable={steps.slice(0, i).some((s) => s.type === 'send_message' && s.channel === 'email')}
-              errors={props.errors}
-              disabled={props.disabled}
-              onChange={(s) => update(i, s)}
-            />
-          ) : step.type === 'human_task' ? (
-            <TaskFields
-              step={step}
-              index={i}
-              errors={props.errors}
-              disabled={props.disabled}
-              onChange={(s) => update(i, s)}
-            />
-          ) : (
-            <ConditionFields
-              step={step}
-              errorKey={props.errors[`steps.${i}.conditions`]}
-              disabled={props.disabled}
-              onChange={(s) => update(i, s)}
-            />
-          )}
-        </section>
+          </section>
+        </div>
       ))}
       <div className="flex gap-2">
         <Button disabled={props.disabled} onClick={() => onChange([...steps, newMessage()])}>
