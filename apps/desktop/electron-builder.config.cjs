@@ -42,8 +42,9 @@ module.exports = {
     category: 'public.app-category.productivity',
     icon: 'build/icon.icns',
     target: [{ target: 'dir', arch: ['arm64'] }],
-    // null lets electron-builder find the Developer ID identity (or use CSC_NAME); '-' is ad-hoc.
-    identity: developerId ? (env.CSC_NAME ?? null) : '-',
+    // Left unset, electron-builder finds the Developer ID identity (CSC_LINK, or CSC_NAME in the
+    // keychain); null would skip signing altogether. '-' is ad-hoc.
+    ...(developerId ? {} : { identity: '-' }),
     hardenedRuntime: true,
     // Electron's V8 needs JIT under the hardened runtime; nothing else (docs/18). An ad-hoc build
     // also turns off library validation, without which it cannot load Electron's framework.
