@@ -14,8 +14,16 @@ const notarization = Boolean(
   (env.APPLE_ID && env.APPLE_APP_SPECIFIC_PASSWORD && env.APPLE_TEAM_ID),
 );
 if (env.TABREACH_RELEASE === '1' && !(developerId && notarization)) {
+  // Names only, never values: says which of the expected variables arrived empty.
+  const empty = [
+    'CSC_LINK',
+    'CSC_KEY_PASSWORD',
+    'APPLE_API_KEY',
+    'APPLE_API_KEY_ID',
+    'APPLE_API_ISSUER',
+  ].filter((name) => !env[name]);
   throw new Error(
-    'TABREACH_RELEASE=1 needs a Developer ID certificate (CSC_LINK or CSC_NAME) and notarization credentials',
+    `TABREACH_RELEASE=1 needs a Developer ID certificate (CSC_LINK or CSC_NAME) and notarization credentials; empty: ${empty.join(', ') || 'none'}`,
   );
 }
 
