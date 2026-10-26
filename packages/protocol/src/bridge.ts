@@ -56,6 +56,8 @@ export const appRequestTimeoutsMs: Partial<Record<RequestsOn<'app'>, number>> = 
   // Microsoft sign-in in the browser, then the SMTP and IMAP checks.
   'accounts.connectMicrosoft': 12 * 60_000,
   'ai.testKey': 90_000,
+  // The claim check before approval: one model call (docs/22 9d).
+  'approvals.checkClaims': 120_000,
   // An AI step's message is written by the model (one call, up to a minute or two).
   'campaigns.preview': 150_000,
   'conversations.draftReply': 120_000,

@@ -42,6 +42,18 @@ export class ApprovalService {
     return rows.map((r) => this.dto(r.id));
   }
 
+  /** The draft a pending approval shows, for the claim check (docs/22 9d). */
+  pendingDraft(approvalId: string): { draftId: string; campaignId: string } | undefined {
+    const r = this.db
+      .prepare(
+        `SELECT a.message_draft_id AS draftId, e.campaign_id AS campaignId FROM approvals a
+         JOIN campaign_enrollments e ON e.id = a.campaign_enrollment_id
+         WHERE a.id = ? AND a.status = 'pending'`,
+      )
+      .get(approvalId) as { draftId: string; campaignId: string } | undefined;
+    return r ? { draftId: r.draftId, campaignId: r.campaignId } : undefined;
+  }
+
   approve(approvalId: string, contentHash: string, ctx: CommandContext): void {
     this.decide(approvalId, 'approved', ctx, (approval, draft) => {
       // The user approved what they saw; it must still be what would be sent (for a form: the

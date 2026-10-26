@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Approval } from '@tabreach/protocol';
+import type { Approval, Language } from '@tabreach/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { FactSourceButton } from '../../components/FactSource';
 import { useTranslation } from 'react-i18next';
@@ -262,6 +262,7 @@ function ApprovalDetail(props: {
       )}
       {props.editing || !a.form ? null : <FormPreview approval={a} />}
       {props.editing ? null : <Checks approval={a} />}
+      {props.editing ? null : <ClaimCheck approval={a} />}
       {props.editing || a.facts.length === 0 ? null : <FactsUsed approval={a} />}
       {props.editing || a.draftVersion < 2 ? null : <History draftId={a.draftId} />}
       {props.editing ? null : (
@@ -427,6 +428,63 @@ function Checks({ approval: a }: { approval: Approval }) {
       {a.origin === 'ai' && failed.some((c) => c.key === 'grounding') ? (
         <p className="text-xs text-soft">{t('approvals.groundingHint')}</p>
       ) : null}
+    </section>
+  );
+}
+
+/**
+ * The AI claim check (docs/22 Phase 9d): run on request, it lists passages the research facts do
+ * not support, each with a rewording. It never changes the message; the person edits it.
+ */
+function ClaimCheck({ approval: a }: { approval: Approval }) {
+  const { t, i18n } = useTranslation();
+  const language: Language = i18n.language === 'ru' ? 'ru' : 'en';
+  const check = useMutation({
+    mutationFn: () => call('approvals.checkClaims', { approvalId: a.id, language }),
+  });
+  const result = check.data;
+  const stale = result !== undefined && result.contentHash !== a.contentHash;
+  return (
+    <section aria-labelledby="claims-heading" className="grid gap-2" data-testid="claim-check">
+      <h3 id="claims-heading" className="text-xs font-semibold text-soft">
+        {t('approvals.claims.title')}
+      </h3>
+      <p className="text-xs text-soft">{t('approvals.claims.hint')}</p>
+      {result && !stale ? (
+        result.flags.length === 0 ? (
+          <p className="text-[13px] text-ok">{t('approvals.claims.none', { count: result.factCount })}</p>
+        ) : (
+          <>
+            <p className="text-[13px] font-medium">
+              {t('approvals.claims.found', { count: result.flags.length })}
+            </p>
+            <ul className="grid gap-2 text-[13px]">
+              {result.flags.map((f) => (
+                <li key={f.text} className="grid gap-0.5 border-l-2 border-warn pl-3">
+                  <mark className="w-fit bg-warn-bg px-0.5 text-ink">{f.text}</mark>
+                  <span className="text-soft">{f.problem}</span>
+                  <span className="text-xs">
+                    {f.suggestion
+                      ? t('approvals.claims.suggestion', { text: f.suggestion })
+                      : t('approvals.claims.remove')}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )
+      ) : null}
+      {stale ? <Alert tone="warn">{t('approvals.claims.stale')}</Alert> : null}
+      {check.isError ? <Alert>{errorMessage(t, check.error)}</Alert> : null}
+      <div>
+        <Button onClick={() => check.mutate()} disabled={check.isPending}>
+          {check.isPending
+            ? t('approvals.claims.checking')
+            : result
+              ? t('approvals.claims.again')
+              : t('approvals.claims.run')}
+        </Button>
+      </div>
     </section>
   );
 }

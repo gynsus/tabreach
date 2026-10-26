@@ -27,6 +27,7 @@ import { ResearchService } from './research/research-service.js';
 import { AuditLog } from './audit/audit-log.js';
 import { ApprovalService } from './campaigns/approval-service.js';
 import { CampaignCopilot } from './campaigns/copilot.js';
+import { ClaimChecker } from './drafts/claim-check.js';
 import { CampaignService } from './campaigns/campaign-service.js';
 import { CampaignEngine } from './campaigns/engine.js';
 import { ContactPolicy } from './campaigns/policy.js';
@@ -117,6 +118,8 @@ export class AppServices {
   readonly campaigns: CampaignService;
   /** The campaign copilot (ADR 033). */
   readonly copilot: CampaignCopilot;
+  /** The AI claim check before approval (docs/22 9d). */
+  readonly claims: ClaimChecker;
   readonly approvals: ApprovalService;
   readonly secrets: SecretStore;
   readonly accounts: AccountService;
@@ -412,6 +415,12 @@ export class AppServices {
       emailAccount: () => this.accounts.list().find((a) => a.status === 'active')?.id ?? null,
       aiReady: () => this.ai.settings().keySet,
     });
+    this.claims = new ClaimChecker({
+      ai: this.ai,
+      draftOf: (approvalId) => this.approvals.pendingDraft(approvalId),
+      material: (draftId) => this.engine.claimMaterial(draftId),
+      aiReady: () => this.ai.settings().keySet,
+    });
   }
 
   /** Registers every app-channel handler except those owned by CoreService itself (health, browser). */
@@ -552,6 +561,9 @@ export class AppServices {
           mutate(['enrollment', 'campaign', 'approval'], () => this.campaigns.stopEnrollment(id, ctx(c))),
         )
         .handle('approvals.pending', ({ campaignId }) => ({ items: this.approvals.pending(campaignId) }))
+        .handle('approvals.checkClaims', (p, c) =>
+          this.claims.check(p, AbortSignal.timeout(110_000), c.correlationId),
+        )
         .handle('approvals.approve', (p, c) =>
           mutate(['approval', 'enrollment', 'campaign'], () => {
             this.approvals.approve(p.approvalId, p.contentHash, ctx(c));

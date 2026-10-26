@@ -908,6 +908,22 @@ export const en = {
       'Listed words and numbers were not found in the facts, the contact’s data or your instructions. Check them, edit if needed, then approve.',
     factsUsed_one: '{{count}} fact used',
     factsUsed_other: '{{count}} facts used',
+    claims: {
+      title: 'AI claim check',
+      hint: 'AI reads the message against the research facts and your instructions and points out what they do not support. It never changes the message: edit it (E) to use a suggestion.',
+      run: 'Check claims with AI',
+      again: 'Check again',
+      checking: 'Checking…',
+      none_one:
+        'Nothing unsupported found (checked against {{count}} fact). AI can miss things: read the message yourself.',
+      none_other:
+        'Nothing unsupported found (checked against {{count}} facts). AI can miss things: read the message yourself.',
+      found_one: '{{count}} statement is not supported by the facts',
+      found_other: '{{count}} statements are not supported by the facts',
+      suggestion: 'Suggested: {{text}}',
+      remove: 'Suggested: remove it',
+      stale: 'The message changed after this check. Check again.',
+    },
     showHistory: 'Show earlier versions',
     hideHistory: 'Hide earlier versions',
     title: 'Review',

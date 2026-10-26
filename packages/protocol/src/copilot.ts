@@ -47,3 +47,29 @@ export const copilotPlanSchema = z.object({
   problems: z.record(z.string(), z.string()),
 });
 export type CopilotPlan = z.infer<typeof copilotPlanSchema>;
+
+// Claim check before approval (docs/22 Phase 9d) ------------------------------------------------
+
+export const claimCheckRequestSchema = z.object({
+  approvalId: z.uuid(),
+  /** The interface language: the findings are written in it. */
+  language: languageSchema,
+});
+
+/** A passage of the message the facts do not support, with what is wrong and a rewording. */
+export const claimFlagSchema = z.object({
+  /** Exactly as it stands in the message (findings that do not quote the message are dropped). */
+  text: z.string(),
+  problem: z.string(),
+  suggestion: z.string(),
+});
+export type ClaimFlag = z.infer<typeof claimFlagSchema>;
+
+export const claimCheckSchema = z.object({
+  /** The draft version that was checked: a later edit makes the findings out of date. */
+  contentHash: z.string(),
+  flags: z.array(claimFlagSchema).max(10),
+  /** How many research facts the message was checked against. */
+  factCount: z.number().int().min(0),
+});
+export type ClaimCheck = z.infer<typeof claimCheckSchema>;
