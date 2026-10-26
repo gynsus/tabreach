@@ -110,6 +110,8 @@ The line at the foot of the menu says whether TabReach is fine. It reads "Everyt
 
 The queue (called Approvals before) shows exactly what will go out, to whom and when, with the checks and the research facts used. Keyboard: **A** approve, **E** edit, **S** skip, **R** reject (press twice), **J / K** next and previous.
 
+**Check claims with AI** reads the message against the research facts, the contact's details and your instructions, and lists the statements nothing there supports, each with a suggested rewording. It runs only when you press it (one AI call, counted in the campaign's AI budget) and never changes the message: press **E** to use a suggestion. It does not replace the automatic checks, and finding nothing does not prove the message right, so still read it.
+
 ## Inbox
 
 Replies are matched to the person and campaign and labelled by AI (interested, not interested, out of office, opt-out). **Reply** writes back in the same thread from the same mailbox; **Suggest a reply** drafts the text from the conversation and your notes, and you edit it before sending. A reply is checked against Do not contact and is refused while everything is paused.

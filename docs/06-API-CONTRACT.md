@@ -124,6 +124,7 @@ state errors are `CONFLICT` (`campaign.notLaunched`, `enrollment.notActive`, …
 
 ```text
 query   approvals.pending              # batch queue, oldest first; each with origin, draft checks and the facts used
+query   approvals.checkClaims          # { approvalId, language } -> { contentHash, flags[] { text, problem, suggestion }, factCount }; one AI call on request, pending approvals only; flags quote the message verbatim; nothing stored or changed (docs/22 9d)
 command approvals.approve              # { approvalId, contentHash }  -- hash must match current draft
 command approvals.reject               # stops the enrollment
 command approvals.skip                 # this message is not sent; the enrollment moves to its next step

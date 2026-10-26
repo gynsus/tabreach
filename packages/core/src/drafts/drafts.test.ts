@@ -144,6 +144,54 @@ describe('AI drafts', () => {
     ]);
   });
 
+  it('the claim check before approval lists only passages of the message, and never changes it (Phase 9d)', async () => {
+    const campaign = launch();
+    const invented = 'With your 500 employees in Munich this matters.';
+    h.anthropic.answer(research, draft(`${grounded} ${invented}`));
+    h.services.campaigns.enroll(campaign, [contact('Ann')], ctx());
+    await settle();
+    const [approval] = h.services.approvals.pending();
+    const signal = () => AbortSignal.timeout(5_000);
+
+    h.anthropic.answer({
+      input: {
+        flags: [
+          { text: invented, problem: 'Нет данных о штате и Мюнхене', suggestion: '' },
+          // Not in the message: the model's own words, dropped.
+          { text: 'You won an award last year.', problem: 'Не подтверждено', suggestion: '' },
+          { text: `  ${invented}`, problem: 'Повтор', suggestion: '' },
+        ],
+      },
+    });
+    const result = await h.services.claims.check({ approvalId: approval!.id, language: 'ru' }, signal(), 'c');
+    expect(result).toEqual({
+      contentHash: approval!.contentHash,
+      flags: [{ text: invented, problem: 'Нет данных о штате и Мюнхене', suggestion: '' }],
+      factCount: 2,
+    });
+    const request = h.anthropic.requests.at(-1)!;
+    expect(request.system).toContain('Write problem and suggestion in Russian');
+    // The message and every fact go in as untrusted material; the signature (the user's) does not.
+    expect(request.user).toMatch(
+      /<untrusted source="message" id="[0-9a-f]{12}">\nSubject: Your Berlin office/,
+    );
+    expect(request.user).toContain('Is hiring a Head of Sales DACH.');
+    expect(request.user).not.toContain('Bob');
+    expect(h.services.approvals.pending()).toEqual([approval]);
+
+    // Without a key nothing is called; a decided approval cannot be checked.
+    h.services.ai.removeKey('anthropic', ctx());
+    const calls = h.anthropic.requests.length;
+    await expect(
+      h.services.claims.check({ approvalId: approval!.id, language: 'en' }, signal(), 'c'),
+    ).rejects.toMatchObject({ problem: { detail: 'ai.no_key' } });
+    expect(h.anthropic.requests).toHaveLength(calls);
+    h.services.approvals.skip(approval!.id, ctx());
+    await expect(
+      h.services.claims.check({ approvalId: approval!.id, language: 'en' }, signal(), 'c'),
+    ).rejects.toMatchObject({ problem: { detail: 'approval.notFound' } });
+  });
+
   it('grounding catches a specific the facts do not support', async () => {
     const campaign = launch();
     h.anthropic.answer(research, draft(`${grounded} With your 500 employees in Munich this matters.`));

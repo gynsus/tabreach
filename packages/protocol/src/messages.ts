@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  claimCheckRequestSchema,
+  claimCheckSchema,
   copilotIntentRequestSchema,
   copilotIntentSchema,
   copilotPlanRequestSchema,
@@ -426,6 +428,13 @@ export const requests = {
     kind: 'query',
     request: z.object({ campaignId: z.uuid().optional() }),
     response: z.object({ items: z.array(approvalSchema) }),
+  },
+  /** An AI reading of the message against the research facts (docs/22 9d); it never changes the message. */
+  'approvals.checkClaims': {
+    channel: 'app',
+    kind: 'query',
+    request: claimCheckRequestSchema,
+    response: claimCheckSchema,
   },
   'approvals.approve': { channel: 'app', kind: 'command', request: approveRequestSchema, response: ok },
   'approvals.reject': { channel: 'app', kind: 'command', request: approvalDecisionSchema, response: ok },

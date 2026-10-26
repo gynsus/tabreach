@@ -315,6 +315,11 @@ test('runs a campaign on the test channel: launch, add a contact, approve with t
     timeout: 15_000,
   });
   await expect(page.getByTestId('draft-checks')).toContainText('All checks passed');
+  // The AI claim check runs only on request, and without an AI key says so (docs/22 9d).
+  const claims = page.getByTestId('claim-check');
+  await claims.getByRole('button', { name: 'Check claims with AI' }).click();
+  await expect(claims.getByRole('alert')).toHaveText('Add an AI provider key in Settings → AI.');
+  await expect(page.getByTestId('approval-body')).toHaveText('Hi there, this is a test.');
   await atMinimumWindowSize(expectWindowNotScrollable);
   // Focus something in the queue first: on CI the window may not have OS focus, and a bare
   // keyboard.press then reaches no element. The shortcut handler itself is what is tested.

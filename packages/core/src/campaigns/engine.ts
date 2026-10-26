@@ -111,6 +111,25 @@ export interface DraftRow {
   fact_ids: string;
 }
 
+/** What the claim check reads (CampaignEngine.claimMaterial). */
+export interface ClaimMaterial {
+  contentHash: string;
+  subject: string | null;
+  /** Without the signature: the user wrote it. */
+  body: string;
+  facts: { claim: string; quote: string }[];
+  recipient: {
+    name: string | null;
+    jobTitle: string | null;
+    companyName: string | null;
+    city: string | null;
+    country: string | null;
+  };
+  /** The step's instructions for an AI message, or its template. */
+  instructions: string;
+  previous: { subject: string | null; body: string }[];
+}
+
 /** Who wrote a draft version and from what (stored with it). */
 export interface DraftMeta {
   origin: DraftOrigin;
@@ -1356,6 +1375,60 @@ export class CampaignEngine {
          WHERE f.id IN (${ids.map(() => '?').join(', ')}) AND f.verified = 1 AND f.quote IS NOT NULL`,
       )
       .all(...ids) as { id: string; claim: string; quote: string; url: string | null }[];
+  }
+
+  /**
+   * What a drafted message may rest on, for the claim check before approval (docs/22 9d): the
+   * message without its signature; the facts it used and the latest verified research about the
+   * company and the person; the recipient's fields; the step's instructions or template; and what
+   * was already sent to this contact. undefined: not a campaign message.
+   */
+  claimMaterial(draftId: string): ClaimMaterial | undefined {
+    const draft = this.d.db.prepare('SELECT * FROM message_drafts WHERE id = ?').get(draftId) as
+      DraftRow | undefined;
+    const e = draft && this.enrollment(draft.campaign_enrollment_id);
+    const run = draft && this.run(draft.workflow_run_id);
+    const contact = draft && this.contact(draft.contact_id);
+    if (!draft || !e || !run || !contact) return undefined;
+    const step = this.step(e.campaign_version_id, run.step_position);
+    if (step?.type !== 'send_message') return undefined;
+    const values = templateValues(contact);
+    const signature = renderTemplate(step.signature, values).text.trim();
+    const used = this.factsById(JSON.parse(draft.fact_ids) as string[]);
+    const latest = this.d.db
+      .prepare(
+        `SELECT f.id, f.claim, f.quote FROM research_facts f
+         WHERE f.kind = 'fact' AND f.verified = 1 AND f.quote IS NOT NULL AND f.research_run_id IN (
+           SELECT id FROM (SELECT id FROM research_runs WHERE company_id = ? AND contact_id IS NULL
+                           AND status = 'completed' ORDER BY started_at DESC LIMIT 1)
+           UNION
+           SELECT id FROM (SELECT id FROM research_runs WHERE contact_id = ? AND status = 'completed'
+                           ORDER BY started_at DESC LIMIT 1))
+         ORDER BY f.position`,
+      )
+      .all(contact.company_id, contact.id) as { id: string; claim: string; quote: string }[];
+    const seen = new Set<string>();
+    const facts = [...used, ...latest]
+      .filter((f) => !seen.has(f.id) && seen.add(f.id))
+      .map(({ claim, quote }) => ({ claim, quote }));
+    const own = draft.body.trimEnd();
+    return {
+      contentHash: draft.content_hash,
+      subject: draft.subject,
+      body:
+        signature && own.endsWith(signature) ? own.slice(0, own.length - signature.length).trimEnd() : own,
+      facts,
+      recipient: {
+        name: values.fullName,
+        jobTitle: values.jobTitle,
+        companyName: values.companyName,
+        city: values.companyCity,
+        country: values.companyCountry,
+      },
+      instructions:
+        step.mode === 'ai' ? step.instructions : [step.subject, step.body].filter(Boolean).join('\n'),
+      previous: this.previousMessages(e, run.step_position),
+    };
   }
 
   /** The captured text of the pages the given facts were verified on. */
