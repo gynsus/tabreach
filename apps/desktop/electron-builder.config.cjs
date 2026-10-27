@@ -3,8 +3,11 @@
 // Without signing credentials the app is ad-hoc signed: it runs on this Mac, and Apple Silicon
 // needs at least that once the fuses are flipped. With a Developer ID certificate (CSC_LINK +
 // CSC_KEY_PASSWORD, or CSC_NAME for one in the keychain) it is signed for distribution, and with
-// notarization credentials also notarized and stapled. The credentials come only from the
-// environment or the keychain, never from this file.
+// notarization credentials also notarized and stapled (scripts/notarize.cjs, which waits out a
+// slow Apple queue and a dropped connection). The credentials come only from the environment or
+// the keychain, never from this file.
+const notarize = require('./scripts/notarize.cjs');
+
 const env = process.env;
 
 const developerId = Boolean(env.CSC_LINK || env.CSC_NAME);
@@ -50,10 +53,13 @@ module.exports = {
     // also turns off library validation, without which it cannot load Electron's framework.
     entitlements: entitlements,
     entitlementsInherit: entitlements,
-    notarize: developerId && notarization,
+    // electron-builder's own notarization gives up on the first network error while Apple may
+    // hold a submission for an hour; ours polls with retries (scripts/notarize.cjs).
+    notarize: false,
   },
+  ...(developerId && notarization ? { afterSign: notarize } : {}),
   dmg: {
-    // The app inside is notarized and stapled by electron-builder; the signed DMG itself is
+    // The app inside is notarized and stapled after signing (afterSign); the signed DMG itself is
     // notarized and stapled by the release workflow.
     sign: developerId,
     artifactName: '${productName}-${version}-${arch}.${ext}',
