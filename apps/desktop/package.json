@@ -1,7 +1,7 @@
 {
   "name": "@tabreach/desktop",
   "productName": "TabReach",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Local-only outreach browser",
   "author": "TabReach",
   "private": true,
