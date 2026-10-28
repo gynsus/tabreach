@@ -25,6 +25,12 @@ export default tseslint.config(
     },
   },
   {
+    // CommonJS build scripts (electron-builder loads its configuration with require).
+    files: ['**/*.cjs'],
+    languageOptions: { sourceType: 'commonjs' },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+  {
     files: ['packages/core/**/*.ts'],
     rules: restrict([
       { group: ['electron', 'electron/*'], message: 'core must stay free of Electron (ADR 012).' },

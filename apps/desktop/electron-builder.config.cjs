@@ -3,8 +3,11 @@
 // Without signing credentials the app is ad-hoc signed: it runs on this Mac, and Apple Silicon
 // needs at least that once the fuses are flipped. With a Developer ID certificate (CSC_LINK +
 // CSC_KEY_PASSWORD, or CSC_NAME for one in the keychain) it is signed for distribution, and with
-// notarization credentials also notarized and stapled. The credentials come only from the
-// environment or the keychain, never from this file.
+// notarization credentials also notarized and stapled (scripts/notarize.cjs, which waits out a
+// slow Apple queue and a dropped connection). The credentials come only from the environment or
+// the keychain, never from this file.
+const notarize = require('./scripts/notarize.cjs');
+
 const env = process.env;
 
 const developerId = Boolean(env.CSC_LINK || env.CSC_NAME);
@@ -14,8 +17,16 @@ const notarization = Boolean(
   (env.APPLE_ID && env.APPLE_APP_SPECIFIC_PASSWORD && env.APPLE_TEAM_ID),
 );
 if (env.TABREACH_RELEASE === '1' && !(developerId && notarization)) {
+  // Names only, never values: says which of the expected variables arrived empty.
+  const empty = [
+    'CSC_LINK',
+    'CSC_KEY_PASSWORD',
+    'APPLE_API_KEY',
+    'APPLE_API_KEY_ID',
+    'APPLE_API_ISSUER',
+  ].filter((name) => !env[name]);
   throw new Error(
-    'TABREACH_RELEASE=1 needs a Developer ID certificate (CSC_LINK or CSC_NAME) and notarization credentials',
+    `TABREACH_RELEASE=1 needs a Developer ID certificate (CSC_LINK or CSC_NAME) and notarization credentials; empty: ${empty.join(', ') || 'none'}`,
   );
 }
 
@@ -34,17 +45,21 @@ module.exports = {
     category: 'public.app-category.productivity',
     icon: 'build/icon.icns',
     target: [{ target: 'dir', arch: ['arm64'] }],
-    // null lets electron-builder find the Developer ID identity (or use CSC_NAME); '-' is ad-hoc.
-    identity: developerId ? (env.CSC_NAME ?? null) : '-',
+    // Left unset, electron-builder finds the Developer ID identity (CSC_LINK, or CSC_NAME in the
+    // keychain); null would skip signing altogether. '-' is ad-hoc.
+    ...(developerId ? {} : { identity: '-' }),
     hardenedRuntime: true,
     // Electron's V8 needs JIT under the hardened runtime; nothing else (docs/18). An ad-hoc build
     // also turns off library validation, without which it cannot load Electron's framework.
     entitlements: entitlements,
     entitlementsInherit: entitlements,
-    notarize: developerId && notarization,
+    // electron-builder's own notarization gives up on the first network error while Apple may
+    // hold a submission for an hour; ours polls with retries (scripts/notarize.cjs).
+    notarize: false,
   },
+  ...(developerId && notarization ? { afterSign: notarize } : {}),
   dmg: {
-    // The app inside is notarized and stapled by electron-builder; the signed DMG itself is
+    // The app inside is notarized and stapled after signing (afterSign); the signed DMG itself is
     // notarized and stapled by the release workflow.
     sign: developerId,
     artifactName: '${productName}-${version}-${arch}.${ext}',

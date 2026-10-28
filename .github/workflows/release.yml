@@ -13,8 +13,20 @@ permissions:
 
 jobs:
   dmg:
+    # One job per architecture, so the two wait on Apple side by side.
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            app: mac-arm64/TabReach.app
+          - arch: x64
+            app: mac/TabReach.app
     runs-on: macos-15
-    timeout-minutes: 60
+    # Apple may hold a new team's submissions for a long review; each of the two submissions
+    # (the app, then the DMG) waits up to TABREACH_NOTARY_MINUTES.
+    timeout-minutes: 180
+    env:
+      TABREACH_NOTARY_MINUTES: '80'
     steps:
       - uses: actions/checkout@v4
 
@@ -36,42 +48,57 @@ jobs:
           printf '%s' "$APPLE_API_KEY_P8" > "$key"
           echo "APPLE_API_KEY=$key" >> "$GITHUB_ENV"
 
-      - name: Build, sign and notarize
+      - name: Build, sign and notarize the app
         env:
           TABREACH_RELEASE: '1'
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: pnpm dist
+        run: pnpm --filter @tabreach/desktop dist:arch --${{ matrix.arch }}
 
-      - name: Notarize and staple the DMGs
+      - name: Notarize and staple the DMG
         env:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          for dmg in apps/desktop/release/*.dmg; do
-            xcrun notarytool submit "$dmg" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --wait
-            xcrun stapler staple "$dmg"
-          done
+        working-directory: apps/desktop
+        run: node scripts/notarize.cjs release/*.dmg
 
       - name: Verify signature, notarization and the packaged app
+        working-directory: apps/desktop/release
         run: |
-          cd apps/desktop/release
-          for app in mac-arm64/TabReach.app mac/TabReach.app; do
-            codesign --verify --deep --strict "$app"
-            spctl --assess --type execute -vv "$app"
-            xcrun stapler validate "$app"
-          done
+          codesign --verify --deep --strict "${{ matrix.app }}"
+          spctl --assess --type execute -vv "${{ matrix.app }}"
+          xcrun stapler validate "${{ matrix.app }}"
           for dmg in *.dmg; do xcrun stapler validate "$dmg"; done
-          mac-arm64/TabReach.app/Contents/MacOS/TabReach --self-check
+
+      # The runner is Apple Silicon: only the arm64 app can start here.
+      - name: Self-check
+        if: matrix.arch == 'arm64'
+        run: apps/desktop/release/mac-arm64/TabReach.app/Contents/MacOS/TabReach --self-check
 
       - name: Remove the API key
         if: always()
         run: rm -f "$RUNNER_TEMP/AuthKey.p8"
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-${{ matrix.arch }}
+          path: apps/desktop/release/*.dmg
+          if-no-files-found: error
+
+  release:
+    needs: dmg
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dmg-*
+          merge-multiple: true
+          path: dmg
+
       - name: Draft GitHub release
-        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --draft --title "TabReach ${GITHUB_REF_NAME#v}" apps/desktop/release/*.dmg
+        run: gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft --title "TabReach ${GITHUB_REF_NAME#v}" dmg/*.dmg
