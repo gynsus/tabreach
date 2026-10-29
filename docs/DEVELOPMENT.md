@@ -86,6 +86,15 @@ With a certificate the app is signed with `entitlements.mac.plist`, which grants
 
 **Release.** Pushing a tag `v<version>` (or starting the Release workflow by hand) runs `.github/workflows/release.yml` on macOS. It builds the arm64 and the x64 DMG in two parallel jobs with `TABREACH_RELEASE=1`, then notarizes and staples each DMG. Each job checks its app with `codesign --verify`, `spctl --assess` and `stapler validate`; the arm64 job also runs the self-check (the runner is Apple Silicon). On a tag a last job attaches both DMGs to a draft GitHub release. The repository secrets it needs are `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_API_KEY_P8` (the contents of the `.p8`), `APPLE_API_KEY_ID` and `APPLE_API_ISSUER`. Set the version in `apps/desktop/package.json` before tagging.
 
+**When Apple is slow.** Apple held this team's first submissions for 10–17 hours, longer than a CI job may run. The same release can be made on the owner's Mac, where the wait has no limit. Use the certificate in the keychain and the `.p8` key, and set `TABREACH_RELEASE=1`, `TABREACH_NOTARY_MINUTES=1440`, `CSC_NAME` and the three `APPLE_API_*` variables. Then:
+
+1. Run `pnpm --filter @tabreach/desktop dist:arch --arm64` and the same for `--x64`. The two can run side by side with `-c.directories.output=release/<arch>`.
+2. Run `node apps/desktop/scripts/notarize.cjs` for each DMG.
+3. Run the same checks as the workflow.
+4. Attach the DMGs to the draft release with `gh release create`.
+
+If a test build ran on that Mac before, the self-check waits for the Keychain question about "TabReach Safe Storage" (see the user guide).
+
 ### Self-check
 
 Because the fuses disable the Node inspector, automation tools cannot attach to the packaged app.

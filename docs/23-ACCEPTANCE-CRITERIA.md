@@ -4,7 +4,7 @@ The MVP is releasable only when these criteria are demonstrably satisfied on a c
 
 Status (audit 8d.5, 2026-10-12): the boxes are ticked during the acceptance run of Phase 8e, not before. By code and tests, every criterion is built except:
 
-- not built: the signed, notarized `.app` (Phase 8e);
+- built since: the signed, notarized `.app` (Phase 8e-2, version 0.1.0);
 - partial: fuses and hardened runtime are configured, but the signing identity is still ad hoc; research limits are fixed constants (6 pages, timeouts), not settings (FR-RES-002); the user docs lack installation from the DMG.
 
 Of the 99 functional requirements in doc 02, 95 are built and 4 partial: FR-PROS-006 (custom fields have no date type), FR-RES-002 (fixed research limits), FR-BRA-006 (only candidate and chosen counts are recorded, ADR 022), FR-APP-001 (ad-hoc signing).
