@@ -16,6 +16,8 @@ Everything runs on your Mac. Your data lives in `~/Library/Application Support/T
 2. Open the DMG and drag **TabReach** onto **Applications**.
 3. Start TabReach from Applications. A release build is signed and notarized by Apple, so macOS opens it after the usual "downloaded from the internet" question. A test build without Apple's signature is refused the first time: open System Settings → Privacy & Security and press **Open Anyway** next to TabReach.
 
+   If a test build ran on this Mac before, the first start of a release build asks for your Mac password to let TabReach use "TabReach Safe Storage" in the Keychain: the stored keys belong to the app, and macOS checks that the new signature may read them. Enter the password and press **Always Allow**. Until you answer, TabReach waits.
+
 **Update:** quit TabReach, install the new version the same way and replace the old app. Your data stays where it is; before changing it, the new version makes a backup (see Data below).
 
 **Remove:** quit TabReach and move it from Applications to the Bin. Your data is not deleted with the app. To remove it too, delete `~/Library/Application Support/TabReach` and `~/Library/Logs/TabReach`. The browser profiles are in the first folder, so this also signs you out of every site you used in them. The keys and passwords TabReach stored are in the Keychain under "TabReach Safe Storage".

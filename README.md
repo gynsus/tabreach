@@ -119,7 +119,7 @@ Implemented phase by phase according to `docs/22-IMPLEMENTATION-PLAN.md`. As of 
 - research about a person on their company's own site, with verified quotes, used by AI messages when the campaign asks for it;
 - replies written and sent from the inbox in the same thread, with an optional AI suggestion of the text (ADR 031).
 
-Next: Phase 8e — signed and notarized release, user documentation, acceptance run.
+Next: the acceptance run of Phase 8e on the signed, notarized 0.1.0.
 
 ## License
 
