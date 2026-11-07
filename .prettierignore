@@ -4,6 +4,7 @@ dist
 release
 pnpm-lock.yaml
 .feature-map
+.acceptance
 docs
 *.md
 MANIFEST.json
