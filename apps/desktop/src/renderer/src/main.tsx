@@ -24,7 +24,7 @@ import { SetupPage, StartPage } from './routes/setup/SetupPage';
 import { SuppressionsPage } from './routes/suppressions/SuppressionsPage';
 import './styles.css';
 
-// Hash routing: the packaged app loads from file://, where path-based URLs have no server behind them.
+// Hash routing: the packaged app serves one static page (app://tabreach/index.html); path-based URLs have no server behind them.
 const router = createHashRouter([
   {
     path: '/',

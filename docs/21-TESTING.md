@@ -12,7 +12,7 @@
 
 - Vitest for unit and integration tests (core, worker logic, protocol).
 - Vitest (`*.browser.test.ts`) for fixture-site browser tests with the installed Chrome; Playwright Test for Electron E2E (`_electron.launch`) on the built, unfused app.
-- `TabReach --self-check[=url]` for the packaged, fused app, where automation cannot attach.
+- `TabReach --self-check[=url]` for the packaged, fused app, where automation cannot attach. It also loads the app page in a hidden window and fails unless the interface renders and reaches core: fuses change how the page loads, so the unfused E2E run cannot catch a blank packaged window.
 - Real SQLite files in temporary directories for integration tests (no mocks of the database).
 - A local fake SMTP/IMAP server for email integration tests (e.g. a lightweight in-process server); fake Gmail API via recorded/stubbed HTTP.
 - A fake AI provider returning scripted structured outputs.

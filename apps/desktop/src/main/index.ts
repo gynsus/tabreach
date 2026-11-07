@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import {
   app,
   BrowserWindow,
@@ -6,9 +7,11 @@ import {
   Menu,
   MessageChannelMain,
   nativeImage,
+  net,
   Notification,
   powerMonitor,
   powerSaveBlocker,
+  protocol,
   safeStorage,
   Tray,
   session,
@@ -18,10 +21,11 @@ import {
 import { RpcError, RpcPeer, type CoreState, type Logger } from '@tabreach/protocol';
 import { createLogger } from '../shared/logger';
 import { utilityProcessEndpoint, type ChildEnv, type PortHandoff } from '../shared/ipc';
+import { APP_ENTRY_URL, APP_SCHEME, isAppPageUrl, resolveAppFile } from './app-protocol';
 import { installMenu } from './menu';
 import { runLoopback } from './oauth-loopback';
 import { registerSaveFile, safeFileName } from './save-file';
-import { parseSelfCheck, runSelfCheck } from './self-check';
+import { checkUi, parseSelfCheck, runSelfCheck } from './self-check';
 import { killOrphanChrome } from './orphan-chrome';
 import { Supervised } from './supervisor';
 
@@ -30,6 +34,12 @@ if (isDev) {
   // Keep development data away from a real installation; tests point this at a temp dir.
   app.setPath('userData', process.env.TABREACH_USER_DATA_DIR ?? join(app.getPath('appData'), 'TabReach-dev'));
 }
+
+// Must happen before the app is ready: the renderer origin needs the privileges of a normal
+// secure origin (module scripts, fetch), which file:// lacks with its fuse off (app-protocol.ts).
+protocol.registerSchemesAsPrivileged([
+  { scheme: APP_SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 /** A self-check that cannot finish within this bound fails instead of hanging CI. */
 const SELF_CHECK_DEADLINE_MS = 120_000;
@@ -44,20 +54,12 @@ function main(): void {
     TABREACH_DEV: isDev ? '1' : '0',
   };
 
-  const rendererUrl = isDev && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null;
-  const rendererOrigin = rendererUrl ? new URL(rendererUrl).origin : null;
-  const rendererFile = join(__dirname, '../renderer/index.html');
+  const devServerUrl = isDev && process.env.ELECTRON_RENDERER_URL ? process.env.ELECTRON_RENDERER_URL : null;
+  const rendererUrl = devServerUrl ?? APP_ENTRY_URL;
+  const devServerOrigin = devServerUrl ? new URL(devServerUrl).origin : null;
+  const rendererRoot = join(__dirname, '../renderer');
   /** Only our own renderer page may use main-process IPC or receive a core port. */
-  const isAppUrl = (url: string): boolean => {
-    try {
-      const parsed = new URL(url);
-      return rendererOrigin
-        ? parsed.origin === rendererOrigin
-        : parsed.protocol === 'file:' && decodeURI(parsed.pathname) === rendererFile;
-    } catch {
-      return false;
-    }
-  };
+  const isAppUrl = (url: string): boolean => isAppPageUrl(url, devServerOrigin);
 
   let window: BrowserWindow | null = null;
   let windowLoaded = false;
@@ -94,7 +96,9 @@ function main(): void {
     const coreProc = core.process;
     if (!selfCheck.enabled || selfCheckStarted || !coreProc || !worker.process) return;
     selfCheckStarted = true;
-    void runSelfCheck(coreProc, selfCheck.url, logger).then(async (report) => {
+    const ui = () =>
+      window ? checkUi(window.webContents) : Promise.resolve({ ok: false, url: '', errors: ['no window'] });
+    void runSelfCheck(coreProc, selfCheck.url, ui, logger).then(async (report) => {
       process.stdout.write(`TABREACH_SELF_CHECK ${JSON.stringify(report)}\n`);
       logger.info({ event: 'self_check.finished', ok: report.ok }, 'self-check finished');
       await stopChildren();
@@ -191,7 +195,7 @@ function main(): void {
     const wc = window.webContents;
     wc.setWindowOpenHandler(() => ({ action: 'deny' }));
     wc.on('will-navigate', (event, url) => {
-      if (!rendererOrigin || !isAppUrl(url)) event.preventDefault();
+      if (!devServerUrl || !isAppUrl(url)) event.preventDefault();
     });
     // Only a real document load resets the connection. In-app hash routing also emits
     // did-start-loading, and treating that as a reload left the window without a core port
@@ -208,16 +212,18 @@ function main(): void {
       logger.error({ event: 'renderer.gone', reason: details.reason }, 'renderer process gone; reloading');
       if (details.reason !== 'clean-exit') wc.reload();
     });
-    window.once('ready-to-show', () => window?.show());
+    // The self-check loads the page to verify it renders, but never shows the window.
+    if (!selfCheck.enabled) window.once('ready-to-show', () => window?.show());
     window.on('closed', () => {
       window = null;
       windowLoaded = false;
     });
-    if (rendererUrl) {
-      void window.loadURL(rendererUrl);
-    } else {
-      void window.loadFile(rendererFile);
-    }
+    wc.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+      if (isMainFrame) {
+        logger.error({ event: 'renderer.load_failed', code, description, url }, 'window page did not load');
+      }
+    });
+    void window.loadURL(rendererUrl);
   }
 
   app.on('second-instance', () => {
@@ -231,6 +237,11 @@ function main(): void {
     () => {
       logger.info({ event: 'app.ready', version: app.getVersion(), packaged: app.isPackaged }, 'app ready');
       installMenu(isDev);
+      protocol.handle(APP_SCHEME, (request) => {
+        const file = resolveAppFile(rendererRoot, request.url);
+        if (!file) return new Response(null, { status: 404 });
+        return net.fetch(pathToFileURL(file).toString());
+      });
       // The app needs no browser permissions (camera, notifications, geolocation, …).
       session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
       session.defaultSession.setPermissionCheckHandler(() => false);
@@ -257,9 +268,8 @@ function main(): void {
           logger.error({ event: 'self_check.timeout' }, 'self-check timed out');
           void stopChildren().finally(() => app.exit(1));
         }, SELF_CHECK_DEADLINE_MS).unref();
-      } else {
-        createWindow();
       }
+      createWindow();
     },
     (error: unknown) => logger.error({ event: 'app.ready_failed', err: error }, 'app failed to start'),
   );

@@ -12,7 +12,7 @@ Phase 1 introduces the first real screens: prospect lists of 10k+ rows, forms, a
 - **Components:** small in-house primitives (`components/ui.tsx`). Dialogs use the native `<dialog>` element, selects are native `<select>`. Radix-style libraries were not adopted: their dialogs inject `<style>` tags that the CSP blocks, and native elements give focus trapping, Escape and accessibility for free.
 - **Data:** TanStack Query for all core calls; server-side paging (100 rows) with infinite loading.
 - **Tables:** TanStack Table **8** (headless) + TanStack Virtual for virtualized rows. Table 9 was available but is a new major with a different API; 8.21 is stable and sufficient.
-- **Routing:** React Router with a hash router (the packaged app loads from `file://`).
+- **Routing:** React Router with a hash router (the packaged app serves one static page from the privileged `app://tabreach` scheme, not `file://`, whose extra privileges are fused off).
 - **Icons:** lucide-react.
 - **Localization:** i18next + react-i18next. `en.ts` is the source catalog; `ru.ts` is typed against its shape, so a missing key is a compile error. Languages with more plural forms may add `_few`/`_many`. The chosen language is stored in core settings (`settings.ui`) and applied before first paint.
 - **Errors from core are keys, not text:** validation failures carry `fields: { email: 'email.invalid' }`, import row errors carry `reason: 'row.empty'`; the UI translates them via `errors.*`.
