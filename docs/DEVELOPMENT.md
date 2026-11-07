@@ -105,8 +105,9 @@ apps/desktop/release/mac-arm64/TabReach.app/Contents/MacOS/TabReach --self-check
 apps/desktop/release/mac-arm64/TabReach.app/Contents/MacOS/TabReach --self-check=https://example.com
 ```
 
-It starts core and the worker without a window, checks every component over the same protocol the
-UI uses, optionally runs a Chrome launch check against the URL, prints one
+It starts core and the worker, loads the app page in a window it never shows and checks that the
+interface renders and reaches core through the preload bridge, checks every component over the same
+protocol the UI uses, optionally runs a Chrome launch check against the URL, prints one
 `TABREACH_SELF_CHECK {json}` line and exits `0` when everything is healthy, `1` otherwise.
 
 ## Repository layout

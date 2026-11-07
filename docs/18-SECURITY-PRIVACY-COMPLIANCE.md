@@ -29,7 +29,8 @@ Chrome is controlled over a pipe, not a remote-debugging port.
 - preload exposes a minimal typed bridge (`invoke` for app-channel requests only, `saveTextFile`); every message validated by core or main;
 - the only renderer → main IPC is `tabreach:save-text-file`: main checks that the sender is the app's own page, validates the payload and writes only to the path the user chose in the native save dialog;
 - core and browser worker in `utilityProcess` (no renderer privileges; ADR 012);
-- Electron fuses in every packaged build: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable` and `EnableNodeCliInspectArguments` disabled; cookie encryption, embedded ASAR integrity validation and `OnlyLoadAppFromAsar` enabled (ADR 012 confirmed no worker host needs `RunAsNode`). Because the inspector is disabled, packaged builds are verified with `--self-check`, not by attaching automation;
+- the renderer is served from the privileged custom scheme `app://tabreach`, which answers only with files of the renderer build; `file://` gets no extra privileges (`GrantFileProtocolExtraPrivileges` fused off), and the app never loads pages from it;
+- Electron fuses in every packaged build: `RunAsNode`, `EnableNodeOptionsEnvironmentVariable`, `EnableNodeCliInspectArguments` and `GrantFileProtocolExtraPrivileges` disabled; cookie encryption, embedded ASAR integrity validation and `OnlyLoadAppFromAsar` enabled (ADR 012 confirmed no worker host needs `RunAsNode`). Because the inspector is disabled, packaged builds are verified with `--self-check`, not by attaching automation;
 - hardened runtime + notarization for release.
 
 ## Secrets
